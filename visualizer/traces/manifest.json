@@ -1,0 +1,27 @@
+[
+  {
+    "id": "grover_n2_greedy",
+    "label": "grover n2 greedy",
+    "path": "traces/grover_n2_greedy.json"
+  },
+  {
+    "id": "qft_n4_greedy",
+    "label": "qft n4 greedy",
+    "path": "traces/qft_n4_greedy.json"
+  },
+  {
+    "id": "adder_n10_greedy",
+    "label": "adder n10 greedy",
+    "path": "traces/adder_n10_greedy.json"
+  },
+  {
+    "id": "adder_n10_random",
+    "label": "adder n10 random",
+    "path": "traces/adder_n10_random.json"
+  },
+  {
+    "id": "cat_state_n22_greedy",
+    "label": "cat state n22 greedy",
+    "path": "traces/cat_state_n22_greedy.json"
+  }
+]

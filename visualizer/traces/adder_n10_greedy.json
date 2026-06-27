@@ -1,0 +1,4986 @@
+{
+  "schema_version": "1.0",
+  "device_type": "ion_trap",
+  "run": {
+    "program": "E:\\doctor\\\u9ed1\u5ba2\u677e\\QCCDSim\\programs\\benchmarks\\qasmbench\\small\\adder_n10.qasm",
+    "machine": "L6",
+    "ions_per_region": 3,
+    "mapper": "Greedy",
+    "reorder": "Naive",
+    "serial_trap_ops": 1,
+    "serial_comm": 0,
+    "serial_all": 0,
+    "gate_type": "FM",
+    "swap_type": "GateSwap",
+    "single_qubit_gate_time": 7,
+    "single_qubit_gate_fidelity": 0.999
+  },
+  "topology": {
+    "traps": [
+      {
+        "id": 0,
+        "capacity": 5
+      },
+      {
+        "id": 1,
+        "capacity": 5
+      },
+      {
+        "id": 2,
+        "capacity": 5
+      },
+      {
+        "id": 3,
+        "capacity": 5
+      },
+      {
+        "id": 4,
+        "capacity": 5
+      },
+      {
+        "id": 5,
+        "capacity": 5
+      }
+    ],
+    "segments": [
+      {
+        "id": 0,
+        "from": "trap:0",
+        "to": "junction:0",
+        "length": 10
+      },
+      {
+        "id": 1,
+        "from": "trap:1",
+        "to": "junction:0",
+        "length": 10
+      },
+      {
+        "id": 2,
+        "from": "trap:1",
+        "to": "junction:1",
+        "length": 10
+      },
+      {
+        "id": 3,
+        "from": "trap:2",
+        "to": "junction:1",
+        "length": 10
+      },
+      {
+        "id": 4,
+        "from": "trap:2",
+        "to": "junction:2",
+        "length": 10
+      },
+      {
+        "id": 5,
+        "from": "trap:3",
+        "to": "junction:2",
+        "length": 10
+      },
+      {
+        "id": 6,
+        "from": "trap:3",
+        "to": "junction:3",
+        "length": 10
+      },
+      {
+        "id": 7,
+        "from": "trap:4",
+        "to": "junction:3",
+        "length": 10
+      },
+      {
+        "id": 8,
+        "from": "trap:4",
+        "to": "junction:4",
+        "length": 10
+      },
+      {
+        "id": 9,
+        "from": "trap:5",
+        "to": "junction:4",
+        "length": 10
+      }
+    ],
+    "junctions": [
+      {
+        "id": 0
+      },
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      },
+      {
+        "id": 3
+      },
+      {
+        "id": 4
+      }
+    ]
+  },
+  "particles": [
+    {
+      "id": 0,
+      "initial_location": "trap:0"
+    },
+    {
+      "id": 1,
+      "initial_location": "trap:0"
+    },
+    {
+      "id": 2,
+      "initial_location": "trap:0"
+    },
+    {
+      "id": 3,
+      "initial_location": "trap:1"
+    },
+    {
+      "id": 4,
+      "initial_location": "trap:1"
+    },
+    {
+      "id": 5,
+      "initial_location": "trap:1"
+    },
+    {
+      "id": 6,
+      "initial_location": "trap:2"
+    },
+    {
+      "id": 7,
+      "initial_location": "trap:2"
+    },
+    {
+      "id": 8,
+      "initial_location": "trap:2"
+    },
+    {
+      "id": 9,
+      "initial_location": "trap:3"
+    }
+  ],
+  "events": [
+    {
+      "id": 2,
+      "type": "gate",
+      "start": 0,
+      "end": 7,
+      "ions": [
+        6
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "x",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 1,
+      "type": "gate",
+      "start": 0,
+      "end": 7,
+      "ions": [
+        5
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "x",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 0,
+      "type": "gate",
+      "start": 0,
+      "end": 7,
+      "ions": [
+        1
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "x",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 3,
+      "type": "gate",
+      "start": 7,
+      "end": 14,
+      "ions": [
+        7
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "x",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 4,
+      "type": "gate",
+      "start": 14,
+      "end": 21,
+      "ions": [
+        8
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "x",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 5,
+      "type": "split",
+      "start": 7,
+      "end": 387,
+      "ions": [
+        1
+      ],
+      "source": "trap:0",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 6,
+      "type": "move",
+      "start": 387,
+      "end": 397,
+      "ions": [
+        1
+      ],
+      "source": "segment:0",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 7,
+      "type": "merge",
+      "start": 397,
+      "end": 477,
+      "ions": [
+        1
+      ],
+      "source": "segment:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 9,
+      "type": "split",
+      "start": 477,
+      "end": 557,
+      "ions": [
+        6
+      ],
+      "source": "trap:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 10,
+      "type": "move",
+      "start": 557,
+      "end": 567,
+      "ions": [
+        6
+      ],
+      "source": "segment:3",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 8,
+      "type": "gate",
+      "start": 477,
+      "end": 577,
+      "ions": [
+        1,
+        5
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 11,
+      "type": "merge",
+      "start": 577,
+      "end": 657,
+      "ions": [
+        6
+      ],
+      "source": "segment:2",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 12,
+      "type": "split",
+      "start": 657,
+      "end": 1037,
+      "ions": [
+        6
+      ],
+      "source": "trap:1",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 4,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 13,
+      "type": "move",
+      "start": 1037,
+      "end": 1047,
+      "ions": [
+        6
+      ],
+      "source": "segment:1",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 14,
+      "type": "merge",
+      "start": 1047,
+      "end": 1127,
+      "ions": [
+        6
+      ],
+      "source": "segment:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 15,
+      "type": "gate",
+      "start": 1127,
+      "end": 1227,
+      "ions": [
+        2,
+        6
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 16,
+      "type": "split",
+      "start": 1037,
+      "end": 1417,
+      "ions": [
+        3
+      ],
+      "source": "trap:1",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 17,
+      "type": "move",
+      "start": 1417,
+      "end": 1427,
+      "ions": [
+        3
+      ],
+      "source": "segment:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 18,
+      "type": "merge",
+      "start": 1427,
+      "end": 1507,
+      "ions": [
+        3
+      ],
+      "source": "segment:3",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 24,
+      "type": "split",
+      "start": 1227,
+      "end": 1607,
+      "ions": [
+        0
+      ],
+      "source": "trap:0",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 19,
+      "type": "gate",
+      "start": 1507,
+      "end": 1607,
+      "ions": [
+        3,
+        7
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 25,
+      "type": "move",
+      "start": 1607,
+      "end": 1617,
+      "ions": [
+        0
+      ],
+      "source": "segment:0",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 20,
+      "type": "split",
+      "start": 1507,
+      "end": 1887,
+      "ions": [
+        4
+      ],
+      "source": "trap:1",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 1,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 21,
+      "type": "move",
+      "start": 1887,
+      "end": 1897,
+      "ions": [
+        4
+      ],
+      "source": "segment:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 26,
+      "type": "merge",
+      "start": 1887,
+      "end": 1967,
+      "ions": [
+        0
+      ],
+      "source": "segment:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 22,
+      "type": "merge",
+      "start": 1897,
+      "end": 1977,
+      "ions": [
+        4
+      ],
+      "source": "segment:3",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 27,
+      "type": "gate",
+      "start": 1967,
+      "end": 2067,
+      "ions": [
+        1,
+        0
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 28,
+      "type": "gate",
+      "start": 2067,
+      "end": 2074,
+      "ions": [
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "h",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 23,
+      "type": "gate",
+      "start": 1977,
+      "end": 2077,
+      "ions": [
+        4,
+        8
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 29,
+      "type": "gate",
+      "start": 2074,
+      "end": 2174,
+      "ions": [
+        5,
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 30,
+      "type": "gate",
+      "start": 2174,
+      "end": 2181,
+      "ions": [
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 31,
+      "type": "gate",
+      "start": 2181,
+      "end": 2281,
+      "ions": [
+        0,
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 32,
+      "type": "gate",
+      "start": 2281,
+      "end": 2288,
+      "ions": [
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 33,
+      "type": "gate",
+      "start": 2288,
+      "end": 2388,
+      "ions": [
+        5,
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 34,
+      "type": "gate",
+      "start": 2388,
+      "end": 2395,
+      "ions": [
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 35,
+      "type": "gate",
+      "start": 2395,
+      "end": 2402,
+      "ions": [
+        5
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 36,
+      "type": "gate",
+      "start": 2402,
+      "end": 2502,
+      "ions": [
+        0,
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 37,
+      "type": "gate",
+      "start": 2502,
+      "end": 2509,
+      "ions": [
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 38,
+      "type": "gate",
+      "start": 2509,
+      "end": 2609,
+      "ions": [
+        0,
+        5
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 39,
+      "type": "gate",
+      "start": 2609,
+      "end": 2616,
+      "ions": [
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "h",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 40,
+      "type": "gate",
+      "start": 2616,
+      "end": 2623,
+      "ions": [
+        0
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 41,
+      "type": "gate",
+      "start": 2623,
+      "end": 2630,
+      "ions": [
+        5
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 42,
+      "type": "split",
+      "start": 2630,
+      "end": 3010,
+      "ions": [
+        1
+      ],
+      "source": "trap:1",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 1,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 43,
+      "type": "move",
+      "start": 3010,
+      "end": 3020,
+      "ions": [
+        1
+      ],
+      "source": "segment:1",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 44,
+      "type": "merge",
+      "start": 3020,
+      "end": 3100,
+      "ions": [
+        1
+      ],
+      "source": "segment:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 46,
+      "type": "gate",
+      "start": 3010,
+      "end": 3110,
+      "ions": [
+        0,
+        5
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 45,
+      "type": "gate",
+      "start": 3100,
+      "end": 3200,
+      "ions": [
+        2,
+        1
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 47,
+      "type": "gate",
+      "start": 3200,
+      "end": 3207,
+      "ions": [
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "h",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 48,
+      "type": "gate",
+      "start": 3207,
+      "end": 3307,
+      "ions": [
+        6,
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 49,
+      "type": "gate",
+      "start": 3307,
+      "end": 3314,
+      "ions": [
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 50,
+      "type": "gate",
+      "start": 3314,
+      "end": 3414,
+      "ions": [
+        1,
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 51,
+      "type": "gate",
+      "start": 3414,
+      "end": 3421,
+      "ions": [
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 52,
+      "type": "gate",
+      "start": 3421,
+      "end": 3521,
+      "ions": [
+        6,
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 53,
+      "type": "gate",
+      "start": 3521,
+      "end": 3528,
+      "ions": [
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 54,
+      "type": "gate",
+      "start": 3528,
+      "end": 3535,
+      "ions": [
+        6
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 55,
+      "type": "gate",
+      "start": 3535,
+      "end": 3635,
+      "ions": [
+        1,
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 56,
+      "type": "gate",
+      "start": 3635,
+      "end": 3642,
+      "ions": [
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 57,
+      "type": "gate",
+      "start": 3642,
+      "end": 3742,
+      "ions": [
+        1,
+        6
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 58,
+      "type": "gate",
+      "start": 3742,
+      "end": 3749,
+      "ions": [
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "h",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 59,
+      "type": "gate",
+      "start": 3749,
+      "end": 3756,
+      "ions": [
+        1
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 60,
+      "type": "gate",
+      "start": 3756,
+      "end": 3763,
+      "ions": [
+        6
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 61,
+      "type": "split",
+      "start": 3749,
+      "end": 4129,
+      "ions": [
+        3
+      ],
+      "source": "trap:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 1,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 62,
+      "type": "move",
+      "start": 4129,
+      "end": 4139,
+      "ions": [
+        3
+      ],
+      "source": "segment:3",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 63,
+      "type": "merge",
+      "start": 4139,
+      "end": 4219,
+      "ions": [
+        3
+      ],
+      "source": "segment:2",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 64,
+      "type": "split",
+      "start": 4219,
+      "end": 4599,
+      "ions": [
+        3
+      ],
+      "source": "trap:1",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 65,
+      "type": "move",
+      "start": 4599,
+      "end": 4609,
+      "ions": [
+        3
+      ],
+      "source": "segment:1",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 66,
+      "type": "merge",
+      "start": 4609,
+      "end": 4689,
+      "ions": [
+        3
+      ],
+      "source": "segment:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 67,
+      "type": "gate",
+      "start": 4689,
+      "end": 4789,
+      "ions": [
+        3,
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 68,
+      "type": "gate",
+      "start": 4789,
+      "end": 4889,
+      "ions": [
+        1,
+        6
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 69,
+      "type": "gate",
+      "start": 4889,
+      "end": 4896,
+      "ions": [
+        3
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "h",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 70,
+      "type": "split",
+      "start": 4896,
+      "end": 4976,
+      "ions": [
+        3
+      ],
+      "source": "trap:0",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 71,
+      "type": "move",
+      "start": 4976,
+      "end": 4986,
+      "ions": [
+        3
+      ],
+      "source": "segment:0",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 72,
+      "type": "merge",
+      "start": 4986,
+      "end": 5066,
+      "ions": [
+        3
+      ],
+      "source": "segment:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 73,
+      "type": "split",
+      "start": 5066,
+      "end": 5446,
+      "ions": [
+        3
+      ],
+      "source": "trap:1",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 74,
+      "type": "move",
+      "start": 5446,
+      "end": 5456,
+      "ions": [
+        3
+      ],
+      "source": "segment:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 75,
+      "type": "merge",
+      "start": 5456,
+      "end": 5536,
+      "ions": [
+        3
+      ],
+      "source": "segment:3",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 76,
+      "type": "gate",
+      "start": 5536,
+      "end": 5636,
+      "ions": [
+        7,
+        3
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 77,
+      "type": "gate",
+      "start": 5636,
+      "end": 5643,
+      "ions": [
+        3
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 78,
+      "type": "split",
+      "start": 5643,
+      "end": 5723,
+      "ions": [
+        3
+      ],
+      "source": "trap:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 79,
+      "type": "move",
+      "start": 5723,
+      "end": 5733,
+      "ions": [
+        3
+      ],
+      "source": "segment:3",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 80,
+      "type": "merge",
+      "start": 5733,
+      "end": 5813,
+      "ions": [
+        3
+      ],
+      "source": "segment:2",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 81,
+      "type": "split",
+      "start": 5813,
+      "end": 6193,
+      "ions": [
+        3
+      ],
+      "source": "trap:1",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 82,
+      "type": "move",
+      "start": 6193,
+      "end": 6203,
+      "ions": [
+        3
+      ],
+      "source": "segment:1",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 83,
+      "type": "merge",
+      "start": 6203,
+      "end": 6283,
+      "ions": [
+        3
+      ],
+      "source": "segment:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 84,
+      "type": "gate",
+      "start": 6283,
+      "end": 6383,
+      "ions": [
+        2,
+        3
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 85,
+      "type": "gate",
+      "start": 6383,
+      "end": 6390,
+      "ions": [
+        3
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 86,
+      "type": "split",
+      "start": 6390,
+      "end": 6470,
+      "ions": [
+        3
+      ],
+      "source": "trap:0",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 87,
+      "type": "move",
+      "start": 6470,
+      "end": 6480,
+      "ions": [
+        3
+      ],
+      "source": "segment:0",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 88,
+      "type": "merge",
+      "start": 6480,
+      "end": 6560,
+      "ions": [
+        3
+      ],
+      "source": "segment:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 89,
+      "type": "split",
+      "start": 6560,
+      "end": 6940,
+      "ions": [
+        3
+      ],
+      "source": "trap:1",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 90,
+      "type": "move",
+      "start": 6940,
+      "end": 6950,
+      "ions": [
+        3
+      ],
+      "source": "segment:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 91,
+      "type": "merge",
+      "start": 6950,
+      "end": 7030,
+      "ions": [
+        3
+      ],
+      "source": "segment:3",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 92,
+      "type": "gate",
+      "start": 7030,
+      "end": 7130,
+      "ions": [
+        7,
+        3
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 93,
+      "type": "gate",
+      "start": 7130,
+      "end": 7137,
+      "ions": [
+        3
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 94,
+      "type": "gate",
+      "start": 7137,
+      "end": 7144,
+      "ions": [
+        7
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 95,
+      "type": "split",
+      "start": 7144,
+      "end": 7224,
+      "ions": [
+        3
+      ],
+      "source": "trap:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 96,
+      "type": "move",
+      "start": 7224,
+      "end": 7234,
+      "ions": [
+        3
+      ],
+      "source": "segment:3",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 97,
+      "type": "merge",
+      "start": 7234,
+      "end": 7314,
+      "ions": [
+        3
+      ],
+      "source": "segment:2",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 98,
+      "type": "split",
+      "start": 7314,
+      "end": 7694,
+      "ions": [
+        3
+      ],
+      "source": "trap:1",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 99,
+      "type": "move",
+      "start": 7694,
+      "end": 7704,
+      "ions": [
+        3
+      ],
+      "source": "segment:1",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 100,
+      "type": "merge",
+      "start": 7704,
+      "end": 7784,
+      "ions": [
+        3
+      ],
+      "source": "segment:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 101,
+      "type": "gate",
+      "start": 7784,
+      "end": 7884,
+      "ions": [
+        2,
+        3
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 102,
+      "type": "gate",
+      "start": 7884,
+      "end": 7891,
+      "ions": [
+        3
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 103,
+      "type": "split",
+      "start": 7891,
+      "end": 8271,
+      "ions": [
+        2
+      ],
+      "source": "trap:0",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 3,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 110,
+      "type": "gate",
+      "start": 8271,
+      "end": 8278,
+      "ions": [
+        3
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "h",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 104,
+      "type": "move",
+      "start": 8271,
+      "end": 8281,
+      "ions": [
+        2
+      ],
+      "source": "segment:0",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 105,
+      "type": "merge",
+      "start": 8281,
+      "end": 8361,
+      "ions": [
+        2
+      ],
+      "source": "segment:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 106,
+      "type": "split",
+      "start": 8361,
+      "end": 8741,
+      "ions": [
+        2
+      ],
+      "source": "trap:1",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 107,
+      "type": "move",
+      "start": 8741,
+      "end": 8751,
+      "ions": [
+        2
+      ],
+      "source": "segment:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 108,
+      "type": "merge",
+      "start": 8751,
+      "end": 8831,
+      "ions": [
+        2
+      ],
+      "source": "segment:3",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 109,
+      "type": "gate",
+      "start": 8831,
+      "end": 8931,
+      "ions": [
+        2,
+        7
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 111,
+      "type": "gate",
+      "start": 8931,
+      "end": 8938,
+      "ions": [
+        2
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 112,
+      "type": "gate",
+      "start": 8938,
+      "end": 8945,
+      "ions": [
+        7
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 113,
+      "type": "split",
+      "start": 8945,
+      "end": 9325,
+      "ions": [
+        4
+      ],
+      "source": "trap:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 1,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 114,
+      "type": "move",
+      "start": 9325,
+      "end": 9335,
+      "ions": [
+        4
+      ],
+      "source": "segment:3",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 115,
+      "type": "merge",
+      "start": 9335,
+      "end": 9415,
+      "ions": [
+        4
+      ],
+      "source": "segment:2",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 120,
+      "type": "gate",
+      "start": 9325,
+      "end": 9425,
+      "ions": [
+        2,
+        7
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 116,
+      "type": "split",
+      "start": 9415,
+      "end": 9795,
+      "ions": [
+        4
+      ],
+      "source": "trap:1",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 117,
+      "type": "move",
+      "start": 9795,
+      "end": 9805,
+      "ions": [
+        4
+      ],
+      "source": "segment:1",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 118,
+      "type": "merge",
+      "start": 9805,
+      "end": 9885,
+      "ions": [
+        4
+      ],
+      "source": "segment:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 119,
+      "type": "gate",
+      "start": 9885,
+      "end": 9985,
+      "ions": [
+        4,
+        3
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 121,
+      "type": "gate",
+      "start": 9985,
+      "end": 9992,
+      "ions": [
+        4
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "h",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 122,
+      "type": "split",
+      "start": 9992,
+      "end": 10072,
+      "ions": [
+        4
+      ],
+      "source": "trap:0",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 123,
+      "type": "move",
+      "start": 10072,
+      "end": 10082,
+      "ions": [
+        4
+      ],
+      "source": "segment:0",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 124,
+      "type": "merge",
+      "start": 10082,
+      "end": 10162,
+      "ions": [
+        4
+      ],
+      "source": "segment:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 125,
+      "type": "split",
+      "start": 10162,
+      "end": 10542,
+      "ions": [
+        4
+      ],
+      "source": "trap:1",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 126,
+      "type": "move",
+      "start": 10542,
+      "end": 10552,
+      "ions": [
+        4
+      ],
+      "source": "segment:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 127,
+      "type": "merge",
+      "start": 10552,
+      "end": 10632,
+      "ions": [
+        4
+      ],
+      "source": "segment:3",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 128,
+      "type": "gate",
+      "start": 10632,
+      "end": 10732,
+      "ions": [
+        8,
+        4
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 129,
+      "type": "gate",
+      "start": 10732,
+      "end": 10739,
+      "ions": [
+        4
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 130,
+      "type": "split",
+      "start": 10739,
+      "end": 10819,
+      "ions": [
+        4
+      ],
+      "source": "trap:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 131,
+      "type": "move",
+      "start": 10819,
+      "end": 10829,
+      "ions": [
+        4
+      ],
+      "source": "segment:3",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 132,
+      "type": "merge",
+      "start": 10829,
+      "end": 10909,
+      "ions": [
+        4
+      ],
+      "source": "segment:2",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 133,
+      "type": "split",
+      "start": 10909,
+      "end": 11289,
+      "ions": [
+        4
+      ],
+      "source": "trap:1",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 134,
+      "type": "move",
+      "start": 11289,
+      "end": 11299,
+      "ions": [
+        4
+      ],
+      "source": "segment:1",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 135,
+      "type": "merge",
+      "start": 11299,
+      "end": 11379,
+      "ions": [
+        4
+      ],
+      "source": "segment:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 136,
+      "type": "gate",
+      "start": 11379,
+      "end": 11479,
+      "ions": [
+        3,
+        4
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 137,
+      "type": "gate",
+      "start": 11479,
+      "end": 11486,
+      "ions": [
+        4
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 138,
+      "type": "split",
+      "start": 11486,
+      "end": 11566,
+      "ions": [
+        4
+      ],
+      "source": "trap:0",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 139,
+      "type": "move",
+      "start": 11566,
+      "end": 11576,
+      "ions": [
+        4
+      ],
+      "source": "segment:0",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 140,
+      "type": "merge",
+      "start": 11576,
+      "end": 11656,
+      "ions": [
+        4
+      ],
+      "source": "segment:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 141,
+      "type": "split",
+      "start": 11656,
+      "end": 12036,
+      "ions": [
+        4
+      ],
+      "source": "trap:1",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 142,
+      "type": "move",
+      "start": 12036,
+      "end": 12046,
+      "ions": [
+        4
+      ],
+      "source": "segment:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 143,
+      "type": "merge",
+      "start": 12046,
+      "end": 12126,
+      "ions": [
+        4
+      ],
+      "source": "segment:3",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 144,
+      "type": "gate",
+      "start": 12126,
+      "end": 12226,
+      "ions": [
+        8,
+        4
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 145,
+      "type": "gate",
+      "start": 12226,
+      "end": 12233,
+      "ions": [
+        4
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 146,
+      "type": "gate",
+      "start": 12233,
+      "end": 12240,
+      "ions": [
+        8
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 147,
+      "type": "split",
+      "start": 12240,
+      "end": 12320,
+      "ions": [
+        4
+      ],
+      "source": "trap:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 148,
+      "type": "move",
+      "start": 12320,
+      "end": 12330,
+      "ions": [
+        4
+      ],
+      "source": "segment:3",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 149,
+      "type": "merge",
+      "start": 12330,
+      "end": 12410,
+      "ions": [
+        4
+      ],
+      "source": "segment:2",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 150,
+      "type": "split",
+      "start": 12410,
+      "end": 12790,
+      "ions": [
+        4
+      ],
+      "source": "trap:1",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 151,
+      "type": "move",
+      "start": 12790,
+      "end": 12800,
+      "ions": [
+        4
+      ],
+      "source": "segment:1",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 152,
+      "type": "merge",
+      "start": 12800,
+      "end": 12880,
+      "ions": [
+        4
+      ],
+      "source": "segment:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 153,
+      "type": "gate",
+      "start": 12880,
+      "end": 12980,
+      "ions": [
+        3,
+        4
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 154,
+      "type": "gate",
+      "start": 12980,
+      "end": 12987,
+      "ions": [
+        4
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 155,
+      "type": "split",
+      "start": 12987,
+      "end": 13367,
+      "ions": [
+        3
+      ],
+      "source": "trap:0",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 1,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 162,
+      "type": "gate",
+      "start": 13367,
+      "end": 13374,
+      "ions": [
+        4
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "h",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 156,
+      "type": "move",
+      "start": 13367,
+      "end": 13377,
+      "ions": [
+        3
+      ],
+      "source": "segment:0",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 157,
+      "type": "merge",
+      "start": 13377,
+      "end": 13457,
+      "ions": [
+        3
+      ],
+      "source": "segment:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 158,
+      "type": "split",
+      "start": 13457,
+      "end": 13837,
+      "ions": [
+        3
+      ],
+      "source": "trap:1",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 159,
+      "type": "move",
+      "start": 13837,
+      "end": 13847,
+      "ions": [
+        3
+      ],
+      "source": "segment:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 160,
+      "type": "merge",
+      "start": 13847,
+      "end": 13927,
+      "ions": [
+        3
+      ],
+      "source": "segment:3",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 165,
+      "type": "split",
+      "start": 13927,
+      "end": 14007,
+      "ions": [
+        4
+      ],
+      "source": "trap:0",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 166,
+      "type": "move",
+      "start": 14007,
+      "end": 14017,
+      "ions": [
+        4
+      ],
+      "source": "segment:0",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 161,
+      "type": "gate",
+      "start": 13927,
+      "end": 14027,
+      "ions": [
+        3,
+        8
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 163,
+      "type": "gate",
+      "start": 14027,
+      "end": 14034,
+      "ions": [
+        3
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 164,
+      "type": "gate",
+      "start": 14034,
+      "end": 14041,
+      "ions": [
+        8
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 167,
+      "type": "merge",
+      "start": 14017,
+      "end": 14097,
+      "ions": [
+        4
+      ],
+      "source": "segment:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 168,
+      "type": "split",
+      "start": 14097,
+      "end": 14477,
+      "ions": [
+        4
+      ],
+      "source": "trap:1",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 169,
+      "type": "move",
+      "start": 14477,
+      "end": 14487,
+      "ions": [
+        4
+      ],
+      "source": "segment:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 170,
+      "type": "merge",
+      "start": 14487,
+      "end": 14567,
+      "ions": [
+        4
+      ],
+      "source": "segment:3",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 171,
+      "type": "split",
+      "start": 14567,
+      "end": 14947,
+      "ions": [
+        4
+      ],
+      "source": "trap:2",
+      "target": "segment:4",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 4,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 172,
+      "type": "move",
+      "start": 14947,
+      "end": 14957,
+      "ions": [
+        4
+      ],
+      "source": "segment:4",
+      "target": "segment:5",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 173,
+      "type": "merge",
+      "start": 14957,
+      "end": 15037,
+      "ions": [
+        4
+      ],
+      "source": "segment:5",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 175,
+      "type": "gate",
+      "start": 14947,
+      "end": 15047,
+      "ions": [
+        3,
+        8
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 174,
+      "type": "gate",
+      "start": 15037,
+      "end": 15137,
+      "ions": [
+        4,
+        9
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 176,
+      "type": "gate",
+      "start": 15137,
+      "end": 15144,
+      "ions": [
+        4
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "h",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 177,
+      "type": "split",
+      "start": 15144,
+      "end": 15224,
+      "ions": [
+        8
+      ],
+      "source": "trap:2",
+      "target": "segment:4",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 178,
+      "type": "move",
+      "start": 15224,
+      "end": 15234,
+      "ions": [
+        8
+      ],
+      "source": "segment:4",
+      "target": "segment:5",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 179,
+      "type": "merge",
+      "start": 15234,
+      "end": 15314,
+      "ions": [
+        8
+      ],
+      "source": "segment:5",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 180,
+      "type": "gate",
+      "start": 15314,
+      "end": 15414,
+      "ions": [
+        8,
+        4
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 181,
+      "type": "gate",
+      "start": 15414,
+      "end": 15421,
+      "ions": [
+        4
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 182,
+      "type": "split",
+      "start": 15421,
+      "end": 15801,
+      "ions": [
+        3
+      ],
+      "source": "trap:2",
+      "target": "segment:4",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 183,
+      "type": "move",
+      "start": 15801,
+      "end": 15811,
+      "ions": [
+        3
+      ],
+      "source": "segment:4",
+      "target": "segment:5",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 184,
+      "type": "merge",
+      "start": 15811,
+      "end": 15891,
+      "ions": [
+        3
+      ],
+      "source": "segment:5",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 185,
+      "type": "gate",
+      "start": 15891,
+      "end": 15991,
+      "ions": [
+        3,
+        4
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 186,
+      "type": "gate",
+      "start": 15991,
+      "end": 15998,
+      "ions": [
+        4
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 187,
+      "type": "gate",
+      "start": 15998,
+      "end": 16098,
+      "ions": [
+        8,
+        4
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 188,
+      "type": "gate",
+      "start": 16098,
+      "end": 16105,
+      "ions": [
+        4
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 189,
+      "type": "gate",
+      "start": 16105,
+      "end": 16112,
+      "ions": [
+        8
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 190,
+      "type": "gate",
+      "start": 16112,
+      "end": 16212,
+      "ions": [
+        3,
+        4
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 191,
+      "type": "gate",
+      "start": 16212,
+      "end": 16219,
+      "ions": [
+        4
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 192,
+      "type": "gate",
+      "start": 16219,
+      "end": 16319,
+      "ions": [
+        3,
+        8
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 193,
+      "type": "gate",
+      "start": 16319,
+      "end": 16326,
+      "ions": [
+        4
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "h",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 194,
+      "type": "gate",
+      "start": 16326,
+      "end": 16333,
+      "ions": [
+        3
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 195,
+      "type": "gate",
+      "start": 16333,
+      "end": 16340,
+      "ions": [
+        8
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 196,
+      "type": "gate",
+      "start": 16340,
+      "end": 16440,
+      "ions": [
+        3,
+        8
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 197,
+      "type": "gate",
+      "start": 16440,
+      "end": 16540,
+      "ions": [
+        4,
+        3
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 198,
+      "type": "gate",
+      "start": 16540,
+      "end": 16640,
+      "ions": [
+        3,
+        8
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 199,
+      "type": "gate",
+      "start": 16640,
+      "end": 16647,
+      "ions": [
+        3
+      ],
+      "source": "trap:3",
+      "target": "trap:3",
+      "metadata": {
+        "gate_name": "h",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 200,
+      "type": "split",
+      "start": 16647,
+      "end": 16727,
+      "ions": [
+        3
+      ],
+      "source": "trap:3",
+      "target": "segment:5",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 201,
+      "type": "move",
+      "start": 16727,
+      "end": 16737,
+      "ions": [
+        3
+      ],
+      "source": "segment:5",
+      "target": "segment:4",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 202,
+      "type": "merge",
+      "start": 16737,
+      "end": 16817,
+      "ions": [
+        3
+      ],
+      "source": "segment:4",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 203,
+      "type": "gate",
+      "start": 16817,
+      "end": 16917,
+      "ions": [
+        7,
+        3
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 204,
+      "type": "gate",
+      "start": 16917,
+      "end": 16924,
+      "ions": [
+        3
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 205,
+      "type": "gate",
+      "start": 16924,
+      "end": 17024,
+      "ions": [
+        2,
+        3
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 206,
+      "type": "gate",
+      "start": 17024,
+      "end": 17031,
+      "ions": [
+        3
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 207,
+      "type": "gate",
+      "start": 17031,
+      "end": 17131,
+      "ions": [
+        7,
+        3
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 208,
+      "type": "gate",
+      "start": 17131,
+      "end": 17138,
+      "ions": [
+        3
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 209,
+      "type": "gate",
+      "start": 17138,
+      "end": 17145,
+      "ions": [
+        7
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 210,
+      "type": "gate",
+      "start": 17145,
+      "end": 17245,
+      "ions": [
+        2,
+        3
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 211,
+      "type": "gate",
+      "start": 17245,
+      "end": 17252,
+      "ions": [
+        3
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 212,
+      "type": "gate",
+      "start": 17252,
+      "end": 17352,
+      "ions": [
+        2,
+        7
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 213,
+      "type": "gate",
+      "start": 17352,
+      "end": 17359,
+      "ions": [
+        3
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "h",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 214,
+      "type": "gate",
+      "start": 17359,
+      "end": 17366,
+      "ions": [
+        2
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 215,
+      "type": "gate",
+      "start": 17366,
+      "end": 17373,
+      "ions": [
+        7
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 216,
+      "type": "gate",
+      "start": 17373,
+      "end": 17473,
+      "ions": [
+        2,
+        7
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 217,
+      "type": "gate",
+      "start": 17473,
+      "end": 17573,
+      "ions": [
+        3,
+        2
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 218,
+      "type": "gate",
+      "start": 17573,
+      "end": 17673,
+      "ions": [
+        2,
+        7
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 219,
+      "type": "gate",
+      "start": 17673,
+      "end": 17680,
+      "ions": [
+        2
+      ],
+      "source": "trap:2",
+      "target": "trap:2",
+      "metadata": {
+        "gate_name": "h",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 220,
+      "type": "split",
+      "start": 17680,
+      "end": 17760,
+      "ions": [
+        2
+      ],
+      "source": "trap:2",
+      "target": "segment:3",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 221,
+      "type": "move",
+      "start": 17760,
+      "end": 17770,
+      "ions": [
+        2
+      ],
+      "source": "segment:3",
+      "target": "segment:2",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 222,
+      "type": "merge",
+      "start": 17770,
+      "end": 17850,
+      "ions": [
+        2
+      ],
+      "source": "segment:2",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 223,
+      "type": "split",
+      "start": 17850,
+      "end": 18230,
+      "ions": [
+        2
+      ],
+      "source": "trap:1",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 2,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 224,
+      "type": "move",
+      "start": 18230,
+      "end": 18240,
+      "ions": [
+        2
+      ],
+      "source": "segment:1",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 225,
+      "type": "merge",
+      "start": 18240,
+      "end": 18320,
+      "ions": [
+        2
+      ],
+      "source": "segment:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 226,
+      "type": "gate",
+      "start": 18320,
+      "end": 18420,
+      "ions": [
+        6,
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 227,
+      "type": "gate",
+      "start": 18420,
+      "end": 18427,
+      "ions": [
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 228,
+      "type": "gate",
+      "start": 18427,
+      "end": 18527,
+      "ions": [
+        1,
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 229,
+      "type": "gate",
+      "start": 18527,
+      "end": 18534,
+      "ions": [
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 230,
+      "type": "gate",
+      "start": 18534,
+      "end": 18634,
+      "ions": [
+        6,
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 231,
+      "type": "gate",
+      "start": 18634,
+      "end": 18641,
+      "ions": [
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 232,
+      "type": "gate",
+      "start": 18641,
+      "end": 18648,
+      "ions": [
+        6
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 233,
+      "type": "gate",
+      "start": 18648,
+      "end": 18748,
+      "ions": [
+        1,
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 234,
+      "type": "gate",
+      "start": 18748,
+      "end": 18755,
+      "ions": [
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 235,
+      "type": "gate",
+      "start": 18755,
+      "end": 18855,
+      "ions": [
+        1,
+        6
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 236,
+      "type": "gate",
+      "start": 18855,
+      "end": 18862,
+      "ions": [
+        2
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "h",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 237,
+      "type": "gate",
+      "start": 18862,
+      "end": 18869,
+      "ions": [
+        1
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 238,
+      "type": "gate",
+      "start": 18869,
+      "end": 18876,
+      "ions": [
+        6
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 239,
+      "type": "gate",
+      "start": 18876,
+      "end": 18976,
+      "ions": [
+        1,
+        6
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 240,
+      "type": "gate",
+      "start": 18976,
+      "end": 19076,
+      "ions": [
+        2,
+        1
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 241,
+      "type": "gate",
+      "start": 19076,
+      "end": 19176,
+      "ions": [
+        1,
+        6
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 242,
+      "type": "gate",
+      "start": 19176,
+      "end": 19183,
+      "ions": [
+        1
+      ],
+      "source": "trap:0",
+      "target": "trap:0",
+      "metadata": {
+        "gate_name": "h",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 243,
+      "type": "split",
+      "start": 19183,
+      "end": 19563,
+      "ions": [
+        1
+      ],
+      "source": "trap:0",
+      "target": "segment:0",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 1,
+        "swap_hops": 1,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 244,
+      "type": "move",
+      "start": 19563,
+      "end": 19573,
+      "ions": [
+        1
+      ],
+      "source": "segment:0",
+      "target": "segment:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 245,
+      "type": "merge",
+      "start": 19573,
+      "end": 19653,
+      "ions": [
+        1
+      ],
+      "source": "segment:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": null,
+        "arity": null,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 246,
+      "type": "gate",
+      "start": 19653,
+      "end": 19753,
+      "ions": [
+        5,
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 247,
+      "type": "gate",
+      "start": 19753,
+      "end": 19760,
+      "ions": [
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 248,
+      "type": "gate",
+      "start": 19760,
+      "end": 19860,
+      "ions": [
+        0,
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 249,
+      "type": "gate",
+      "start": 19860,
+      "end": 19867,
+      "ions": [
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 250,
+      "type": "gate",
+      "start": 19867,
+      "end": 19967,
+      "ions": [
+        5,
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 251,
+      "type": "gate",
+      "start": 19967,
+      "end": 19974,
+      "ions": [
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 252,
+      "type": "gate",
+      "start": 19974,
+      "end": 19981,
+      "ions": [
+        5
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 253,
+      "type": "gate",
+      "start": 19981,
+      "end": 20081,
+      "ions": [
+        0,
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 254,
+      "type": "gate",
+      "start": 20081,
+      "end": 20088,
+      "ions": [
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 255,
+      "type": "gate",
+      "start": 20088,
+      "end": 20188,
+      "ions": [
+        0,
+        5
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 256,
+      "type": "gate",
+      "start": 20188,
+      "end": 20195,
+      "ions": [
+        1
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "h",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 257,
+      "type": "gate",
+      "start": 20195,
+      "end": 20202,
+      "ions": [
+        0
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "t",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 258,
+      "type": "gate",
+      "start": 20202,
+      "end": 20209,
+      "ions": [
+        5
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "tdg",
+        "arity": 1,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 259,
+      "type": "gate",
+      "start": 20209,
+      "end": 20309,
+      "ions": [
+        0,
+        5
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 260,
+      "type": "gate",
+      "start": 20309,
+      "end": 20409,
+      "ions": [
+        1,
+        0
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    },
+    {
+      "id": 261,
+      "type": "gate",
+      "start": 20409,
+      "end": 20509,
+      "ions": [
+        0,
+        5
+      ],
+      "source": "trap:1",
+      "target": "trap:1",
+      "metadata": {
+        "gate_name": "cx",
+        "arity": 2,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0
+      }
+    }
+  ],
+  "metrics": {
+    "event_count": 262,
+    "finish_time": 20509,
+    "counts": {
+      "gate": 142,
+      "split": 40,
+      "move": 40,
+      "merge": 40
+    },
+    "times": {
+      "gate": 7039,
+      "split": 11300,
+      "move": 400,
+      "merge": 3200
+    },
+    "one_qubit_gates": 77,
+    "two_qubit_gates": 65,
+    "shuttling_time": 14900
+  },
+  "validation": {
+    "valid": true,
+    "errors": [],
+    "final_locations": {
+      "0": "trap:1",
+      "1": "trap:1",
+      "2": "trap:0",
+      "3": "trap:2",
+      "4": "trap:3",
+      "5": "trap:1",
+      "6": "trap:0",
+      "7": "trap:2",
+      "8": "trap:3",
+      "9": "trap:3"
+    },
+    "event_count_match": true
+  }
+}

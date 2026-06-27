@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ion Schedule Visualizer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="header-bar">
+        <h1>Ion Schedule Visualizer</h1>
+        <div id="validationPanel" class="status-pill">Loading</div>
+      </header>
+      <aside class="left-control-panel">
+        <label for="traceSelect">Trace</label>
+        <select id="traceSelect"></select>
+        <label for="speedSelect">Speed</label>
+        <select id="speedSelect">
+          <option value="0.25">0.25x</option>
+          <option value="0.5">0.5x</option>
+          <option value="1" selected>1x</option>
+          <option value="2">2x</option>
+          <option value="5">5x</option>
+          <option value="10">10x</option>
+        </select>
+        <button id="playPauseButton" type="button">Play</button>
+        <button id="restartButton" type="button">Restart</button>
+        <button id="stepButton" type="button">Step</button>
+      </aside>
+      <main class="visualization-viewport">
+        <canvas id="vizCanvas" width="1280" height="720"></canvas>
+        <div class="floating-overlay-layer" id="performancePanel">FPS: --</div>
+      </main>
+      <aside class="right-inspector-panel">
+        <section>
+          <h2>Metrics</h2>
+          <div id="metricsPanel"></div>
+        </section>
+        <section>
+          <h2>Current Event</h2>
+          <pre id="eventPanel"></pre>
+        </section>
+      </aside>
+      <footer class="bottom-timeline">
+        <input id="timeline" type="range" min="0" max="1" value="0" step="1" />
+        <span id="timeReadout">0 / 0</span>
+      </footer>
+    </div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
