@@ -1,5 +1,7 @@
 from machine import Machine, Trap, Segment, MachineParams
 
+__test__ = False
+
 #ISCA Test machines Begin
 def test_trap_2x3(capacity, mparams):
     m = Machine(mparams)

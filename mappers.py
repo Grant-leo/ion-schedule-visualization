@@ -15,11 +15,62 @@ TODO mrm suggested comparing to lpfs. Need to check if its feasible to implement
 
 import sys
 import networkx as nx
-#import metis as mt
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering as AggClus
 import copy
 from route import BasicRoute
+
+try:
+    import metis as mt
+except ImportError:
+    mt = None
+
+
+def _program_qubit_count(parse_obj):
+    return getattr(parse_obj, 'qbit_count', 0) or len(list(parse_obj.cx_graph.nodes))
+
+
+def _trap_sizes(machine_obj, excess_capacity=0):
+    return [max(0, trap.capacity - excess_capacity) for trap in machine_obj.traps]
+
+
+def _ensure_capacity(num_qubits, trap_sizes):
+    if sum(trap_sizes) < num_qubits:
+        raise ValueError("Machine capacity is smaller than the number of program qubits")
+
+
+def _sequential_qubit_mapping(num_qubits, trap_sizes):
+    _ensure_capacity(num_qubits, trap_sizes)
+    partition = []
+    for trap_id, size in enumerate(trap_sizes):
+        partition.extend([trap_id] * size)
+    return {qubit: partition[qubit] for qubit in range(num_qubits)}
+
+
+def _fill_unmapped_qubit_mapping(mapping, num_qubits, trap_sizes):
+    _ensure_capacity(num_qubits, trap_sizes)
+    used = {trap_id: 0 for trap_id in range(len(trap_sizes))}
+    for trap_id in mapping.values():
+        used[trap_id] += 1
+    for qubit in range(num_qubits):
+        if qubit in mapping:
+            continue
+        for trap_id, size in enumerate(trap_sizes):
+            if used[trap_id] < size:
+                mapping[qubit] = trap_id
+                used[trap_id] += 1
+                break
+        else:
+            raise ValueError("Machine capacity is smaller than the number of program qubits")
+    return mapping
+
+
+def _make_agglomerative(n_clusters):
+    try:
+        return AggClus(n_clusters=n_clusters, metric='precomputed', linkage='average')
+    except TypeError:
+        return AggClus(n_clusters=n_clusters, affinity='precomputed', linkage='average')
+
 
 class QubitMapGreedy:
     def __init__(self, parse_obj, machine_obj):
@@ -49,6 +100,8 @@ class QubitMapGreedy:
         # if it does, then it is a 2 qubit gate
         # if not, then continue
         for g in self.parse_obj.gate_graph:
+            if g not in self.parse_obj.cx_gate_map:
+                continue
             g_qubits = self.parse_obj.cx_gate_map[g]
             tup = self.gate_tuple(g_qubits)
             if tup in edge_weights:
@@ -71,6 +124,20 @@ class QubitMapGreedy:
             if qubit in item:
                 return i
         assert 0
+
+    def _first_available_trap(self):
+        for trap_id, capacity in enumerate(self.remaining_capacity):
+            if capacity > 0:
+                return trap_id
+        raise ValueError("Machine capacity is smaller than the number of program qubits")
+
+    def _map_remaining_qubits(self):
+        for qubit in range(_program_qubit_count(self.parse_obj)):
+            if self._is_mapped(qubit):
+                continue
+            trap_id = self._first_available_trap()
+            self.mapping[trap_id].append(qubit)
+            self.remaining_capacity[trap_id] -= 1
 
     def _select_next_edge(self):
         """Select the next edge.
@@ -125,6 +192,7 @@ class QubitMapGreedy:
                 self.remaining_capacity[q2_trap] -= 1
             tmplist = [x for x in self.pending_program_edges if not (self._is_mapped(x[0]) and self._is_mapped(x[1]))]
             self.pending_program_edges = tmplist
+        self._map_remaining_qubits()
         output_partition = {}
         for i in range(len(self.mapping)):
             output_partition[i] = self.mapping[i]
@@ -147,6 +215,9 @@ class QubitMapLPFS:
             qubit_set = []
             used_gates = []
             for g in path:
+                if g not in self.parse_obj.cx_gate_map:
+                    used_gates.append(g)
+                    continue
                 if len(qubit_set) >= cap-1:
                     break
                 g_qubits = self.parse_obj.cx_gate_map[g]
@@ -162,16 +233,12 @@ class QubitMapLPFS:
             mapping.append(qubit_set)
             for g in used_gates:
                 gate_graph.remove_node(g)
-        num_qubits = len(list(self.parse_obj.cx_graph.nodes))
         output_partition = {}
         for i, qubit_set in enumerate(mapping):
             for q in qubit_set:
                 output_partition[q] = i
-        num_qubits = len(list(self.parse_obj.cx_graph.nodes))
-        for i in range(num_qubits):
-            if not i in output_partition:
-                output_partition[i] = k-1
-        return(output_partition)
+        num_qubits = _program_qubit_count(self.parse_obj)
+        return _fill_unmapped_qubit_mapping(output_partition, num_qubits, _trap_sizes(self.machine_obj, self.excess_capacity))
 
 class QubitMapRandom:
     def __init__(self, parse_obj, machine_obj, excess_capacity=0):
@@ -180,11 +247,10 @@ class QubitMapRandom:
         self.excess_capacity = excess_capacity
 
     def compute_mapping(self):
-        num_qubits = len(list(self.parse_obj.cx_graph.nodes))
+        num_qubits = _program_qubit_count(self.parse_obj)
         partition = []
-        trap_sizes = []
-        for t in self.machine_obj.traps:
-            trap_sizes.append(t.capacity-self.excess_capacity)
+        trap_sizes = _trap_sizes(self.machine_obj, self.excess_capacity)
+        _ensure_capacity(num_qubits, trap_sizes)
         for i in range(len(trap_sizes)):
             partition.extend([i]*trap_sizes[i])
         partition = partition[:num_qubits]
@@ -201,18 +267,8 @@ class QubitMapPO:
         self.excess_capacity = excess_capacity
 
     def compute_mapping(self):
-        num_qubits = len(list(self.parse_obj.cx_graph.nodes))
-        partition = []
-        trap_sizes = []
-        for t in self.machine_obj.traps:
-            trap_sizes.append(t.capacity-self.excess_capacity)
-        for i in range(len(trap_sizes)):
-            partition.extend([i]*trap_sizes[i])
-        partition = partition[:num_qubits]
-        output_partition = {}
-        for i in range(len(partition)):
-            output_partition[i] = partition[i]
-        return output_partition
+        num_qubits = _program_qubit_count(self.parse_obj)
+        return _sequential_qubit_mapping(num_qubits, _trap_sizes(self.machine_obj, self.excess_capacity))
 
 class QubitMapMetis:
     def __init__(self, parse_obj, machine_obj):
@@ -220,6 +276,8 @@ class QubitMapMetis:
         self.machine_obj = machine_obj
 
     def partition_graph(self, parts, cx_graph):
+        if mt is None:
+            raise ImportError("Metis mapper requires pymetis or metis to be installed")
         tpwgts = []
         ubvec = [1.1]
         for i in range(parts):
@@ -248,8 +306,7 @@ class QubitMapAgg():
         self.parse_obj = parse_obj
         self.machine_obj = machine_obj
         self.num_traps = len(self.machine_obj.traps)
-        self.num_nodes = len(self.parse_obj.cx_graph.nodes)
-        print(self.num_nodes)
+        self.num_nodes = _program_qubit_count(self.parse_obj)
         self.trap_capacity = self.machine_obj.traps[0].capacity
         self.occupied_traps = 0
         self.qubit_mapping = {}
@@ -272,14 +329,18 @@ class QubitMapAgg():
             return 0
 
         curr_clusters.sort(key=len, reverse=True)
+        candidate_mapping = {}
+        candidate_space = {}
+        for i in range(self.num_traps):
+            candidate_space[i] = self.trap_capacity
         top_k = min(3, self.num_traps)
         top_k = min(top_k, nclusters)
         for i in range(top_k):
             clus = curr_clusters[i]
             #print("Map", clus, "trap", i)
             for pq in clus:
-                self.qubit_mapping[pq] = i
-            self.trap_empty_space[i] -= len(clus)
+                candidate_mapping[pq] = i
+            candidate_space[i] -= len(clus)
 
         #print("unmapped")
         #print("caps:", self.trap_empty_space)
@@ -287,43 +348,63 @@ class QubitMapAgg():
             #if clus fits fully in some trap, assign it there
             is_assigned = False
             for i in range(self.num_traps):
-                if self.trap_empty_space[i] >= len(clus):
+                if candidate_space[i] >= len(clus):
                     #print("Map", clus, "trap", i)
                     for pq in clus:
-                        self.qubit_mapping[pq] = i
-                    self.trap_empty_space[i] -= len(clus)
+                        candidate_mapping[pq] = i
+                    candidate_space[i] -= len(clus)
                     is_assigned = True
                     break
             if not is_assigned:
+                remaining = list(clus)
                 for i in range(self.num_traps):
-                    available_capacity = self.trap_empty_space[i]
+                    available_capacity = candidate_space[i]
+                    if available_capacity == 0:
+                        continue
                     #print("Map", clus, "trap", i)
-                    for pq in clus[:available_capacity]:
-                        self.qubit_mapping[pq] = i
-                    self.trap_empty_space[i] -= available_capacity
-                    new_clus = clus[available_capacity:]
+                    take = min(available_capacity, len(remaining))
+                    for pq in remaining[:take]:
+                        candidate_mapping[pq] = i
+                    candidate_space[i] -= take
+                    remaining = remaining[take:]
+                    if not remaining:
+                        break
+                if remaining:
+                    return 0
 
+        self.qubit_mapping = candidate_mapping
+        self.trap_empty_space = candidate_space
         return 1
 
     def compute_mapping(self):
         #compute affinity matrix of distances
         #distance function 1 - f/T
+        if self.num_nodes == 0:
+            return {}
+        trap_sizes = _trap_sizes(self.machine_obj)
+        _ensure_capacity(self.num_nodes, trap_sizes)
+        if self.parse_obj.cx_graph.number_of_edges() == 0:
+            return _sequential_qubit_mapping(self.num_nodes, trap_sizes)
         affinity_matrix = np.ones([self.num_nodes, self.num_nodes])
         T = 0
         for u, v, d in self.parse_obj.cx_graph.edges(data=True):
             T = max(T, d['weight'])
+        if T == 0:
+            return _sequential_qubit_mapping(self.num_nodes, trap_sizes)
         for u, v, d in self.parse_obj.cx_graph.edges(data=True):
             f = d['weight']
             factor = float(f)/T
             affinity_matrix[u][v] = 1.0 - (factor)
             affinity_matrix[v][u] = 1.0 - (factor)
-        for i in range(1, self.num_nodes):
-            agg = AggClus(n_clusters = i, affinity='precomputed', linkage='average')
+        for i in range(1, self.num_nodes + 1):
+            agg = _make_agglomerative(i)
             u = agg.fit_predict(affinity_matrix)
             #print("Clustering level", i)
             done = self.select_from_clusters(u, i)
             if done == 1:
                 break
+        if len(self.qubit_mapping) != self.num_nodes:
+            self.qubit_mapping = _sequential_qubit_mapping(self.num_nodes, trap_sizes)
         return self.qubit_mapping
 
 '''

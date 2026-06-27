@@ -36,14 +36,29 @@ graph object represents the machine topology
 
 class MachineParams:
     def __init__(self):
-        return
+        self.alpha = 0.003680029
+        self.beta = 39.996319971
+        self.split_merge_time = 80
+        self.shuttle_time = 5
+        self.junction2_cross_time = 5
+        self.junction3_cross_time = 100
+        self.junction4_cross_time = 120
+        self.gate_type = "FM"
+        self.swap_type = "GateSwap"
+        self.ion_swap_time = 42
+        self.single_qubit_gate_time = 1
+        self.single_qubit_gate_fidelity = 0.9999
 
 class Machine:
-    def __init__(self, mparams):
+    def __init__(self, mparams=None, **legacy_params):
         self.graph = nx.Graph()
         self.traps = []
         self.segments = []
         self.junctions = []
+        if mparams is None:
+            mparams = MachineParams()
+        for key, value in legacy_params.items():
+            setattr(mparams, key, value)
         self.mparams = mparams
 
     def add_trap(self, idx, capacity):
@@ -97,6 +112,9 @@ class Machine:
             assert 0
         t = max(t, 1)
         return int(t)
+
+    def single_qubit_gate_time(self, gate_name=None):
+        return int(getattr(self.mparams, 'single_qubit_gate_time', 1))
 
     def split_time(self, sys_state, trap_id, seg_id, ion1):
         t = self.traps[trap_id]

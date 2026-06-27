@@ -1,14 +1,15 @@
 import sys
+from pathlib import Path
 from parse import InputParse
 from mappers import *
 from machine import Machine, MachineParams, Trap, Segment
 from ejf_schedule import Schedule, EJFSchedule
 from analyzer import *
 from test_machines import *
+from dag_visualize import dag_image_name, render_dag
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.converters import circuit_to_dag
-from qiskit.visualization import dag_drawer
 
 np.random.seed(12345)
 
@@ -24,6 +25,8 @@ serial_comm = int(sys.argv[7])
 serial_all = int(sys.argv[8])
 gate_type = sys.argv[9]
 swap_type = sys.argv[10]
+single_qubit_gate_time = int(sys.argv[11]) if len(sys.argv) > 11 else 1
+single_qubit_gate_fidelity = float(sys.argv[12]) if len(sys.argv) > 12 else 0.9999
 
 ##########################################################
 mpar_model1 = MachineParams()
@@ -37,6 +40,8 @@ mpar_model1.junction4_cross_time = 120
 mpar_model1.gate_type = gate_type
 mpar_model1.swap_type = swap_type
 mpar_model1.ion_swap_time = 42
+mpar_model1.single_qubit_gate_time = single_qubit_gate_time
+mpar_model1.single_qubit_gate_fidelity = single_qubit_gate_fidelity
 machine_model = "MPar1"
 
 '''
@@ -64,6 +69,8 @@ print("SerialComm:", serial_comm)
 print("SerialAll:", serial_all)
 print("Gatetype:", gate_type)
 print("Swaptype:", swap_type)
+print("SingleQubitGateTime:", single_qubit_gate_time)
+print("SingleQubitGateFidelity:", single_qubit_gate_fidelity)
 
 #Create a test machine
 if machine_type == "G2x3":
@@ -82,7 +89,17 @@ ip.visualize_graph("visualize_graph_2.gexf") # dumps parser graph into file
 
 qc = QuantumCircuit.from_qasm_file(openqasm_file_name)
 dag = circuit_to_dag(qc)
-dag_drawer(dag)
+dag_image = dag_image_name(
+    openqasm_file_name,
+    machine_type,
+    num_ions_per_region,
+    mapper_choice,
+    reorder_choice,
+    gate_type,
+    swap_type,
+)
+render_dag(dag, dag_image, title="DAG: " + Path(openqasm_file_name).name)
+print("DAG visualization:", dag_image)
 
 print("parse object map:")
 print(ip.cx_gate_map)
@@ -122,7 +139,17 @@ print(init_qubit_layout)
 #Schedule gates in the prorgam in topological sorted order
 #EJF = earliest job first, here it refers to earliest gate first
 #This step performs the shuttling
-ejfs = EJFSchedule(ip.gate_graph, ip.cx_gate_map, m, init_qubit_layout, serial_trap_ops, serial_comm, serial_all)
+ejfs = EJFSchedule(
+    ip.gate_graph,
+    ip.cx_gate_map,
+    m,
+    init_qubit_layout,
+    serial_trap_ops,
+    serial_comm,
+    serial_all,
+    gate_qubit_map=ip.gate_qubit_map,
+    gate_name_map=ip.gate_name_map,
+)
 ejfs.run()
 
 #Analyze the output schedule and print statistics

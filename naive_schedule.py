@@ -2,6 +2,7 @@
 
 import networkx as nx
 import numpy as np
+from machine import Junction, Trap
 
 routing_graph = nx.Graph()
 
@@ -9,49 +10,58 @@ def trap_name(i):
     return "T"+str(i)
 def seg_name(i):
     return "S"+str(i)
+def seg_id(i):
+    return int(i[1:])
+def trap_id(i):
+    return int(i[1:])
 
 def create_routing_graph(machine_obj):
+    routing_graph.clear()
     for t in machine_obj.traps:
         routing_graph.add_node(trap_name(t.id))
     for s in machine_obj.segments:
         routing_graph.add_node(seg_name(s.id))
-    for t in machine_obj.traps:
-        if t.end1_segment != None:
-            routing_graph.add_edge(trap_name(t.id), seg_name(t.end1_segment))
-        if t.end2_segment != None:
-            routing_graph.add_edge(trap_name(t.id), seg_name(t.end2_segment))
-    for s in machine_obj.segments:
-        for s2 in s.seg_edges:
-            routing_graph.add_edge(seg_name(s.id), seg_name(s2))
+    junction_segments = {}
+    for u, v, data in machine_obj.graph.edges(data=True):
+        segment = data['seg']
+        segment_node = seg_name(segment.id)
+        for endpoint in (u, v):
+            if isinstance(endpoint, Trap):
+                routing_graph.add_edge(trap_name(endpoint.id), segment_node)
+            elif isinstance(endpoint, Junction):
+                junction_segments.setdefault(endpoint.id, []).append(segment.id)
+    for segment_ids in junction_segments.values():
+        for i, first in enumerate(segment_ids):
+            for second in segment_ids[i + 1:]:
+                routing_graph.add_edge(seg_name(first), seg_name(second))
     print(routing_graph.edges)
 
 def update_routing_graph_weights(machine_obj, source_trap):
-     for t in machine_obj.traps:
-        if t.id == source_trap:
-            if t.end1_segment != None:
-                routing_graph[trap_name(t.id)][seg_name(t.end1_segment)]['weight'] = 0
-            elif t.end2_segment != None:
-                routing_graph[trap_name(t.id)][seg_name(t.end2_segment)]['weight'] = 0
+    segments_by_id = {segment.id: segment for segment in machine_obj.segments}
+    for u, v in routing_graph.edges:
+        if u.startswith("T"):
+            t_node = u
+            s_node = v
+        elif v.startswith("T"):
+            t_node = v
+            s_node = u
         else:
-            if t.end1_segment != None:
-                if len(t.ions) < t.capacity:
-                    my_weight = 0
-                else:
-                    my_weight = 100000
-                routing_graph[trap_name(t.id)][seg_name(t.end1_segment)]['weight'] = my_weight
-            if t.end2_segment != None:
-                if len(t.ions) < t.capacity:
-                    my_weight = 0
-                else:
-                    my_weight = 100000
-                routing_graph[trap_name(t.id)][seg_name(t.end2_segment)]['weight'] = my_weight
-     for s in machine_obj.segments:
-        for s2 in s.seg_edges:
-            if len(s.ions) != 0:
+            seg1 = segments_by_id[seg_id(u)]
+            seg2 = segments_by_id[seg_id(v)]
+            if len(seg1.ions) != 0 or len(seg2.ions) != 0:
                 my_weight = 100000
             else:
-                my_weight = (s.length + machine_obj.segments[s2].length)/2 #replace by length of this path?
-            routing_graph[seg_name(s.id)][seg_name(s2)]['weight'] = my_weight
+                my_weight = (seg1.length + seg2.length)/2 #replace by length of this path?
+            routing_graph[u][v]['weight'] = my_weight
+            continue
+        trap = machine_obj.traps[trap_id(t_node)]
+        if trap.id == source_trap:
+            my_weight = 0
+        elif len(trap.ions) < trap.capacity:
+            my_weight = 0
+        else:
+            my_weight = 100000
+        routing_graph[t_node][s_node]['weight'] = my_weight
 def print_partition_sizes(machine_obj):
     sizes = []
     for t in machine_obj.traps:

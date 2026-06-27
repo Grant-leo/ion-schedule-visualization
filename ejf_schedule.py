@@ -23,9 +23,11 @@ class EJFSchedule:
     #2. gate_info = what are the qubits used by a two-qubit gate?
     #3. M = machine object
     #4. init_map = initial qubit mapping
-    def __init__(self, ir, gate_info, M, init_map, serial_trap_ops, serial_comm, global_serial_lock):
+    def __init__(self, ir, gate_info, M, init_map, serial_trap_ops, serial_comm, global_serial_lock, gate_qubit_map=None, gate_name_map=None):
         self.ir = ir
         self.gate_info = gate_info
+        self.gate_qubit_map = gate_qubit_map if gate_qubit_map is not None else gate_info
+        self.gate_name_map = gate_name_map if gate_name_map is not None else {}
         self.machine = M
         self.init_map = init_map
 
@@ -68,6 +70,8 @@ class EJFSchedule:
         for in_edge in self.ir.in_edges(gate):
             #Each in edge is of the form (in_gate_id, this_gate_id)
             in_gate = in_edge[0]
+            if in_gate not in self.gate_qubit_map:
+                continue
             if in_gate in self.gate_finish_times:
                 ready_time = max(ready_time, self.gate_finish_times[in_gate])
             else:
@@ -169,7 +173,7 @@ class EJFSchedule:
         return move_end
 
     #Add a gate operation to the current schedule
-    def add_gate_op(self, clk, trap_id, gate, ion1, ion2):
+    def _gate_fire_time(self, clk, trap_id):
         fire_time = clk
         if self.SerialTrapOps == 1:
             last_event_time_on_trap = self.schedule.last_event_time_on_trap(trap_id)
@@ -178,8 +182,19 @@ class EJFSchedule:
         if self.GlobalSerialLock == 1:
             last_event_time_in_system = self.schedule.get_last_event_ts()
             fire_time = max(fire_time, last_event_time_in_system)
+        return fire_time
+
+    def add_single_qubit_gate_op(self, clk, trap_id, gate, ion):
+        fire_time = self._gate_fire_time(clk, trap_id)
+        gate_duration = self.machine.single_qubit_gate_time(self.gate_name_map.get(gate))
+        self.schedule.add_gate(fire_time, fire_time + gate_duration, [ion], trap_id, self.gate_name_map.get(gate), 1)
+        self.gate_finish_times[gate] = fire_time + gate_duration
+        return fire_time + gate_duration
+
+    def add_gate_op(self, clk, trap_id, gate, ion1, ion2):
+        fire_time = self._gate_fire_time(clk, trap_id)
         gate_duration = self.machine.gate_time(self.sys_state, trap_id, ion1, ion2)
-        self.schedule.add_gate(fire_time, fire_time + gate_duration, [ion1, ion2], trap_id)
+        self.schedule.add_gate(fire_time, fire_time + gate_duration, [ion1, ion2], trap_id, self.gate_name_map.get(gate), 2)
         self.gate_finish_times[gate] = fire_time + gate_duration
         return fire_time + gate_duration
 
@@ -208,12 +223,12 @@ class EJFSchedule:
         return source_trap, dest_trap
 
     #Fire an end-to-end shuttle operation from src_trap to dest_trap
-    def fire_shuttle(self, src_trap, dest_trap, ion, gate_fire_time, route=[]):
+    def fire_shuttle(self, src_trap, dest_trap, ion, gate_fire_time, route=None):
         s = self.schedule
         m = self.machine
         #If route is not specified in the function args, find a route using
         #the router object passed to the scheduler
-        if len(route):
+        if route is not None and len(route):
             rpath = route
         else:
             rpath = self.router.find_route(src_trap, dest_trap)
@@ -284,6 +299,13 @@ class EJFSchedule:
         return clk
 
     #Main scheduling function for a gate
+    def schedule_single_qubit_gate(self, gate, specified_time=0):
+        ready = self.gate_ready_time(gate)
+        ion = self.gate_qubit_map[gate][0]
+        ion_time, ion_trap = self.ion_ready_info(ion)
+        fire_time = max(ready, ion_time, specified_time)
+        self.add_single_qubit_gate_op(fire_time, ion_trap, gate, ion)
+
     def schedule_gate(self, gate, specified_time=0):
         s = self.schedule
         #Find time at which the gate can be fired
@@ -396,7 +418,14 @@ class EJFSchedule:
         cnt = 0
         #self.sys_state.print_state()
         for g in self.gates:
-            self.schedule_gate(g)
+            if g not in self.gate_qubit_map:
+                continue
+            if len(self.gate_qubit_map[g]) == 1:
+                self.schedule_single_qubit_gate(g)
+            elif len(self.gate_qubit_map[g]) == 2:
+                self.schedule_gate(g)
+            else:
+                assert 0
             cnt += 1
         #self.schedule.print_events()
         #self.sys_state.print_state()

@@ -27,10 +27,12 @@ class Schedule:
         self.events = SortedCollection(key=itemgetter(3)) #sorted by finish time
         self.machine = machine
 
-    def add_gate(self, start_time, end_time, ions, trap_id):
+    def add_gate(self, start_time, end_time, ions, trap_id, gate_name=None, arity=None):
         gate_dict = {}
         gate_dict['ions'] = ions
         gate_dict['trap'] = trap_id
+        gate_dict['gate_name'] = gate_name
+        gate_dict['arity'] = arity if arity is not None else len(ions)
         self.events.insert((self.event_id, Schedule.Gate, start_time, end_time, gate_dict))
         self.event_id += 1
 
@@ -76,7 +78,7 @@ class Schedule:
         for item in list(self.events):
             txt = ""
             if item[1] == Schedule.Gate:
-                print("GAT" , item[4]['ions'], trap_name(item[4]['trap']), (item[2], item[3]))
+                print("GAT" , item[4].get('gate_name'), item[4]['ions'], trap_name(item[4]['trap']), (item[2], item[3]))
             elif item[1] == Schedule.Split:
                 print("SPL" , item[4]['ions'], trap_name(item[4]['trap']) + "->" + seg_name(item[4]['seg']),  (item[2], item[3]))
             elif item[1] == Schedule.Move:
@@ -212,7 +214,7 @@ class Schedule:
         for item in list(self.events):
             if item[1] == Schedule.Gate:
                 trap = item[4]['trap']
-                txt = "G(" + str(item[4]['ions'][0]) + ',' + str(item[4]['ions'][1]) + ',' + str(trap) +  ')'
+                txt = "G(" + ','.join(str(ion) for ion in item[4]['ions']) + ',' + str(trap) +  ')'
                 for i in range(item[2], item[3]):
                     out[i][trap] = '{:<10}'.format(txt)
             elif item[1] == Schedule.Split:

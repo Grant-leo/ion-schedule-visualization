@@ -91,29 +91,32 @@ class RouteAlgorithm:
             routing_graph.add_node(trap_name(t.id))
         for s in machine_obj.segments:
             routing_graph.add_node(seg_name(s.id))
-        for t in machine_obj.traps:
-            if t.end1_segment != None:
-                routing_graph.add_edge(trap_name(t.id), seg_name(t.end1_segment))
-            if t.end2_segment != None:
-                routing_graph.add_edge(trap_name(t.id), seg_name(t.end2_segment))
-        for s in machine_obj.segments:
-            for s2 in s.seg_edges:
-                routing_graph.add_edge(seg_name(s.id), seg_name(s2))
+        junction_segments = {}
+        for u, v, data in machine_obj.graph.edges(data=True):
+            segment = data['seg']
+            segment_node = seg_name(segment.id)
+            for endpoint in (u, v):
+                if isinstance(endpoint, Trap):
+                    routing_graph.add_edge(trap_name(endpoint.id), segment_node)
+                elif isinstance(endpoint, Junction):
+                    junction_segments.setdefault(endpoint.id, []).append(segment.id)
+        for segment_ids in junction_segments.values():
+            for i, first in enumerate(segment_ids):
+                for second in segment_ids[i + 1:]:
+                    routing_graph.add_edge(seg_name(first), seg_name(second))
 
     def add_routing_graph_weights(self):
         machine_obj = self.machine
         routing_graph = self.routing_graph
-        for t in machine_obj.traps:
-            if t.end1_segment != None:
-                my_weight = (machine_obj.segments[t.end1_segment].length)/2
-                routing_graph[trap_name(t.id)][seg_name(t.end1_segment)]['weight'] = my_weight
-            if t.end2_segment != None:
-                my_weight = (machine_obj.segments[t.end2_segment].length)/2
-                routing_graph[trap_name(t.id)][seg_name(t.end2_segment)]['weight'] = my_weight
-        for s in machine_obj.segments:
-            for s2 in s.seg_edges:
-                my_weight = (s.length + machine_obj.segments[s2].length)/2
-                routing_graph[seg_name(s.id)][seg_name(s2)]['weight'] = my_weight
+        segments_by_id = {segment.id: segment for segment in machine_obj.segments}
+        for u, v in routing_graph.edges:
+            if u.startswith("T") and v.startswith("S"):
+                my_weight = segments_by_id[seg_id(v)].length / 2
+            elif u.startswith("S") and v.startswith("T"):
+                my_weight = segments_by_id[seg_id(u)].length / 2
+            else:
+                my_weight = (segments_by_id[seg_id(u)].length + segments_by_id[seg_id(v)].length) / 2
+            routing_graph[u][v]['weight'] = my_weight
 
     def setup_routing(self):
         #if self.machine_state.check_ion_in_a_trap(self.ion1) == 0 or self.machine_state.check_ion_in_a_trap(self.ion2) == 0:

@@ -1,11 +1,5 @@
-import sys
 import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
-import sys
-import pandas as pd
-import matplotlib.lines as Line2D
-from pylab import rcParams
 
 def geo_mean(iterable):
     a = np.array(iterable)
@@ -220,7 +214,7 @@ if 0:
     plt_gate_impln(fname, "bv_gate_varL6PO_time.pdf", "bv64.qasm", "time")
     plt_gate_impln(fname, "adder_gate_varL6PO_time.pdf", "adder.qasm", "time")
 
-if 1:
+if __name__ == "__main__":
     fname = "R8_honeywell_expts.log"
     plt_gate_impln(fname, "bv_gate_varL6PO_fid.pdf", "bv64.qasm", "fidelity")
     plt_gate_impln(fname, "adder_gate_varL6PO_fid.pdf", "adder.qasm", "fidelity")

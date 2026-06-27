@@ -45,6 +45,12 @@ class Analyzer:
         fidelity_upper_bound = math.log(fidelity)
         return fidelity_upper_bound
 
+    def single_qubit_gate_fidelity(self, gate_time_est):
+        fidelity = getattr(self.machine.mparams, 'single_qubit_gate_fidelity', 0.9999)
+        fidelity = max(0.0001, fidelity - float(gate_time_est/10**6))
+        self.gate_fidelities.append(1-fidelity)
+        return math.log(fidelity)
+
     #(id, event_type, start_time, end_time, event_info_dict)
     def move_check(self):
         op_count = {}
@@ -57,6 +63,10 @@ class Analyzer:
         op_times[Schedule.Split] = 0
         op_times[Schedule.Move] = 0
         op_times[Schedule.Merge] = 0
+        one_qubit_gate_count = 0
+        two_qubit_gate_count = 0
+        one_qubit_gate_time = 0
+        two_qubit_gate_time = 0
 
         sys_state = MachineState(0, self.init_map, {})
         q = PriorityQueue()
@@ -75,12 +85,23 @@ class Analyzer:
             if event[1] == Schedule.Gate:
                 ions = event[4]['ions']
                 trap = event[4]['trap']
+                arity = event[4].get('arity', len(ions))
                 op_count[Schedule.Gate] += 1
                 op_times[Schedule.Gate] += event[3]-event[2]
-                assert sys_state.find_trap_id_by_ion(ions[0]) == trap
-                assert sys_state.find_trap_id_by_ion(ions[1]) == trap
-                log_g_fidelity = self.gate_fidelity(sys_state, trap, ions[0], ions[1])
-                log_fidelity = log_fidelity + log_g_fidelity
+                if arity == 1:
+                    one_qubit_gate_count += 1
+                    one_qubit_gate_time += event[3]-event[2]
+                    assert sys_state.find_trap_id_by_ion(ions[0]) == trap
+                    log_fidelity += self.single_qubit_gate_fidelity(event[3]-event[2])
+                elif arity == 2:
+                    two_qubit_gate_count += 1
+                    two_qubit_gate_time += event[3]-event[2]
+                    assert sys_state.find_trap_id_by_ion(ions[0]) == trap
+                    assert sys_state.find_trap_id_by_ion(ions[1]) == trap
+                    log_g_fidelity = self.gate_fidelity(sys_state, trap, ions[0], ions[1])
+                    log_fidelity = log_fidelity + log_g_fidelity
+                else:
+                    assert 0
             elif event[1] == Schedule.Split:
                 ions = event[4]['ions']
                 trap = event[4]['trap']
@@ -147,8 +168,8 @@ class Analyzer:
 
             else:
                 assert 0
-        print("OPCOUNTS Gate:", op_count[Schedule.Gate], "Split:", op_count[Schedule.Split], "Move:", op_count[Schedule.Move], "Merge:", op_count[Schedule.Merge])
-        print("Gate:", op_times[Schedule.Gate], "Split:", op_times[Schedule.Split], "Move:", op_times[Schedule.Move], "Merge:", op_times[Schedule.Merge])
+        print("OPCOUNTS Gate:", op_count[Schedule.Gate], "1QGate:", one_qubit_gate_count, "2QGate:", two_qubit_gate_count, "Split:", op_count[Schedule.Split], "Move:", op_count[Schedule.Move], "Merge:", op_count[Schedule.Merge])
+        print("Gate:", op_times[Schedule.Gate], "1QGate:", one_qubit_gate_time, "2QGate:", two_qubit_gate_time, "Split:", op_times[Schedule.Split], "Move:", op_times[Schedule.Move], "Merge:", op_times[Schedule.Merge])
         print("Fidelity:", math.exp(log_fidelity))
         heating_sum = sum(self.chain_heating)
         print("Heating:", int(heating_sum))
