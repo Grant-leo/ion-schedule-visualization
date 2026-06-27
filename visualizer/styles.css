@@ -39,7 +39,7 @@ input {
   height: 100vh;
   min-height: 0;
   display: grid;
-  grid-template-columns: 240px minmax(480px, 1fr) 280px;
+  grid-template-columns: 260px minmax(520px, 1fr) 360px;
   grid-template-rows: 56px 1fr 56px;
   grid-template-areas:
     "header header header"
@@ -148,6 +148,11 @@ input {
   color: #f07178;
 }
 
+.status-pill.is-loading {
+  border-color: rgba(97, 175, 239, 0.55);
+  color: var(--color-move);
+}
+
 section h2 {
   font-size: 14px;
   margin: 0 0 var(--space-3);
@@ -215,8 +220,7 @@ dd {
   gap: 4px;
 }
 
-.layout-ion,
-.dag-node {
+.layout-ion {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-1);
   background: #202630;
@@ -229,42 +233,67 @@ dd {
   text-align: center;
 }
 
-.dag-graph {
-  display: grid;
-  gap: 8px;
-  max-height: 260px;
+#dagPanel {
+  max-height: 240px;
   overflow: auto;
 }
 
-.dag-layer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.dag-svg {
+  display: block;
+  min-width: 420px;
+  width: auto;
+  height: 240px;
 }
 
-.dag-node {
-  min-width: 54px;
-  padding: 5px 6px;
-  font-size: 11px;
-  line-height: 1.2;
+.dag-edge {
+  fill: none;
+  stroke: rgba(168, 177, 189, 0.58);
+  stroke-width: 1.6;
 }
 
-.dag-node.completed {
-  color: #7d8792;
-  opacity: 0.55;
+.dag-arrow {
+  fill: rgba(168, 177, 189, 0.72);
 }
 
-.dag-node.active {
-  border-color: var(--color-gate);
-  box-shadow: 0 0 0 1px rgba(152, 195, 121, 0.45);
+.dag-svg-node rect {
+  fill: #202630;
+  stroke: var(--color-border);
+  stroke-width: 1.5;
 }
 
-.dag-node.ready {
-  border-color: var(--color-move);
+.dag-svg-node text {
+  fill: var(--color-text);
+  font-size: 10px;
+  letter-spacing: 0;
 }
 
-.dag-node.blocked {
-  color: var(--color-muted);
+.dag-svg-node .dag-qubits {
+  fill: var(--color-muted);
+  font-size: 9px;
+}
+
+.dag-svg-node.completed {
+  opacity: 0.48;
+}
+
+.dag-svg-node.completed rect {
+  fill: #1b2027;
+  stroke: #555f6b;
+}
+
+.dag-svg-node.active rect {
+  fill: rgba(152, 195, 121, 0.16);
+  stroke: var(--color-gate);
+  stroke-width: 2;
+}
+
+.dag-svg-node.ready rect {
+  fill: rgba(97, 175, 239, 0.14);
+  stroke: var(--color-move);
+}
+
+.dag-svg-node.blocked text {
+  fill: var(--color-muted);
 }
 
 @media (max-width: 900px) {

@@ -66,6 +66,64 @@ export function trapSlotPoint(trapPoint, slotIndex, capacity) {
   return { x: left + step * slotIndex, y: trapPoint.y };
 }
 
+export function trapConnectionPoint(trap, trapPoint, segmentLocation) {
+  return trapSlotPoint(trapPoint, endpointSlotIndex(trap, segmentLocation), trap.capacity);
+}
+
+export function pointAlongPolyline(points, progress) {
+  if (!points || points.length === 0) return null;
+  if (points.length === 1) return points[0];
+
+  const lengths = [];
+  let total = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const length = distance(points[index - 1], points[index]);
+    lengths.push(length);
+    total += length;
+  }
+  if (total === 0) return points[points.length - 1];
+
+  let target = total * clamp(progress, 0, 1);
+  for (let index = 0; index < lengths.length; index += 1) {
+    const length = lengths[index];
+    if (target <= length) {
+      const localProgress = length === 0 ? 1 : target / length;
+      return interpolatePoint(points[index], points[index + 1], localProgress);
+    }
+    target -= length;
+  }
+  return points[points.length - 1];
+}
+
+export function motionPathPoints(layout, event) {
+  const start = eventEndpointPoint(layout, event, event.source) || resolveLocationPoint(layout, event.source);
+  const end = eventEndpointPoint(layout, event, event.target) || resolveLocationPoint(layout, event.target);
+  if (!start || !end) return [start || end].filter(Boolean);
+
+  if (event.source?.startsWith("segment:") && event.target?.startsWith("segment:")) {
+    const shared = sharedSegmentEndpoint(layout, event.source, event.target);
+    return compactPath([start, shared, end]);
+  }
+
+  if (event.source?.startsWith("trap:") && event.target?.startsWith("segment:")) {
+    const anchor = segmentEndpointNearLocation(layout, event.target, event.source) || nearestSegmentEndpoint(layout, event.target, start);
+    return compactPath([start, anchor, end]);
+  }
+
+  if (event.source?.startsWith("segment:") && event.target?.startsWith("trap:")) {
+    const anchor = segmentEndpointNearLocation(layout, event.source, event.target) || nearestSegmentEndpoint(layout, event.source, end);
+    return compactPath([start, anchor, end]);
+  }
+
+  return compactPath([start, end]);
+}
+
+export function ionRenderPoint(basePoint, location, activeMotion, offsetIndex) {
+  if (!basePoint) return null;
+  if (!activeMotion && location?.startsWith("trap:")) return basePoint;
+  return offsetPoint(basePoint, offsetIndex);
+}
+
 function resizeCanvas(canvas) {
   const rect = canvas.getBoundingClientRect();
   const scale = globalThis.devicePixelRatio || 1;
@@ -120,8 +178,8 @@ function computeLayout(canvas, trace) {
   }
 
   for (const segment of trace.topology.segments) {
-    const start = resolveNodePoint(traps, junctions, segment.from);
-    const end = resolveNodePoint(traps, junctions, segment.to);
+    const start = resolveSegmentNodePoint(traps, junctions, trace.topology.traps, segment.from, segment.id);
+    const end = resolveSegmentNodePoint(traps, junctions, trace.topology.traps, segment.to, segment.id);
     if (!start || !end) continue;
     const key = `segment:${segment.id}`;
     segments.set(key, interpolatePoint(start, end, 0.5));
@@ -138,6 +196,16 @@ function scaleValue(value, minInput, maxInput, minOutput, maxOutput) {
 
 function resolveNodePoint(traps, junctions, location) {
   return traps.get(location) || junctions.get(location) || null;
+}
+
+function resolveSegmentNodePoint(traps, junctions, traceTraps, location, segmentId) {
+  if (location?.startsWith("trap:")) {
+    const trap = traceTraps.find((item) => `trap:${item.id}` === location);
+    const trapPoint = traps.get(location);
+    if (!trap || !trapPoint) return trapPoint || null;
+    return trapConnectionPoint(trap, trapPoint, `segment:${segmentId}`);
+  }
+  return resolveNodePoint(traps, junctions, location);
 }
 
 function resolveLocationPoint(layout, location) {
@@ -215,10 +283,10 @@ function drawJunctions(context, trace, layout) {
 function drawActiveEvents(context, layout, state) {
   for (const event of state.activeEvents) {
     if (MOTION_TYPES.has(event.type)) {
-      const start = eventEndpointPoint(layout, event, event.source) || resolveLocationPoint(layout, event.source);
-      const end = eventEndpointPoint(layout, event, event.target) || resolveLocationPoint(layout, event.target);
-      if (!start || !end) continue;
-      const point = interpolatePoint(start, end, eventProgress(event, state.time));
+      const path = motionPathPoints(layout, event);
+      const point = pointAlongPolyline(path, eventProgress(event, state.time));
+      if (!point) continue;
+      drawMotionPath(context, path);
       context.strokeStyle = cssColor("--color-move");
       context.lineWidth = 2;
       context.beginPath();
@@ -250,7 +318,7 @@ function drawIons(context, trace, layout, state) {
     const offsetKey = activeMotion ? `active:${activeMotion.id}` : location;
     const offsetIndex = offsets.get(offsetKey) || 0;
     offsets.set(offsetKey, offsetIndex + 1);
-    const point = offsetPoint(basePoint, offsetIndex);
+    const point = ionRenderPoint(basePoint, location, activeMotion, offsetIndex);
 
     context.fillStyle = ionColor(particle.id);
     context.strokeStyle = "rgba(16, 18, 22, 0.95)";
@@ -267,10 +335,8 @@ function drawIons(context, trace, layout, state) {
 }
 
 function motionPoint(layout, event, time) {
-  const start = eventEndpointPoint(layout, event, event.source) || resolveLocationPoint(layout, event.source);
-  const end = eventEndpointPoint(layout, event, event.target) || resolveLocationPoint(layout, event.target);
-  if (!start || !end) return start || end;
-  return interpolatePoint(start, end, eventProgress(event, time));
+  const path = motionPathPoints(layout, event);
+  return pointAlongPolyline(path, eventProgress(event, time));
 }
 
 function particlePoint(layout, trace, state, particle, location) {
@@ -316,6 +382,63 @@ function drawGateLaser(context, layout, state, event) {
 function trapForLocation(trace, location) {
   const id = Number(location.split(":")[1]);
   return trace.topology.traps.find((trap) => trap.id === id);
+}
+
+function drawMotionPath(context, path) {
+  if (!path || path.length < 2) return;
+  context.strokeStyle = "rgba(97, 175, 239, 0.42)";
+  context.lineWidth = 2;
+  context.setLineDash([8, 8]);
+  context.beginPath();
+  context.moveTo(path[0].x, path[0].y);
+  for (const point of path.slice(1)) {
+    context.lineTo(point.x, point.y);
+  }
+  context.stroke();
+  context.setLineDash([]);
+}
+
+function sharedSegmentEndpoint(layout, sourceSegment, targetSegment) {
+  const source = layout.segmentEndpoints?.get(sourceSegment);
+  const target = layout.segmentEndpoints?.get(targetSegment);
+  if (!source || !target) return null;
+  for (const sourcePoint of [source.start, source.end]) {
+    for (const targetPoint of [target.start, target.end]) {
+      if (samePoint(sourcePoint, targetPoint)) return sourcePoint;
+    }
+  }
+  return null;
+}
+
+function segmentEndpointNearLocation(layout, segmentLocation, nodeLocation) {
+  const node = resolveLocationPoint(layout, nodeLocation);
+  if (!node) return null;
+  return nearestSegmentEndpoint(layout, segmentLocation, node);
+}
+
+function nearestSegmentEndpoint(layout, segmentLocation, point) {
+  const endpoints = layout.segmentEndpoints?.get(segmentLocation);
+  if (!endpoints || !point) return null;
+  return distance(endpoints.start, point) <= distance(endpoints.end, point) ? endpoints.start : endpoints.end;
+}
+
+function compactPath(points) {
+  const compacted = [];
+  for (const point of points) {
+    if (!point) continue;
+    if (compacted.length === 0 || !samePoint(compacted[compacted.length - 1], point)) {
+      compacted.push(point);
+    }
+  }
+  return compacted;
+}
+
+function samePoint(left, right) {
+  return Boolean(left && right && Math.abs(left.x - right.x) < 0.001 && Math.abs(left.y - right.y) < 0.001);
+}
+
+function distance(left, right) {
+  return Math.hypot(left.x - right.x, left.y - right.y);
 }
 
 function offsetPoint(point, index) {

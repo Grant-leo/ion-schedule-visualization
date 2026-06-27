@@ -1,8 +1,10 @@
 import { createRenderer } from "./canvas_renderer.js";
+import { renderDagSvg } from "./dag_renderer.js";
 import { createReplay, validateTrace } from "./replay.js";
 
 const elements = {
   traceSelect: document.getElementById("traceSelect"),
+  programSelect: document.getElementById("programSelect"),
   architectureSelect: document.getElementById("architectureSelect"),
   capacitySelect: document.getElementById("capacitySelect"),
   mapperSelect: document.getElementById("mapperSelect"),
@@ -31,6 +33,13 @@ let playing = false;
 let lastFrame = performance.now();
 let frameTimes = [];
 let manifestEntries = [];
+let generatedTraces = new Map();
+let apiOptions = null;
+let apiAvailable = false;
+let renderedMetricsTrace = null;
+let lastInitialLayoutKey = "";
+let lastDagKey = "";
+let lastEventKey = "";
 
 init().catch((error) => {
   elements.validationPanel.textContent = "Load failed";
@@ -40,11 +49,16 @@ init().catch((error) => {
 
 async function init() {
   manifestEntries = await fetchJson("traces/manifest.json");
+  apiOptions = await fetchJson("api/options").catch(() => null);
+  apiAvailable = Boolean(apiOptions);
   populateTraceSelector(manifestEntries);
-  populateConfigControls(manifestEntries);
+  populateConfigControls(apiOptions || configOptionsFromManifest(manifestEntries));
   wireControls();
 
-  if (manifestEntries.length > 0) {
+  if (apiAvailable) {
+    applyDefaultConfig(apiOptions.defaults);
+    await loadSelectedConfig();
+  } else if (manifestEntries.length > 0) {
     await loadTrace(manifestEntries[0].path);
   } else {
     elements.validationPanel.textContent = "No traces";
@@ -63,28 +77,49 @@ function populateTraceSelector(manifest) {
   }
 }
 
-function populateConfigControls(manifest) {
-  fillSelect(elements.architectureSelect, uniqueValues(manifest, "machine"));
-  fillSelect(elements.capacitySelect, uniqueValues(manifest, "ions_per_region").map(String));
-  fillSelect(elements.mapperSelect, uniqueValues(manifest, "mapper"));
+function populateConfigControls(options) {
+  fillSelect(
+    elements.programSelect,
+    options.programs.map((program) => ({ value: program.id, label: program.label || program.id })),
+  );
+  fillSelect(elements.architectureSelect, options.machines);
+  fillSelect(elements.capacitySelect, options.capacities.map(String));
+  fillSelect(elements.mapperSelect, options.mappers);
 }
 
 function fillSelect(select, values) {
   select.replaceChildren();
   for (const value of values) {
     const option = document.createElement("option");
-    option.value = value;
-    option.textContent = value;
+    option.value = typeof value === "object" ? value.value : value;
+    option.textContent = typeof value === "object" ? value.label : value;
     select.appendChild(option);
   }
 }
 
-function uniqueValues(items, key) {
-  return [...new Set(items.map((item) => item[key]).filter((value) => value !== undefined))].sort();
+function configOptionsFromManifest(manifest) {
+  const programById = new Map();
+  for (const item of manifest) {
+    const id = programIdFromPath(item.program || item.path || item.id);
+    programById.set(id, { id, label: item.program ? programLabelFromId(id) : item.label || id });
+  }
+  return {
+    programs: [...programById.values()],
+    machines: uniqueValues(manifest, "machine"),
+    capacities: uniqueValues(manifest, "ions_per_region"),
+    mappers: uniqueValues(manifest, "mapper"),
+  };
 }
 
 function wireControls() {
-  elements.traceSelect.addEventListener("change", () => loadTrace(elements.traceSelect.value));
+  elements.traceSelect.addEventListener("change", () => {
+    const value = elements.traceSelect.value;
+    if (generatedTraces.has(value)) {
+      loadTraceData(generatedTraces.get(value));
+    } else {
+      loadTrace(value);
+    }
+  });
   elements.loadConfigButton.addEventListener("click", loadSelectedConfig);
   elements.playPauseButton.addEventListener("click", togglePlayback);
   elements.restartButton.addEventListener("click", restart);
@@ -96,7 +131,12 @@ function wireControls() {
 }
 
 async function loadTrace(path) {
-  trace = await fetchJson(path);
+  const nextTrace = await fetchJson(path);
+  loadTraceData(nextTrace);
+}
+
+function loadTraceData(nextTrace) {
+  trace = nextTrace;
   const frontendValidation = validateTrace(trace);
   const backendValidation = trace.validation || { valid: true, errors: [] };
   replay = createReplay(trace);
@@ -108,24 +148,45 @@ async function loadTrace(path) {
   elements.timeline.max = String(Math.max(1, replay.finishTime));
   elements.timeline.value = "0";
   syncConfigControls(trace);
+  resetInspectorRenderCache();
 
   const valid = frontendValidation.valid && backendValidation.valid;
-  elements.validationPanel.textContent = valid ? "Valid trace" : "Invalid trace";
-  elements.validationPanel.classList.toggle("is-valid", valid);
-  elements.validationPanel.classList.toggle("is-invalid", !valid);
+  setStatus(valid ? "Valid trace" : "Invalid trace", valid ? "valid" : "invalid");
   draw();
 }
 
 async function loadSelectedConfig() {
+  const program = elements.programSelect.value;
   const machine = elements.architectureSelect.value;
   const capacity = Number(elements.capacitySelect.value);
   const mapper = elements.mapperSelect.value;
+
+  if (apiAvailable) {
+    setStatus("Generating schedule", "loading");
+    try {
+      const params = new URLSearchParams({ program, machine, capacity: String(capacity), mapper });
+      const nextTrace = await fetchJson(`api/trace?${params.toString()}`);
+      const key = `generated:${program}:${machine}:${capacity}:${mapper}`;
+      generatedTraces.set(key, nextTrace);
+      upsertTraceOption(key, `${programLabelFromId(program)} | ${machine} | cap ${capacity} | ${mapper}`);
+      elements.traceSelect.value = key;
+      loadTraceData(nextTrace);
+    } catch (error) {
+      setStatus("Generation failed", "invalid");
+      elements.eventPanel.textContent = error.stack || String(error);
+    }
+    return;
+  }
+
   const match = manifestEntries.find(
-    (entry) => entry.machine === machine && entry.ions_per_region === capacity && entry.mapper === mapper,
+    (entry) =>
+      entry.machine === machine &&
+      entry.ions_per_region === capacity &&
+      entry.mapper === mapper &&
+      programIdFromPath(entry.program || entry.path || entry.id) === program,
   );
   if (!match) {
-    elements.validationPanel.textContent = "Config trace missing";
-    elements.validationPanel.classList.add("is-invalid");
+    setStatus("Config trace missing", "invalid");
     return;
   }
   elements.traceSelect.value = match.path;
@@ -134,6 +195,7 @@ async function loadSelectedConfig() {
 
 function syncConfigControls(nextTrace) {
   const run = nextTrace.run || {};
+  setSelectValue(elements.programSelect, programIdFromPath(run.program));
   setSelectValue(elements.architectureSelect, run.machine);
   setSelectValue(elements.capacitySelect, String(run.ions_per_region));
   setSelectValue(elements.mapperSelect, run.mapper);
@@ -145,6 +207,44 @@ function setSelectValue(select, value) {
   if ([...select.options].some((option) => option.value === stringValue)) {
     select.value = stringValue;
   }
+}
+
+function applyDefaultConfig(defaults = {}) {
+  setSelectValue(elements.programSelect, defaults.program);
+  setSelectValue(elements.architectureSelect, defaults.machine);
+  setSelectValue(elements.capacitySelect, String(defaults.capacity));
+  setSelectValue(elements.mapperSelect, defaults.mapper);
+}
+
+function upsertTraceOption(value, label) {
+  let option = [...elements.traceSelect.options].find((item) => item.value === value);
+  if (!option) {
+    option = document.createElement("option");
+    option.value = value;
+    elements.traceSelect.prepend(option);
+  }
+  option.textContent = label;
+}
+
+function uniqueValues(items, key) {
+  return [...new Set(items.map((item) => item[key]).filter((value) => value !== undefined))].sort();
+}
+
+function programIdFromPath(path = "") {
+  const normalized = String(path).replaceAll("\\", "/");
+  const file = normalized.split("/").pop() || normalized;
+  return file.replace(/\.[^.]+$/, "");
+}
+
+function programLabelFromId(id = "") {
+  return id.replaceAll("_", " ");
+}
+
+function setStatus(message, state) {
+  elements.validationPanel.textContent = message;
+  elements.validationPanel.classList.toggle("is-valid", state === "valid");
+  elements.validationPanel.classList.toggle("is-invalid", state === "invalid");
+  elements.validationPanel.classList.toggle("is-loading", state === "loading");
 }
 
 function togglePlayback() {
@@ -189,10 +289,28 @@ function draw() {
   renderer.draw(state);
   elements.timeline.value = String(Math.floor(state.time));
   elements.timeReadout.textContent = `${Math.floor(state.time)} / ${replay.finishTime}`;
-  renderMetrics(trace.metrics, state.metrics);
-  renderInitialLayout(state);
-  renderDag(state.dagState);
-  renderCurrentEvent(state);
+  if (renderedMetricsTrace !== trace) {
+    renderMetrics(trace.metrics, state.metrics);
+    renderedMetricsTrace = trace;
+  }
+
+  const initialLayoutKey = trapChainsKey(state.trapChains);
+  if (initialLayoutKey !== lastInitialLayoutKey) {
+    renderInitialLayout(state);
+    lastInitialLayoutKey = initialLayoutKey;
+  }
+
+  const dagKey = dagStateKey(state.dagState);
+  if (dagKey !== lastDagKey) {
+    renderDagSvg(elements.dagPanel, state.dagState);
+    lastDagKey = dagKey;
+  }
+
+  const eventKey = activeEventKey(state.activeEvents);
+  if (eventKey !== lastEventKey) {
+    renderCurrentEvent(state);
+    lastEventKey = eventKey;
+  }
 }
 
 function renderMetrics(metrics, replayMetrics) {
@@ -244,47 +362,6 @@ function renderInitialLayout(state) {
   elements.initialLayoutPanel.replaceChildren(container);
 }
 
-function renderDag(dagState) {
-  const graph = document.createElement("div");
-  graph.className = "dag-graph";
-  const levels = dagLevels(dagState);
-  for (const level of levels) {
-    const layer = document.createElement("div");
-    layer.className = "dag-layer";
-    for (const node of level) {
-      const item = document.createElement("div");
-      item.className = `dag-node ${node.state}`;
-      item.title = `gate ${node.id} | q${node.qubits.join(", q")}`;
-      item.textContent = `${node.id}:${node.gate_name}`;
-      layer.appendChild(item);
-    }
-    graph.appendChild(layer);
-  }
-  elements.dagPanel.replaceChildren(graph);
-}
-
-function dagLevels(dagState) {
-  const incoming = new Map([...dagState.nodes.keys()].map((id) => [id, []]));
-  for (const edge of dagState.edges || []) {
-    if (!incoming.has(edge.target)) incoming.set(edge.target, []);
-    incoming.get(edge.target).push(edge.source);
-  }
-  const cache = new Map();
-  const levelOf = (id) => {
-    if (cache.has(id)) return cache.get(id);
-    const level = Math.max(-1, ...(incoming.get(id) || []).map(levelOf)) + 1;
-    cache.set(id, level);
-    return level;
-  };
-  const layers = [];
-  for (const [id, node] of dagState.nodes) {
-    const level = levelOf(id);
-    if (!layers[level]) layers[level] = [];
-    layers[level].push(node);
-  }
-  return layers.filter(Boolean);
-}
-
 function recordFrame(delta) {
   frameTimes.push(delta);
   if (frameTimes.length > 60) frameTimes.shift();
@@ -293,10 +370,35 @@ function recordFrame(delta) {
   elements.performancePanel.textContent = `FPS: ${fps.toFixed(1)} | events: ${trace?.events.length ?? 0}`;
 }
 
+function resetInspectorRenderCache() {
+  renderedMetricsTrace = null;
+  lastInitialLayoutKey = "";
+  lastDagKey = "";
+  lastEventKey = "";
+}
+
+function trapChainsKey(trapChains) {
+  return [...trapChains.entries()].map(([location, ions]) => `${location}:${ions.join(",")}`).join("|");
+}
+
+function dagStateKey(dagState) {
+  return `${sortedSetKey(dagState.completed)}|${sortedSetKey(dagState.active)}`;
+}
+
+function activeEventKey(activeEvents) {
+  return activeEvents.map((event) => event.id).join(",");
+}
+
+function sortedSetKey(values) {
+  return [...(values || [])].sort((left, right) => left - right).join(",");
+}
+
 async function fetchJson(path) {
   const response = await fetch(path);
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : null;
   if (!response.ok) {
-    throw new Error(`Failed to load ${path}: ${response.status}`);
+    throw new Error(payload?.error || `Failed to load ${path}: ${response.status}`);
   }
-  return response.json();
+  return payload;
 }
