@@ -52,6 +52,20 @@ export function interpolatePoint(start, end, progress) {
   };
 }
 
+export function endpointSlotIndex(trap, segmentLocation) {
+  const segmentId = segmentLocation.split(":")[1];
+  const endpoint = trap.orientation?.[segmentId];
+  if (endpoint === "R") return Math.max(0, trap.capacity - 1);
+  return 0;
+}
+
+export function trapSlotPoint(trapPoint, slotIndex, capacity) {
+  const usableWidth = trapPoint.width * 0.8;
+  const left = trapPoint.x - usableWidth / 2;
+  const step = capacity <= 1 ? 0 : usableWidth / (capacity - 1);
+  return { x: left + step * slotIndex, y: trapPoint.y };
+}
+
 function resizeCanvas(canvas) {
   const rect = canvas.getBoundingClientRect();
   const scale = globalThis.devicePixelRatio || 1;
@@ -66,28 +80,43 @@ function resizeCanvas(canvas) {
 function computeLayout(canvas, trace) {
   const width = canvas.width;
   const height = canvas.height;
-  const marginX = Math.max(72, width * 0.07);
+  const marginX = Math.max(92, width * 0.1);
+  const marginY = Math.max(84, height * 0.12);
   const traps = new Map();
   const junctions = new Map();
   const segments = new Map();
   const segmentEndpoints = new Map();
+  const rawLayout = trace.topology.layout || {};
+  const rawPoints = Object.values(rawLayout);
+  const minX = Math.min(...rawPoints.map((point) => point.x), 0);
+  const maxX = Math.max(...rawPoints.map((point) => point.x), 1);
+  const minY = Math.min(...rawPoints.map((point) => point.y), 0);
+  const maxY = Math.max(...rawPoints.map((point) => point.y), 1);
 
   const trapCount = Math.max(1, trace.topology.traps.length);
   for (const [index, trap] of trace.topology.traps.entries()) {
-    const x =
+    const location = `trap:${trap.id}`;
+    const point = rawLayout[location];
+    const fallbackX =
       trapCount === 1
         ? width / 2
         : marginX + (index * (width - marginX * 2)) / Math.max(1, trapCount - 1);
-    traps.set(`trap:${trap.id}`, { x, y: height * 0.58 });
+    const x = point ? scaleValue(point.x, minX, maxX, marginX, width - marginX) : fallbackX;
+    const y = point ? scaleValue(point.y, minY, maxY, marginY, height - marginY) : height * 0.58;
+    traps.set(location, { x, y, width: Math.max(72, Math.min(150, 18 * trap.capacity + 28)) });
   }
 
   const junctionCount = Math.max(1, trace.topology.junctions.length);
   for (const [index, junction] of trace.topology.junctions.entries()) {
-    const x =
+    const location = `junction:${junction.id}`;
+    const point = rawLayout[location];
+    const fallbackX =
       junctionCount === 1
         ? width / 2
         : marginX + (index * (width - marginX * 2)) / Math.max(1, junctionCount - 1);
-    junctions.set(`junction:${junction.id}`, { x, y: height * 0.34 });
+    const x = point ? scaleValue(point.x, minX, maxX, marginX, width - marginX) : fallbackX;
+    const y = point ? scaleValue(point.y, minY, maxY, marginY, height - marginY) : height * 0.34;
+    junctions.set(location, { x, y });
   }
 
   for (const segment of trace.topology.segments) {
@@ -99,7 +128,12 @@ function computeLayout(canvas, trace) {
     segmentEndpoints.set(key, { start, end });
   }
 
-  return { traps, junctions, segments, segmentEndpoints };
+  return { traps, junctions, segments, segmentEndpoints, traceTrapsFallback: trace.topology.traps };
+}
+
+function scaleValue(value, minInput, maxInput, minOutput, maxOutput) {
+  if (maxInput === minInput) return (minOutput + maxOutput) / 2;
+  return minOutput + ((value - minInput) / (maxInput - minInput)) * (maxOutput - minOutput);
 }
 
 function resolveNodePoint(traps, junctions, location) {
@@ -141,14 +175,30 @@ function drawTraps(context, trace, layout) {
   for (const trap of trace.topology.traps) {
     const point = layout.traps.get(`trap:${trap.id}`);
     if (!point) continue;
-    context.fillStyle = cssColor("--color-trap");
-    context.strokeStyle = "rgba(238, 242, 247, 0.28)";
-    context.lineWidth = 1;
-    roundedRect(context, point.x - 30, point.y - 18, 60, 36, 6);
-    context.fill();
-    context.stroke();
-    drawLabel(context, `T${trap.id}`, point.x, point.y + 4, cssColor("--color-text"));
+    drawTrapChain(context, trap, point);
   }
+}
+
+function drawTrapChain(context, trap, point) {
+  const width = point.width;
+  const height = 26;
+  context.fillStyle = "rgba(70, 119, 200, 0.22)";
+  context.strokeStyle = cssColor("--color-trap");
+  context.lineWidth = 1.5;
+  roundedRect(context, point.x - width / 2, point.y - height / 2, width, height, 5);
+  context.fill();
+  context.stroke();
+
+  for (const slot of trap.slots || []) {
+    const slotPoint = trapSlotPoint(point, slot, trap.capacity);
+    context.strokeStyle = "rgba(238, 242, 247, 0.28)";
+    context.beginPath();
+    context.moveTo(slotPoint.x, point.y - height / 2);
+    context.lineTo(slotPoint.x, point.y + height / 2);
+    context.stroke();
+  }
+
+  drawLabel(context, `T${trap.id}`, point.x, point.y + 24, cssColor("--color-muted"));
 }
 
 function drawJunctions(context, trace, layout) {
@@ -165,8 +215,8 @@ function drawJunctions(context, trace, layout) {
 function drawActiveEvents(context, layout, state) {
   for (const event of state.activeEvents) {
     if (MOTION_TYPES.has(event.type)) {
-      const start = resolveLocationPoint(layout, event.source);
-      const end = resolveLocationPoint(layout, event.target);
+      const start = eventEndpointPoint(layout, event, event.source) || resolveLocationPoint(layout, event.source);
+      const end = eventEndpointPoint(layout, event, event.target) || resolveLocationPoint(layout, event.target);
       if (!start || !end) continue;
       const point = interpolatePoint(start, end, eventProgress(event, state.time));
       context.strokeStyle = cssColor("--color-move");
@@ -179,11 +229,7 @@ function drawActiveEvents(context, layout, state) {
 
     const point = resolveLocationPoint(layout, event.target);
     if (!point) continue;
-    context.strokeStyle = cssColor("--color-gate");
-    context.lineWidth = 4;
-    context.beginPath();
-    context.arc(point.x, point.y, 34, 0, Math.PI * 2);
-    context.stroke();
+    drawGateLaser(context, layout, state, event);
   }
 }
 
@@ -198,7 +244,7 @@ function drawIons(context, trace, layout, state) {
     const location = state.locations.get(particle.id) || particle.initial_location;
     const basePoint = activeMotion
       ? motionPoint(layout, activeMotion, state.time)
-      : resolveLocationPoint(layout, location);
+      : particlePoint(layout, trace, state, particle, location);
 
     if (!basePoint) continue;
     const offsetKey = activeMotion ? `active:${activeMotion.id}` : location;
@@ -221,10 +267,55 @@ function drawIons(context, trace, layout, state) {
 }
 
 function motionPoint(layout, event, time) {
-  const start = resolveLocationPoint(layout, event.source);
-  const end = resolveLocationPoint(layout, event.target);
+  const start = eventEndpointPoint(layout, event, event.source) || resolveLocationPoint(layout, event.source);
+  const end = eventEndpointPoint(layout, event, event.target) || resolveLocationPoint(layout, event.target);
   if (!start || !end) return start || end;
   return interpolatePoint(start, end, eventProgress(event, time));
+}
+
+function particlePoint(layout, trace, state, particle, location) {
+  if (location?.startsWith("trap:")) {
+    const trap = trapForLocation(trace, location);
+    const trapPoint = layout.traps.get(location);
+    if (!trap || !trapPoint) return trapPoint;
+    const chain = state.trapChains?.get(location) || [];
+    const chainIndex = chain.indexOf(particle.id);
+    const slotIndex = chainIndex >= 0 ? chainIndex : particle.initial_slot || 0;
+    return trapSlotPoint(trapPoint, clamp(slotIndex, 0, trap.capacity - 1), trap.capacity);
+  }
+  return resolveLocationPoint(layout, location);
+}
+
+function eventEndpointPoint(layout, event, location) {
+  if (!location?.startsWith("trap:")) return null;
+  const trap = (layout.traceTrapsFallback || []).find((item) => `trap:${item.id}` === location);
+  if (!trap) return null;
+  const otherLocation = event.source === location ? event.target : event.source;
+  const trapPoint = layout.traps.get(location);
+  if (!trapPoint) return null;
+  return trapSlotPoint(trapPoint, endpointSlotIndex(trap, otherLocation), trap.capacity);
+}
+
+function drawGateLaser(context, layout, state, event) {
+  context.strokeStyle = cssColor("--color-gate");
+  context.lineWidth = 3;
+  for (const ion of event.ions || []) {
+    const particle = { id: ion, initial_slot: 0 };
+    const point = particlePoint(layout, { topology: { traps: layout.traceTrapsFallback || [] } }, state, particle, event.target);
+    if (!point) continue;
+    context.beginPath();
+    context.moveTo(point.x, point.y - 96);
+    context.lineTo(point.x, point.y - 8);
+    context.stroke();
+    context.beginPath();
+    context.arc(point.x, point.y, 20, 0, Math.PI * 2);
+    context.stroke();
+  }
+}
+
+function trapForLocation(trace, location) {
+  const id = Number(location.split(":")[1]);
+  return trace.topology.traps.find((trap) => trap.id === id);
 }
 
 function offsetPoint(point, index) {

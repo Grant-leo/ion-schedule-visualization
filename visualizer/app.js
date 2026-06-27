@@ -3,6 +3,10 @@ import { createReplay, validateTrace } from "./replay.js";
 
 const elements = {
   traceSelect: document.getElementById("traceSelect"),
+  architectureSelect: document.getElementById("architectureSelect"),
+  capacitySelect: document.getElementById("capacitySelect"),
+  mapperSelect: document.getElementById("mapperSelect"),
+  loadConfigButton: document.getElementById("loadConfigButton"),
   playPauseButton: document.getElementById("playPauseButton"),
   restartButton: document.getElementById("restartButton"),
   stepButton: document.getElementById("stepButton"),
@@ -10,6 +14,8 @@ const elements = {
   timeline: document.getElementById("timeline"),
   canvas: document.getElementById("vizCanvas"),
   metricsPanel: document.getElementById("metricsPanel"),
+  initialLayoutPanel: document.getElementById("initialLayoutPanel"),
+  dagPanel: document.getElementById("dagPanel"),
   eventPanel: document.getElementById("eventPanel"),
   validationPanel: document.getElementById("validationPanel"),
   performancePanel: document.getElementById("performancePanel"),
@@ -24,6 +30,7 @@ let currentTime = 0;
 let playing = false;
 let lastFrame = performance.now();
 let frameTimes = [];
+let manifestEntries = [];
 
 init().catch((error) => {
   elements.validationPanel.textContent = "Load failed";
@@ -32,12 +39,13 @@ init().catch((error) => {
 });
 
 async function init() {
-  const manifest = await fetchJson("traces/manifest.json");
-  populateTraceSelector(manifest);
+  manifestEntries = await fetchJson("traces/manifest.json");
+  populateTraceSelector(manifestEntries);
+  populateConfigControls(manifestEntries);
   wireControls();
 
-  if (manifest.length > 0) {
-    await loadTrace(manifest[0].path);
+  if (manifestEntries.length > 0) {
+    await loadTrace(manifestEntries[0].path);
   } else {
     elements.validationPanel.textContent = "No traces";
   }
@@ -55,8 +63,29 @@ function populateTraceSelector(manifest) {
   }
 }
 
+function populateConfigControls(manifest) {
+  fillSelect(elements.architectureSelect, uniqueValues(manifest, "machine"));
+  fillSelect(elements.capacitySelect, uniqueValues(manifest, "ions_per_region").map(String));
+  fillSelect(elements.mapperSelect, uniqueValues(manifest, "mapper"));
+}
+
+function fillSelect(select, values) {
+  select.replaceChildren();
+  for (const value of values) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    select.appendChild(option);
+  }
+}
+
+function uniqueValues(items, key) {
+  return [...new Set(items.map((item) => item[key]).filter((value) => value !== undefined))].sort();
+}
+
 function wireControls() {
   elements.traceSelect.addEventListener("change", () => loadTrace(elements.traceSelect.value));
+  elements.loadConfigButton.addEventListener("click", loadSelectedConfig);
   elements.playPauseButton.addEventListener("click", togglePlayback);
   elements.restartButton.addEventListener("click", restart);
   elements.stepButton.addEventListener("click", stepToNextEvent);
@@ -78,12 +107,44 @@ async function loadTrace(path) {
   elements.playPauseButton.textContent = "Play";
   elements.timeline.max = String(Math.max(1, replay.finishTime));
   elements.timeline.value = "0";
+  syncConfigControls(trace);
 
   const valid = frontendValidation.valid && backendValidation.valid;
   elements.validationPanel.textContent = valid ? "Valid trace" : "Invalid trace";
   elements.validationPanel.classList.toggle("is-valid", valid);
   elements.validationPanel.classList.toggle("is-invalid", !valid);
   draw();
+}
+
+async function loadSelectedConfig() {
+  const machine = elements.architectureSelect.value;
+  const capacity = Number(elements.capacitySelect.value);
+  const mapper = elements.mapperSelect.value;
+  const match = manifestEntries.find(
+    (entry) => entry.machine === machine && entry.ions_per_region === capacity && entry.mapper === mapper,
+  );
+  if (!match) {
+    elements.validationPanel.textContent = "Config trace missing";
+    elements.validationPanel.classList.add("is-invalid");
+    return;
+  }
+  elements.traceSelect.value = match.path;
+  await loadTrace(match.path);
+}
+
+function syncConfigControls(nextTrace) {
+  const run = nextTrace.run || {};
+  setSelectValue(elements.architectureSelect, run.machine);
+  setSelectValue(elements.capacitySelect, String(run.ions_per_region));
+  setSelectValue(elements.mapperSelect, run.mapper);
+}
+
+function setSelectValue(select, value) {
+  if (value === undefined || value === null) return;
+  const stringValue = String(value);
+  if ([...select.options].some((option) => option.value === stringValue)) {
+    select.value = stringValue;
+  }
 }
 
 function togglePlayback() {
@@ -129,6 +190,8 @@ function draw() {
   elements.timeline.value = String(Math.floor(state.time));
   elements.timeReadout.textContent = `${Math.floor(state.time)} / ${replay.finishTime}`;
   renderMetrics(trace.metrics, state.metrics);
+  renderInitialLayout(state);
+  renderDag(state.dagState);
   renderCurrentEvent(state);
 }
 
@@ -157,6 +220,69 @@ function renderMetrics(metrics, replayMetrics) {
 function renderCurrentEvent(state) {
   const event = state.activeEvents[0];
   elements.eventPanel.textContent = event ? JSON.stringify(event, null, 2) : "No active event";
+}
+
+function renderInitialLayout(state) {
+  const container = document.createElement("div");
+  container.className = "initial-layout";
+  for (const trap of trace.topology.traps) {
+    const row = document.createElement("div");
+    row.className = "layout-row";
+    const label = document.createElement("span");
+    label.textContent = `T${trap.id}`;
+    const chain = document.createElement("div");
+    chain.className = "layout-chain";
+    for (const ion of state.trapChains.get(`trap:${trap.id}`) || []) {
+      const chip = document.createElement("span");
+      chip.className = "layout-ion";
+      chip.textContent = String(ion);
+      chain.appendChild(chip);
+    }
+    row.append(label, chain);
+    container.appendChild(row);
+  }
+  elements.initialLayoutPanel.replaceChildren(container);
+}
+
+function renderDag(dagState) {
+  const graph = document.createElement("div");
+  graph.className = "dag-graph";
+  const levels = dagLevels(dagState);
+  for (const level of levels) {
+    const layer = document.createElement("div");
+    layer.className = "dag-layer";
+    for (const node of level) {
+      const item = document.createElement("div");
+      item.className = `dag-node ${node.state}`;
+      item.title = `gate ${node.id} | q${node.qubits.join(", q")}`;
+      item.textContent = `${node.id}:${node.gate_name}`;
+      layer.appendChild(item);
+    }
+    graph.appendChild(layer);
+  }
+  elements.dagPanel.replaceChildren(graph);
+}
+
+function dagLevels(dagState) {
+  const incoming = new Map([...dagState.nodes.keys()].map((id) => [id, []]));
+  for (const edge of dagState.edges || []) {
+    if (!incoming.has(edge.target)) incoming.set(edge.target, []);
+    incoming.get(edge.target).push(edge.source);
+  }
+  const cache = new Map();
+  const levelOf = (id) => {
+    if (cache.has(id)) return cache.get(id);
+    const level = Math.max(-1, ...(incoming.get(id) || []).map(levelOf)) + 1;
+    cache.set(id, level);
+    return level;
+  };
+  const layers = [];
+  for (const [id, node] of dagState.nodes) {
+    const level = levelOf(id);
+    if (!layers[level]) layers[level] = [];
+    layers[level].push(node);
+  }
+  return layers.filter(Boolean);
 }
 
 function recordFrame(delta) {

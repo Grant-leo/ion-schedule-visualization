@@ -50,8 +50,8 @@ def make_single_hexagon_machine(capacity, mparams):
 
 #ISCA Test machines End
 
-def mktrap4x2(capacity):
-    m = Machine()
+def mktrap4x2(capacity, mparams=None):
+    m = Machine(mparams)
     t0 = m.add_trap(0, capacity)
     t1 = m.add_trap(1, capacity)
     t2 = m.add_trap(2, capacity)
@@ -65,8 +65,8 @@ def mktrap4x2(capacity):
     m.add_segment(4, j0, j1)
     return m
 
-def mktrap_4star(capacity):
-    m = Machine()
+def mktrap_4star(capacity, mparams=None):
+    m = Machine(mparams)
     t0 = m.add_trap(0, capacity)
     t1 = m.add_trap(1, capacity)
     t2 = m.add_trap(2, capacity)
@@ -78,8 +78,8 @@ def mktrap_4star(capacity):
     m.add_segment(3, t3, j0)
     return m
 
-def mktrap6x3(capacity):
-    m = Machine()
+def mktrap6x3(capacity, mparams=None):
+    m = Machine(mparams)
     t0 = m.add_trap(0, capacity)
     t1 = m.add_trap(1, capacity)
     t2 = m.add_trap(2, capacity)
@@ -99,8 +99,8 @@ def mktrap6x3(capacity):
     m.add_segment(7, j1, j2)
     return m
 
-def mktrap8x4(capacity):
-    m = Machine()
+def mktrap8x4(capacity, mparams=None):
+    m = Machine(mparams)
     t0 = m.add_trap(0, capacity)
     t1 = m.add_trap(1, capacity)
     t2 = m.add_trap(2, capacity)
@@ -131,8 +131,8 @@ def mktrap8x4(capacity):
 
 
 
-def make_3x3_grid(capacity):
-    m = Machine()
+def make_3x3_grid(capacity, mparams=None):
+    m = Machine(mparams)
     t = [m.add_trap(i, capacity) for i in range(9)]
     j = [m.add_junction(i) for i in range(6)]
     m.add_segment(0, t[0], j[0])
@@ -153,8 +153,11 @@ def make_3x3_grid(capacity):
     m.add_segment(15, j[4], j[5])
     return m
 
-def make_9trap(capacity):
-    m = Machine(alpha=0.005, inter_ion_dist=1, split_factor=5.0, move_factor=1.0)
+def make_9trap(capacity, mparams=None):
+    if mparams is None:
+        m = Machine(alpha=0.005, inter_ion_dist=1, split_factor=5.0, move_factor=1.0)
+    else:
+        m = Machine(mparams)
     t = [m.add_trap(i, capacity) for i in range(9)]
     j = [m.add_junction(i) for i in range(9)]
 

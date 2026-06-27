@@ -82,7 +82,14 @@ export function createReplay(trace, keyframeInterval = 100) {
         }
       }
 
-      return { time: clampedTime, locations, activeEvents, metrics };
+      return {
+        time: clampedTime,
+        locations,
+        activeEvents,
+        trapChains: buildTrapChains(trace, locations, activeEvents),
+        dagState: buildDagState(trace, events, activeEvents, clampedTime),
+        metrics,
+      };
     },
     nextEventTime(time) {
       const next = events.find((event) => event.start > time);
@@ -103,6 +110,64 @@ function applyCompletedTransfers(pendingTransfers, locations, time) {
       pendingTransfers.splice(index, 1);
     }
   }
+}
+
+function buildTrapChains(trace, locations, activeEvents) {
+  const chains = new Map((trace.topology?.traps || []).map((trap) => [`trap:${trap.id}`, []]));
+  const activeDepartures = new Set();
+
+  for (const event of activeEvents) {
+    if (event.type === "split" && event.source?.startsWith("trap:")) {
+      for (const ion of event.ions || []) activeDepartures.add(`${event.source}:${ion}`);
+    }
+  }
+
+  const particles = [...trace.particles].sort(
+    (left, right) => (left.initial_slot ?? left.id) - (right.initial_slot ?? right.id) || left.id - right.id,
+  );
+  for (const particle of particles) {
+    const location = locations.get(particle.id) || particle.initial_location;
+    if (!location?.startsWith("trap:")) continue;
+    if (activeDepartures.has(`${location}:${particle.id}`)) continue;
+    if (!chains.has(location)) chains.set(location, []);
+    chains.get(location).push(particle.id);
+  }
+
+  return chains;
+}
+
+function buildDagState(trace, events, activeEvents, time) {
+  const dag = trace.dag || { nodes: [], edges: [] };
+  const completed = new Set(
+    events
+      .filter((event) => event.type === "gate" && event.end <= time && Number.isInteger(event.metadata?.gate_id))
+      .map((event) => event.metadata.gate_id),
+  );
+  const active = new Set(
+    activeEvents
+      .filter((event) => event.type === "gate" && Number.isInteger(event.metadata?.gate_id))
+      .map((event) => event.metadata.gate_id),
+  );
+  const predecessors = new Map(dag.nodes.map((node) => [node.id, []]));
+  for (const edge of dag.edges || []) {
+    if (!predecessors.has(edge.target)) predecessors.set(edge.target, []);
+    predecessors.get(edge.target).push(edge.source);
+  }
+
+  const nodes = new Map();
+  for (const node of dag.nodes || []) {
+    let state = "blocked";
+    if (completed.has(node.id)) {
+      state = "completed";
+    } else if (active.has(node.id)) {
+      state = "active";
+    } else if ((predecessors.get(node.id) || []).every((source) => completed.has(source))) {
+      state = "ready";
+    }
+    nodes.set(node.id, { ...node, state });
+  }
+
+  return { nodes, edges: dag.edges || [], completed, active };
 }
 
 function buildKeyframes(events, initialLocations, interval) {

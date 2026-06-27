@@ -7,34 +7,61 @@ const trace = {
   schema_version: "1.0",
   device_type: "ion_trap",
   topology: {
-    traps: [{ id: 0 }, { id: 1 }],
+    traps: [
+      { id: 0, capacity: 3, slots: [0, 1, 2], orientation: { 0: "R" } },
+      { id: 1, capacity: 3, slots: [0, 1, 2], orientation: { 0: "L" } },
+    ],
     segments: [{ id: 0, from: "trap:0", to: "trap:1", length: 10 }],
     junctions: [],
   },
-  particles: [{ id: 0, initial_location: "trap:0" }],
+  dag: {
+    nodes: [
+      { id: 0, gate_name: "h", qubits: [0], arity: 1 },
+      { id: 1, gate_name: "cx", qubits: [0, 1], arity: 2 },
+      { id: 2, gate_name: "x", qubits: [1], arity: 1 },
+    ],
+    edges: [
+      { source: 0, target: 1 },
+      { source: 1, target: 2 },
+    ],
+  },
+  particles: [
+    { id: 0, initial_location: "trap:0", initial_slot: 0 },
+    { id: 1, initial_location: "trap:0", initial_slot: 1 },
+  ],
   events: [
     {
       id: 0,
-      type: "split",
+      type: "gate",
       start: 0,
-      end: 10,
-      ions: [0],
+      end: 5,
+      ions: [1],
       source: "trap:0",
-      target: "segment:0",
-      metadata: {},
+      target: "trap:0",
+      metadata: { gate_id: 0, gate_name: "h", arity: 1 },
     },
     {
       id: 1,
-      type: "merge",
+      type: "split",
       start: 10,
       end: 20,
       ions: [0],
+      source: "trap:0",
+      target: "segment:0",
+      metadata: { endpoint: "R" },
+    },
+    {
+      id: 2,
+      type: "merge",
+      start: 20,
+      end: 30,
+      ions: [0],
       source: "segment:0",
       target: "trap:1",
-      metadata: {},
+      metadata: { endpoint: "L" },
     },
   ],
-  metrics: { event_count: 2 },
+  metrics: { event_count: 3 },
 };
 
 test("validateTrace accepts a valid motion trace", () => {
@@ -45,13 +72,13 @@ test("replay returns correct locations before and after motion", () => {
   const replay = createReplay(trace, 1);
 
   assert.equal(replay.stateAt(0).locations.get(0), "trap:0");
-  assert.equal(replay.stateAt(10).locations.get(0), "segment:0");
-  assert.equal(replay.stateAt(20).locations.get(0), "trap:1");
+  assert.equal(replay.stateAt(20).locations.get(0), "segment:0");
+  assert.equal(replay.stateAt(30).locations.get(0), "trap:1");
 });
 
 test("replay reports active events for in-flight animation", () => {
   const replay = createReplay(trace, 1);
-  const active = replay.stateAt(5).activeEvents;
+  const active = replay.stateAt(15).activeEvents;
 
   assert.equal(active.length, 1);
   assert.equal(active[0].type, "split");
@@ -61,13 +88,13 @@ test("validateTrace rejects motion from a stale source", () => {
   const badTrace = structuredClone(trace);
   badTrace.events[1] = {
     ...badTrace.events[1],
-    source: "trap:0",
+    source: "trap:1",
   };
 
   const validation = validateTrace(badTrace);
 
   assert.equal(validation.valid, false);
-  assert.match(validation.errors.join("\n"), /not at trap:0/);
+  assert.match(validation.errors.join("\n"), /not at trap:1/);
 });
 
 test("validateTrace rejects two-qubit gates when ions are not colocated", () => {
@@ -99,16 +126,16 @@ test("validateTrace rejects two-qubit gates when ions are not colocated", () => 
 
 test("validateTrace rejects overlapping events for the same ion", () => {
   const badTrace = structuredClone(trace);
-  badTrace.events[1] = {
-    ...badTrace.events[1],
-    start: 5,
-    end: 20,
+  badTrace.events[2] = {
+    ...badTrace.events[2],
+    start: 15,
+    end: 30,
   };
 
   const validation = validateTrace(badTrace);
 
   assert.equal(validation.valid, false);
-  assert.match(validation.errors.join("\n"), /busy until 10/);
+  assert.match(validation.errors.join("\n"), /busy until 20/);
 });
 
 test("nextEventTime advances to the next event start", () => {
@@ -116,4 +143,20 @@ test("nextEventTime advances to the next event start", () => {
 
   assert.equal(replay.nextEventTime(0), 10);
   assert.equal(replay.nextEventTime(10), 20);
+});
+
+test("replay returns trap chains with active split ions removed from the chain", () => {
+  const replay = createReplay(trace, 1);
+
+  assert.deepEqual(replay.stateAt(0).trapChains.get("trap:0"), [0, 1]);
+  assert.deepEqual(replay.stateAt(15).trapChains.get("trap:0"), [1]);
+});
+
+test("replay derives dependency graph node states from gate completion", () => {
+  const replay = createReplay(trace, 1);
+
+  assert.equal(replay.stateAt(2).dagState.nodes.get(0).state, "active");
+  assert.equal(replay.stateAt(6).dagState.nodes.get(0).state, "completed");
+  assert.equal(replay.stateAt(6).dagState.nodes.get(1).state, "ready");
+  assert.equal(replay.stateAt(6).dagState.nodes.get(2).state, "blocked");
 });

@@ -15,6 +15,13 @@
       <aside class="left-control-panel">
         <label for="traceSelect">Trace</label>
         <select id="traceSelect"></select>
+        <label for="architectureSelect">Architecture</label>
+        <select id="architectureSelect"></select>
+        <label for="capacitySelect">Capacity</label>
+        <select id="capacitySelect"></select>
+        <label for="mapperSelect">Mapper</label>
+        <select id="mapperSelect"></select>
+        <button id="loadConfigButton" type="button">Load Config</button>
         <label for="speedSelect">Speed</label>
         <select id="speedSelect">
           <option value="0.25">0.25x</option>
@@ -36,6 +43,14 @@
         <section>
           <h2>Metrics</h2>
           <div id="metricsPanel"></div>
+        </section>
+        <section>
+          <h2>Initial Layout</h2>
+          <div id="initialLayoutPanel"></div>
+        </section>
+        <section>
+          <h2>Dependency DAG</h2>
+          <div id="dagPanel"></div>
         </section>
         <section>
           <h2>Current Event</h2>

@@ -6,7 +6,16 @@ from ejf_schedule import EJFSchedule
 from machine import MachineParams
 from mappers import QubitMapAgg, QubitMapGreedy, QubitMapLPFS, QubitMapPO, QubitMapRandom, QubitOrdering
 from parse import InputParse
-from test_machines import make_linear_machine, make_single_hexagon_machine, test_trap_2x3
+from test_machines import (
+    make_3x3_grid,
+    make_9trap,
+    make_linear_machine,
+    make_single_hexagon_machine,
+    mktrap4x2,
+    mktrap6x3,
+    mktrap8x4,
+    test_trap_2x3,
+)
 
 
 @dataclass(frozen=True)
@@ -43,15 +52,33 @@ def make_machine_params(config):
     return params
 
 
+def supported_machine_names():
+    return tuple(MACHINE_BUILDERS.keys())
+
+
+def _linear6(capacity, params):
+    return make_linear_machine(6, capacity, params)
+
+
+MACHINE_BUILDERS = {
+    "L6": _linear6,
+    "H6": make_single_hexagon_machine,
+    "G2x3": test_trap_2x3,
+    "T4x2": mktrap4x2,
+    "T6x3": mktrap6x3,
+    "T8x4": mktrap8x4,
+    "G3x3": make_3x3_grid,
+    "G9": make_9trap,
+}
+
+
 def build_machine(config):
     params = make_machine_params(config)
-    if config.machine == "G2x3":
-        return test_trap_2x3(config.ions, params)
-    if config.machine == "L6":
-        return make_linear_machine(6, config.ions, params)
-    if config.machine == "H6":
-        return make_single_hexagon_machine(config.ions, params)
-    raise ValueError("Unsupported machine type: " + config.machine)
+    try:
+        builder = MACHINE_BUILDERS[config.machine]
+    except KeyError as exc:
+        raise ValueError("Unsupported machine type: " + config.machine) from exc
+    return builder(config.ions, params)
 
 
 def build_mapper(config, parser, machine):

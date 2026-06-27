@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from schedule import Schedule
-from simulation import SimulationConfig, run_simulation
+from simulation import SimulationConfig, run_simulation, supported_machine_names
 from trace_export import export_trace, validate_trace
 
 
@@ -62,14 +62,56 @@ def test_export_trace_contains_topology_events_metrics_and_validation():
     assert trace["topology"]["traps"]
     assert trace["topology"]["segments"]
     assert trace["topology"]["junctions"]
+    assert all("slots" in trap for trap in trace["topology"]["traps"])
+    assert all("orientation" in trap for trap in trace["topology"]["traps"])
+    assert "layout" in trace["topology"]
     assert trace["particles"] == [
-        {"id": 0, "initial_location": "trap:0"},
-        {"id": 1, "initial_location": "trap:1"},
+        {"id": 0, "initial_location": "trap:0", "initial_slot": 0},
+        {"id": 1, "initial_location": "trap:1", "initial_slot": 0},
     ]
+    assert trace["dag"]["nodes"]
+    assert trace["dag"]["edges"]
+    assert {node["arity"] for node in trace["dag"]["nodes"]} >= {1, 2}
     assert {event["type"] for event in trace["events"]} >= {"gate", "split", "move", "merge"}
+    gate_events = [event for event in trace["events"] if event["type"] == "gate"]
+    assert all(isinstance(event["metadata"]["gate_id"], int) for event in gate_events)
     assert trace["metrics"]["event_count"] == len(trace["events"])
     assert trace["validation"]["valid"] is True
     assert trace["validation"]["errors"] == []
+
+
+def test_supported_machine_names_exposes_qccdsim_architectures():
+    names = supported_machine_names()
+
+    assert {"L6", "H6", "G2x3", "T4x2", "T6x3", "T8x4", "G3x3", "G9"} <= set(names)
+
+
+def test_grid_qccdsim_architecture_can_run_and_exports_rich_topology():
+    result = run_simulation(
+        SimulationConfig(
+            program=str(ROOT / "programs" / "benchmarks" / "qasmbench" / "small" / "qft_n4.qasm"),
+            machine="G3x3",
+            ions=2,
+            mapper="Greedy",
+            reorder="Naive",
+            serial_trap_ops=1,
+            serial_comm=0,
+            serial_all=0,
+            gate_type="FM",
+            swap_type="GateSwap",
+            single_qubit_gate_time=7,
+            single_qubit_gate_fidelity=0.999,
+        )
+    )
+
+    trace = export_trace(result)
+
+    assert len(trace["topology"]["traps"]) == 9
+    assert len(trace["topology"]["segments"]) == 16
+    assert len(trace["topology"]["junctions"]) == 6
+    assert trace["topology"]["layout"]["trap:0"] != trace["topology"]["layout"]["trap:8"]
+    assert trace["run"]["machine"] == "G3x3"
+    assert trace["validation"]["valid"] is True
 
 
 def test_validate_trace_rejects_gate_when_ions_are_not_colocated():

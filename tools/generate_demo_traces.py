@@ -13,23 +13,64 @@ TRACE_DIR = ROOT / "visualizer" / "traces"
 
 
 DEMOS = [
-    ("grover_n2_greedy", "programs/benchmarks/qasmbench/small/grover_n2.qasm", 1, "Greedy"),
-    ("qft_n4_greedy", "programs/benchmarks/qasmbench/small/qft_n4.qasm", 2, "Greedy"),
-    ("adder_n10_greedy", "programs/benchmarks/qasmbench/small/adder_n10.qasm", 3, "Greedy"),
-    ("adder_n10_random", "programs/benchmarks/qasmbench/small/adder_n10.qasm", 3, "Random"),
-    ("cat_state_n22_greedy", "programs/benchmarks/qasmbench/medium/cat_state_n22.qasm", 4, "Greedy"),
+    {
+        "id": "grover_n2_l6_greedy",
+        "label": "grover n2 | L6 | cap 1 | Greedy",
+        "program": "programs/benchmarks/qasmbench/small/grover_n2.qasm",
+        "machine": "L6",
+        "ions": 1,
+        "mapper": "Greedy",
+    },
+    {
+        "id": "adder_n10_l6_greedy",
+        "label": "adder n10 | L6 | cap 3 | Greedy",
+        "program": "programs/benchmarks/qasmbench/small/adder_n10.qasm",
+        "machine": "L6",
+        "ions": 3,
+        "mapper": "Greedy",
+    },
+    {
+        "id": "adder_n10_l6_random",
+        "label": "adder n10 | L6 | cap 3 | Random",
+        "program": "programs/benchmarks/qasmbench/small/adder_n10.qasm",
+        "machine": "L6",
+        "ions": 3,
+        "mapper": "Random",
+    },
+    {
+        "id": "cat_state_n22_l6_greedy",
+        "label": "cat state n22 | L6 | cap 4 | Greedy",
+        "program": "programs/benchmarks/qasmbench/medium/cat_state_n22.qasm",
+        "machine": "L6",
+        "ions": 4,
+        "mapper": "Greedy",
+    },
 ]
+
+for machine in ["L6", "H6", "G2x3", "T4x2", "T6x3", "T8x4", "G3x3", "G9"]:
+    DEMOS.append(
+        {
+            "id": f"qft_n4_{machine.lower()}_greedy",
+            "label": f"qft n4 | {machine} | cap 2 | Greedy",
+            "program": "programs/benchmarks/qasmbench/small/qft_n4.qasm",
+            "machine": machine,
+            "ions": 2,
+            "mapper": "Greedy",
+        }
+    )
 
 
 def main():
     TRACE_DIR.mkdir(parents=True, exist_ok=True)
+    for stale_trace in TRACE_DIR.glob("*.json"):
+        stale_trace.unlink()
     manifest = []
-    for name, program, ions, mapper in DEMOS:
+    for demo in DEMOS:
         config = SimulationConfig(
-            program=str(ROOT / program),
-            machine="L6",
-            ions=ions,
-            mapper=mapper,
+            program=str(ROOT / demo["program"]),
+            machine=demo["machine"],
+            ions=demo["ions"],
+            mapper=demo["mapper"],
             reorder="Naive",
             serial_trap_ops=1,
             serial_comm=0,
@@ -39,10 +80,20 @@ def main():
             single_qubit_gate_time=7,
             single_qubit_gate_fidelity=0.999,
         )
-        output = TRACE_DIR / f"{name}.json"
+        output = TRACE_DIR / f"{demo['id']}.json"
         trace = export_trace(run_simulation(config))
         write_trace(trace, output)
-        manifest.append({"id": name, "label": name.replace("_", " "), "path": f"traces/{name}.json"})
+        manifest.append(
+            {
+                "id": demo["id"],
+                "label": demo["label"],
+                "path": f"traces/{demo['id']}.json",
+                "program": demo["program"],
+                "machine": demo["machine"],
+                "ions_per_region": demo["ions"],
+                "mapper": demo["mapper"],
+            }
+        )
     (TRACE_DIR / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(f"generated {len(manifest)} traces")
 

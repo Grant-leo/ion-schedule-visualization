@@ -27,12 +27,13 @@ class Schedule:
         self.events = SortedCollection(key=itemgetter(3)) #sorted by finish time
         self.machine = machine
 
-    def add_gate(self, start_time, end_time, ions, trap_id, gate_name=None, arity=None):
+    def add_gate(self, start_time, end_time, ions, trap_id, gate_name=None, arity=None, gate_id=None):
         gate_dict = {}
         gate_dict['ions'] = ions
         gate_dict['trap'] = trap_id
         gate_dict['gate_name'] = gate_name
         gate_dict['arity'] = arity if arity is not None else len(ions)
+        gate_dict['gate_id'] = gate_id
         self.events.insert((self.event_id, Schedule.Gate, start_time, end_time, gate_dict))
         self.event_id += 1
 

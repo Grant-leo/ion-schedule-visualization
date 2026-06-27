@@ -14,9 +14,10 @@ def export_trace(result):
         "schema_version": "1.0",
         "device_type": "ion_trap",
         "run": _run_config(result),
-        "topology": _topology(result.machine),
+        "topology": _topology(result.machine, result.config.machine),
+        "dag": _dag(result.parser),
         "particles": _particles(result.initial_layout),
-        "events": [_event_to_trace(event) for event in result.scheduler.schedule.events],
+        "events": [_event_to_trace(event, result.machine) for event in result.scheduler.schedule.events],
         "metrics": _metrics(result.scheduler.schedule),
     }
     trace["validation"] = validate_trace(trace)
@@ -90,16 +91,92 @@ def _run_config(result):
     }
 
 
-def _topology(machine):
+def _topology(machine, machine_name):
     segments = []
     for u, v, data in machine.graph.edges(data=True):
         segment = data["seg"]
         segments.append({"id": segment.id, "from": _object_location(u), "to": _object_location(v), "length": segment.length})
     return {
-        "traps": [{"id": trap.id, "capacity": trap.capacity} for trap in machine.traps],
+        "traps": [
+            {
+                "id": trap.id,
+                "capacity": trap.capacity,
+                "slots": list(range(trap.capacity)),
+                "orientation": {str(seg_id): side for seg_id, side in sorted(trap.orientation.items())},
+            }
+            for trap in machine.traps
+        ],
         "segments": sorted(segments, key=lambda item: item["id"]),
         "junctions": [{"id": junction.id} for junction in machine.junctions],
+        "layout": _layout(machine, machine_name),
     }
+
+
+def _layout(machine, machine_name):
+    if machine_name == "L6":
+        return _linear_layout(machine)
+    if machine_name in {"T4x2", "T6x3", "T8x4", "G2x3"}:
+        return _paired_trap_layout(machine)
+    if machine_name in {"G3x3", "G9"}:
+        return _grid_layout(machine)
+    if machine_name == "H6":
+        return _circle_layout(machine)
+    return _linear_layout(machine)
+
+
+def _linear_layout(machine):
+    layout = {}
+    for trap in machine.traps:
+        layout[location_key("trap", trap.id)] = {"x": trap.id, "y": 1.0}
+    for junction in machine.junctions:
+        layout[location_key("junction", junction.id)] = {"x": junction.id + 0.5, "y": 0.0}
+    return layout
+
+
+def _paired_trap_layout(machine):
+    layout = {}
+    junction_count = max(1, len(machine.junctions))
+    for junction in machine.junctions:
+        layout[location_key("junction", junction.id)] = {"x": junction.id, "y": 1.0}
+    for trap in machine.traps:
+        connected_junctions = [
+            obj for obj in machine.graph.neighbors(trap) if isinstance(obj, Junction)
+        ]
+        x = connected_junctions[0].id if connected_junctions else trap.id % junction_count
+        y = 0.0 if trap.id < junction_count else 2.0
+        layout[location_key("trap", trap.id)] = {"x": x, "y": y}
+    return layout
+
+
+def _grid_layout(machine):
+    layout = {}
+    trap_columns = 3
+    for trap in machine.traps:
+        layout[location_key("trap", trap.id)] = {"x": trap.id % trap_columns, "y": trap.id // trap_columns}
+    for junction in machine.junctions:
+        if len(machine.junctions) == 6:
+            row = 0.5 if junction.id < 3 else 1.5
+            col = junction.id % 3
+        else:
+            row = junction.id // 3
+            col = junction.id % 3
+        layout[location_key("junction", junction.id)] = {"x": col, "y": row}
+    return layout
+
+
+def _circle_layout(machine):
+    import math
+
+    layout = {}
+    trap_count = max(1, len(machine.traps))
+    junction_count = max(1, len(machine.junctions))
+    for trap in machine.traps:
+        angle = (2 * math.pi * trap.id) / trap_count
+        layout[location_key("trap", trap.id)] = {"x": 1.0 + math.cos(angle), "y": 1.0 + math.sin(angle)}
+    for junction in machine.junctions:
+        angle = (2 * math.pi * (junction.id + 0.5)) / junction_count
+        layout[location_key("junction", junction.id)] = {"x": 1.0 + 0.55 * math.cos(angle), "y": 1.0 + 0.55 * math.sin(angle)}
+    return layout
 
 
 def _object_location(obj):
@@ -110,15 +187,36 @@ def _object_location(obj):
     raise TypeError("Unsupported topology object: " + repr(obj))
 
 
+def _dag(parser):
+    nodes = []
+    for gate_id in sorted(parser.gate_graph.nodes):
+        qubits = list(parser.gate_qubit_map.get(gate_id, []))
+        nodes.append(
+            {
+                "id": gate_id,
+                "gate_name": parser.gate_name_map.get(gate_id),
+                "qubits": qubits,
+                "arity": len(qubits),
+            }
+        )
+    return {
+        "nodes": nodes,
+        "edges": [
+            {"source": source, "target": target}
+            for source, target in sorted(parser.gate_graph.edges())
+        ],
+    }
+
+
 def _particles(initial_layout):
     particles = []
     for trap_id, ions in sorted(initial_layout.items()):
-        for ion in ions:
-            particles.append({"id": ion, "initial_location": location_key("trap", trap_id)})
+        for slot, ion in enumerate(ions):
+            particles.append({"id": ion, "initial_location": location_key("trap", trap_id), "initial_slot": slot})
     return sorted(particles, key=lambda item: item["id"])
 
 
-def _event_to_trace(event):
+def _event_to_trace(event, machine):
     event_id, event_type, start, end, info = event
     if event_type == Schedule.Gate:
         event_name = "gate"
@@ -146,13 +244,25 @@ def _event_to_trace(event):
         "source": source,
         "target": target,
         "metadata": {
+            "gate_id": info.get("gate_id"),
             "gate_name": info.get("gate_name"),
             "arity": info.get("arity"),
             "swap_count": info.get("swap_cnt", 0),
             "swap_hops": info.get("swap_hops", 0),
             "ion_hops": info.get("ion_hops", 0),
+            "endpoint": _event_endpoint(event_type, info, machine),
+            "swap_ions": [info.get("i1"), info.get("i2")] if info.get("i1") != info.get("i2") else [],
         },
     }
+
+
+def _event_endpoint(event_type, info, machine):
+    if event_type not in {Schedule.Split, Schedule.Merge}:
+        return None
+    trap = next((item for item in machine.traps if item.id == info["trap"]), None)
+    if trap is None:
+        return None
+    return trap.orientation.get(info["seg"])
 
 
 def _metrics(schedule):

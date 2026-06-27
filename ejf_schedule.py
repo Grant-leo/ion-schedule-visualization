@@ -187,14 +187,30 @@ class EJFSchedule:
     def add_single_qubit_gate_op(self, clk, trap_id, gate, ion):
         fire_time = self._gate_fire_time(clk, trap_id)
         gate_duration = self.machine.single_qubit_gate_time(self.gate_name_map.get(gate))
-        self.schedule.add_gate(fire_time, fire_time + gate_duration, [ion], trap_id, self.gate_name_map.get(gate), 1)
+        self.schedule.add_gate(
+            fire_time,
+            fire_time + gate_duration,
+            [ion],
+            trap_id,
+            self.gate_name_map.get(gate),
+            1,
+            gate,
+        )
         self.gate_finish_times[gate] = fire_time + gate_duration
         return fire_time + gate_duration
 
     def add_gate_op(self, clk, trap_id, gate, ion1, ion2):
         fire_time = self._gate_fire_time(clk, trap_id)
         gate_duration = self.machine.gate_time(self.sys_state, trap_id, ion1, ion2)
-        self.schedule.add_gate(fire_time, fire_time + gate_duration, [ion1, ion2], trap_id, self.gate_name_map.get(gate), 2)
+        self.schedule.add_gate(
+            fire_time,
+            fire_time + gate_duration,
+            [ion1, ion2],
+            trap_id,
+            self.gate_name_map.get(gate),
+            2,
+            gate,
+        )
         self.gate_finish_times[gate] = fire_time + gate_duration
         return fire_time + gate_duration
 
