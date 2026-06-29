@@ -1,10 +1,18 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260629-demo7";
-import { renderDagSvg } from "./dag_renderer.js?v=20260629-demo7";
-import { createReplay, validateTrace } from "./replay.js?v=20260629-demo7";
-import { createMetricCards, describeEvent, formatLocation, summarizeDag } from "./ui_model.js?v=20260629-demo7";
+import { createRenderer } from "./canvas_renderer.js?v=20260629-demo8";
+import { renderDagSvg } from "./dag_renderer.js?v=20260629-demo8";
+import { createReplay, validateTrace } from "./replay.js?v=20260629-demo8";
+import {
+  createMetricCards,
+  createScenarioCopy,
+  describeEvent,
+  formatLocation,
+  summarizeDag,
+} from "./ui_model.js?v=20260629-demo8";
 
 const elements = {
   traceSelect: document.getElementById("traceSelect"),
+  scenarioTitle: document.getElementById("scenarioTitle"),
+  scenarioDescription: document.getElementById("scenarioDescription"),
   programSelect: document.getElementById("programSelect"),
   architectureSelect: document.getElementById("architectureSelect"),
   capacitySelect: document.getElementById("capacitySelect"),
@@ -162,6 +170,7 @@ function loadTraceData(nextTrace) {
   elements.timeline.max = String(Math.max(1, replay.finishTime));
   elements.timeline.value = "0";
   syncConfigControls(trace);
+  renderScenarioSummary(trace);
   renderRunConfig(trace);
   resetInspectorRenderCache();
 
@@ -310,6 +319,14 @@ function renderRunConfig(nextTrace) {
     run.scheduler_policy ? `scheduler ${run.scheduler_policy}` : null,
   ].filter(Boolean);
   elements.runConfigPanel.textContent = items.join(" | ");
+}
+
+function renderScenarioSummary(nextTrace) {
+  const run = nextTrace.run || {};
+  const program = programCatalog.get(programIdFromPath(run.program));
+  const copy = createScenarioCopy({ run, program });
+  elements.scenarioTitle.textContent = copy.title;
+  elements.scenarioDescription.textContent = copy.description;
 }
 
 function setStatus(message, state) {

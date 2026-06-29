@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>QCCD Schedule Visual Debugger</title>
-    <link rel="stylesheet" href="./styles.css?v=20260629-demo7" />
+    <link rel="stylesheet" href="./styles.css?v=20260629-demo8" />
   </head>
   <body>
     <div class="app-shell">
@@ -22,8 +22,8 @@
       <aside class="left-control-panel">
         <section class="control-section">
           <span class="panel-eyebrow">Demo scenario</span>
-          <h2>QFT on a 3x3 QCCD grid</h2>
-          <p>Replay QCCDSim trace events as ion shuttling, laser gates, and DAG progress.</p>
+          <h2 id="scenarioTitle">QCCD schedule replay</h2>
+          <p id="scenarioDescription">Replay QCCDSim trace events as ion shuttling, laser gates, and DAG progress.</p>
           <label for="traceSelect">Verified trace</label>
           <select id="traceSelect"></select>
         </section>
@@ -109,6 +109,6 @@
         <span id="timeReadout">0 / 0</span>
       </footer>
     </div>
-    <script type="module" src="./app.js?v=20260629-demo7"></script>
+    <script type="module" src="./app.js?v=20260629-demo8"></script>
   </body>
 </html>

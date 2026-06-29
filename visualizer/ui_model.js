@@ -26,6 +26,18 @@ export function createMetricCards(metrics = {}) {
   ];
 }
 
+export function createScenarioCopy({ run = {}, program = null } = {}) {
+  const programId = programIdFromPath(run.program);
+  const programLabel = program?.label || labelFromId(programId) || "QCCD schedule";
+  const machine = run.machine || "selected architecture";
+  const mapper = run.mapper ? `${run.mapper} mapping` : "selected mapping";
+  const scheduler = run.scheduler_policy ? `${run.scheduler_policy} scheduling` : "selected scheduling";
+  return {
+    title: `${programLabel} on ${machine}`,
+    description: `Replay a QCCDSim trace with ${mapper}, ${scheduler}, ion shuttling, laser gates, and DAG progress.`,
+  };
+}
+
 export function describeEvent(event) {
   if (!event) return "No active hardware operation";
   const duration = Math.max(0, Number(event.end ?? 0) - Number(event.start ?? 0));
@@ -91,4 +103,14 @@ function formatEndpoint(endpoint) {
 
 function formatNumber(value) {
   return String(Number(value || 0));
+}
+
+function programIdFromPath(path = "") {
+  const normalized = String(path).replaceAll("\\", "/");
+  const file = normalized.split("/").pop() || normalized;
+  return file.replace(/\.[^.]+$/, "");
+}
+
+function labelFromId(id = "") {
+  return id.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

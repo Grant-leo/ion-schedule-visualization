@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createMetricCards, describeEvent, summarizeDag } from "../ui_model.js";
+import { createMetricCards, createScenarioCopy, describeEvent, summarizeDag } from "../ui_model.js";
 
 test("createMetricCards derives shuttling burden and gate mix for executive metrics", () => {
   const cards = createMetricCards({
@@ -24,6 +24,35 @@ test("createMetricCards derives shuttling burden and gate mix for executive metr
   assert.equal(cards[2].value, "9 / 5");
   assert.equal(cards[3].value, "250");
   assert.equal(cards[3].detail, "aggregate cycles, 25.0% of makespan");
+});
+
+test("createScenarioCopy reflects the active generated trace", () => {
+  const copy = createScenarioCopy({
+    program: { id: "qaoa_n6", label: "QAOA N6" },
+    run: {
+      program: "programs/benchmarks/qasmbench/qaoa_n6.qasm",
+      machine: "G3x3",
+      mapper: "SABRE",
+      scheduler_policy: "EJF-GlobalSerial",
+    },
+  });
+
+  assert.equal(copy.title, "QAOA N6 on G3x3");
+  assert.equal(
+    copy.description,
+    "Replay a QCCDSim trace with SABRE mapping, EJF-GlobalSerial scheduling, ion shuttling, laser gates, and DAG progress.",
+  );
+});
+
+test("createScenarioCopy falls back to a readable program id", () => {
+  const copy = createScenarioCopy({
+    run: {
+      program: "programs/foo/cat_state_n22.qasm",
+      machine: "L6",
+    },
+  });
+
+  assert.equal(copy.title, "Cat State N22 on L6");
 });
 
 test("describeEvent translates trace events into presentation-safe copy", () => {
