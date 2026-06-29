@@ -202,6 +202,19 @@ export function ionLabelSpec(id, radius) {
   };
 }
 
+export function junctionRenderSpec(junction = {}, directions = []) {
+  const armCount = Number(junction.degree ?? directions.length ?? 0);
+  let kind = "multiport";
+  if (armCount === 2) kind = "straight";
+  if (armCount === 3) kind = "tee";
+  if (armCount === 4) kind = "cross";
+  return {
+    armCount,
+    kind,
+    label: junction.junction_type || `J${armCount}`,
+  };
+}
+
 function resizeCanvas(canvas) {
   const rect = canvas.getBoundingClientRect();
   const scale = globalThis.devicePixelRatio || 1;
@@ -533,30 +546,65 @@ function drawJunctions(context, trace, layout) {
     const point = layout.junctions.get(location);
     if (!point) continue;
     const directions = junctionDirections(trace, layout, location, point);
-    context.save();
+    const spec = junctionRenderSpec(junction, directions);
     const radius = RENDER_SIZES.junctionRadius;
-    context.shadowColor = "rgba(240, 196, 92, 0.22)";
-    context.shadowBlur = 10;
-    context.fillStyle = "rgba(8, 9, 11, 0.96)";
-    context.strokeStyle = "rgba(240, 196, 92, 0.92)";
+    context.save();
+    context.shadowColor = "rgba(0, 0, 0, 0.55)";
+    context.shadowBlur = 8;
+    context.fillStyle = "rgba(5, 6, 7, 0.98)";
+    context.beginPath();
+    context.arc(point.x, point.y, radius + 7, 0, Math.PI * 2);
+    context.fill();
+    context.shadowColor = "rgba(240, 196, 92, 0.26)";
+    context.shadowBlur = spec.kind === "cross" ? 16 : 11;
+    context.fillStyle = "rgba(11, 12, 13, 0.98)";
+    context.strokeStyle = junctionStrokeColor(spec);
     context.lineWidth = 1.6;
     context.beginPath();
-    context.arc(point.x, point.y, radius + 2, 0, Math.PI * 2);
+    if (spec.kind === "cross") {
+      roundedRect(context, point.x - radius - 2, point.y - radius - 2, (radius + 2) * 2, (radius + 2) * 2, 7);
+    } else {
+      context.arc(point.x, point.y, radius + 3, 0, Math.PI * 2);
+    }
     context.fill();
     context.stroke();
     context.shadowBlur = 0;
-    context.fillStyle = "rgba(240, 196, 92, 0.72)";
+
+    context.strokeStyle = junctionStrokeColor(spec);
+    context.lineWidth = 4.2;
+    context.lineCap = "round";
     for (const direction of directions) {
       context.beginPath();
-      context.arc(point.x + direction.x * (radius - 3), point.y + direction.y * (radius - 3), 1.7, 0, Math.PI * 2);
+      context.moveTo(point.x, point.y);
+      context.lineTo(point.x + direction.x * (radius + 2), point.y + direction.y * (radius + 2));
+      context.stroke();
+    }
+
+    context.fillStyle = "rgba(5, 6, 7, 0.98)";
+    context.beginPath();
+    context.arc(point.x, point.y, spec.kind === "straight" ? 2.4 : 3.1, 0, Math.PI * 2);
+    context.fill();
+
+    context.fillStyle = junctionStrokeColor(spec);
+    for (const direction of directions) {
+      context.beginPath();
+      context.arc(point.x + direction.x * (radius + 1), point.y + direction.y * (radius + 1), 2.2, 0, Math.PI * 2);
       context.fill();
     }
+
     context.fillStyle = cssColor("--color-junction");
     context.beginPath();
-    context.arc(point.x, point.y, 3.2, 0, Math.PI * 2);
+    context.arc(point.x, point.y, spec.kind === "straight" ? 2.2 : 2.8, 0, Math.PI * 2);
     context.fill();
     context.restore();
   }
+}
+
+function junctionStrokeColor(spec) {
+  if (spec.kind === "straight") return "rgba(224, 186, 93, 0.82)";
+  if (spec.kind === "tee") return "rgba(240, 196, 92, 0.95)";
+  if (spec.kind === "cross") return "rgba(255, 209, 102, 0.98)";
+  return cssColor("--color-junction");
 }
 
 function junctionDirections(trace, layout, junctionLocation, point) {

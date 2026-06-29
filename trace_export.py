@@ -240,8 +240,18 @@ def _topology(machine, machine_name):
             for trap in machine.traps
         ],
         "segments": sorted(segments, key=lambda item: item["id"]),
-        "junctions": [{"id": junction.id} for junction in machine.junctions],
+        "junctions": [_junction_to_trace(machine, junction) for junction in machine.junctions],
         "layout": _layout(machine, machine_name),
+    }
+
+
+def _junction_to_trace(machine, junction):
+    degree = machine.graph.degree(junction)
+    return {
+        "id": junction.id,
+        "degree": degree,
+        "junction_type": f"J{degree}",
+        "cross_time": machine.junction_cross_time(junction),
     }
 
 

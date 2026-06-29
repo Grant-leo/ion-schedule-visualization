@@ -1,6 +1,6 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260629-visualfix2";
-import { renderDagSvg } from "./dag_renderer.js?v=20260629-visualfix2";
-import { createReplay, validateTrace } from "./replay.js?v=20260629-visualfix2";
+import { createRenderer } from "./canvas_renderer.js?v=20260629-junction1";
+import { renderDagSvg } from "./dag_renderer.js?v=20260629-junction1";
+import { createReplay, validateTrace } from "./replay.js?v=20260629-junction1";
 import {
   createHeadlineMetricCards,
   createMetricCards,
@@ -8,7 +8,7 @@ import {
   describeEvent,
   formatLocation,
   summarizeDag,
-} from "./ui_model.js?v=20260629-visualfix2";
+} from "./ui_model.js?v=20260629-junction1";
 
 const elements = {
   controlPanel: document.getElementById("controlPanel"),
@@ -57,6 +57,7 @@ let apiAvailable = false;
 let previousTraceMetrics = null;
 let renderedMetricsTrace = null;
 let lastMetricsDagKey = "";
+let lastHeadlineKey = "";
 let lastInitialLayoutKey = "";
 let lastDagKey = "";
 let lastEventKey = "";
@@ -403,9 +404,12 @@ function draw() {
   elements.timeline.value = String(Math.floor(state.time));
   elements.timeReadout.textContent = `${Math.floor(state.time)} / ${replay.finishTime}`;
 
+  const metricInput = buildMetricInput(trace.metrics, state.metrics, state.dagState);
+  renderHeadlineMetrics(metricInput, state.progressMetrics);
+
   const dagKey = dagStateKey(state.dagState);
   if (renderedMetricsTrace !== trace || dagKey !== lastMetricsDagKey) {
-    renderMetrics(trace.metrics, state.metrics, state.dagState);
+    renderMetrics(metricInput);
     renderedMetricsTrace = trace;
     lastMetricsDagKey = dagKey;
   }
@@ -430,9 +434,9 @@ function draw() {
   }
 }
 
-function renderMetrics(metrics, replayMetrics, dagState) {
+function buildMetricInput(metrics, replayMetrics, dagState) {
   const dagSummary = summarizeDag(dagState);
-  const metricInput = {
+  return {
     event_count: metrics?.event_count ?? replayMetrics?.eventCount,
     finish_time: metrics?.finish_time ?? replayMetrics?.finishTime,
     counts: metrics?.counts ?? replayMetrics?.counts,
@@ -449,7 +453,9 @@ function renderMetrics(metrics, replayMetrics, dagState) {
     blocked_ops: dagSummary.blocked,
     ready_ops: dagSummary.ready,
   };
-  renderHeadlineMetrics(metricInput);
+}
+
+function renderMetrics(metricInput) {
   const cards = createMetricCards(metricInput);
   const grid = document.createElement("div");
   grid.className = "metric-grid";
@@ -471,15 +477,28 @@ function renderMetrics(metrics, replayMetrics, dagState) {
   elements.metricsPanel.replaceChildren(grid);
 }
 
-function renderHeadlineMetrics(metricInput) {
-  const cards = createHeadlineMetricCards(metricInput, previousTraceMetrics);
+function renderHeadlineMetrics(metricInput, progressMetrics = null) {
+  const cards = createHeadlineMetricCards(metricInput, progressMetrics || previousTraceMetrics);
+  const headlineKey = cards
+    .map((card) => `${card.label}:${card.value}:${card.detail}:${card.subdetail || ""}:${card.progress ?? ""}`)
+    .join("|");
+  if (headlineKey === lastHeadlineKey) return;
+  lastHeadlineKey = headlineKey;
+
   const fragment = document.createDocumentFragment();
   for (const card of cards) {
     const item = document.createElement("article");
-    item.className = "headline-metric";
+    item.className = `headline-metric headline-${card.kind || "summary"}`;
+    const topLine = document.createElement("div");
+    topLine.className = "headline-metric-top";
     const label = document.createElement("span");
     label.className = "headline-metric-label";
     label.textContent = card.label;
+    const badge = document.createElement("span");
+    badge.className = "headline-live-badge";
+    badge.textContent = card.progress === undefined ? "TOTAL" : "LIVE";
+    topLine.append(label, badge);
+
     const valueRow = document.createElement("div");
     valueRow.className = "headline-metric-value-row";
     const value = document.createElement("strong");
@@ -490,10 +509,26 @@ function renderHeadlineMetrics(metricInput) {
     const detail = document.createElement("span");
     detail.className = "headline-metric-detail";
     detail.textContent = card.detail;
-    const delta = document.createElement("span");
-    delta.className = `headline-delta delta-${card.delta.tone}`;
-    delta.textContent = card.delta.text === "baseline" ? "baseline" : `${card.delta.text} vs prev`;
-    item.append(label, valueRow, detail, delta);
+    item.append(topLine, valueRow, detail);
+    if (card.subdetail) {
+      const subdetail = document.createElement("span");
+      subdetail.className = "headline-metric-subdetail";
+      subdetail.textContent = card.subdetail;
+      item.appendChild(subdetail);
+    }
+    if (card.progress !== undefined) {
+      const progress = document.createElement("div");
+      progress.className = "headline-progress";
+      const fill = document.createElement("span");
+      fill.style.width = `${Math.round(card.progress * 1000) / 10}%`;
+      progress.appendChild(fill);
+      item.appendChild(progress);
+    } else if (card.delta) {
+      const delta = document.createElement("span");
+      delta.className = `headline-delta delta-${card.delta.tone}`;
+      delta.textContent = card.delta.text === "baseline" ? "baseline" : `${card.delta.text} vs prev`;
+      item.appendChild(delta);
+    }
     fragment.appendChild(item);
   }
   elements.headlineMetricsPanel.replaceChildren(fragment);
@@ -614,6 +649,7 @@ function recordFrame(delta) {
 function resetInspectorRenderCache() {
   renderedMetricsTrace = null;
   lastMetricsDagKey = "";
+  lastHeadlineKey = "";
   lastInitialLayoutKey = "";
   lastDagKey = "";
   lastEventKey = "";

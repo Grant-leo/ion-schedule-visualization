@@ -215,19 +215,46 @@ select {
 }
 
 .headline-metric {
+  position: relative;
   min-width: 0;
-  padding: 7px 9px;
+  overflow: hidden;
+  padding: 9px 10px 8px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-2);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.018)),
-    rgba(18, 21, 25, 0.9);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.025)),
+    rgba(15, 17, 21, 0.94);
   box-shadow: var(--shadow-control);
+}
+
+.headline-metric::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  content: "";
+  background: var(--color-move);
+}
+
+.headline-motion::before {
+  background: var(--color-junction);
+}
+
+.headline-shuttle-time::before {
+  background: var(--color-gate);
+}
+
+.headline-metric-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 
 .headline-metric-label,
 .headline-metric-detail,
-.headline-delta {
+.headline-metric-subdetail,
+.headline-delta,
+.headline-live-badge {
   display: block;
   overflow: hidden;
   color: var(--color-muted);
@@ -237,17 +264,29 @@ select {
   white-space: nowrap;
 }
 
+.headline-live-badge {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border: 1px solid rgba(100, 210, 255, 0.32);
+  border-radius: 999px;
+  color: #c8f1ff;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
 .headline-metric-value-row {
   display: flex;
   align-items: baseline;
   gap: 5px;
-  margin: 3px 0 2px;
+  margin: 4px 0 3px;
 }
 
 .headline-metric-value-row strong {
   color: var(--color-text);
   font-family: var(--font-mono);
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 800;
   line-height: 1;
 }
@@ -255,6 +294,35 @@ select {
 .headline-metric-value-row span {
   color: var(--color-subtle);
   font-size: 10px;
+}
+
+.headline-metric-subdetail {
+  margin-top: 3px;
+  color: var(--color-subtle);
+}
+
+.headline-progress {
+  height: 4px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.headline-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(100, 210, 255, 0.95), rgba(158, 227, 125, 0.95));
+  transition: width 120ms linear;
+}
+
+.headline-motion .headline-progress span {
+  background: linear-gradient(90deg, rgba(240, 196, 92, 0.95), rgba(100, 210, 255, 0.95));
+}
+
+.headline-shuttle-time .headline-progress span {
+  background: linear-gradient(90deg, rgba(158, 227, 125, 0.95), rgba(100, 210, 255, 0.95));
 }
 
 .headline-delta {

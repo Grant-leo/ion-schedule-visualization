@@ -97,6 +97,7 @@ export function createReplay(trace, keyframeInterval = 100) {
         trapChains: buildTrapChains(trace, locations, activeEvents),
         dagState: buildDagState(trace, events, activeEvents, clampedTime),
         metrics,
+        progressMetrics: summarizeProgress(events, clampedTime, finishTime),
       };
     },
     nextEventTime(time) {
@@ -252,6 +253,40 @@ function summarize(events) {
   };
 }
 
+function summarizeProgress(events, time, finishTime) {
+  const counts = { gate: 0, split: 0, move: 0, merge: 0 };
+  const times = { gate: 0, split: 0, move: 0, merge: 0 };
+  let activeShuttlingOps = 0;
+
+  for (const event of events) {
+    const type = event.type;
+    if (event.start <= time) {
+      counts[type] = (counts[type] || 0) + 1;
+    }
+
+    const elapsed = Math.max(0, Math.min(time, event.end) - event.start);
+    if (elapsed > 0) {
+      times[type] = (times[type] || 0) + elapsed;
+    }
+
+    if (isShuttlingEvent(event) && event.start <= time && time < event.end) {
+      activeShuttlingOps += 1;
+    }
+  }
+
+  const shuttlingTime = times.split + times.move + times.merge;
+  const shuttlingOps = counts.split + counts.move + counts.merge;
+  return {
+    counts,
+    times,
+    elapsedTime: time,
+    finishTime,
+    shuttlingTime,
+    shuttlingOps,
+    activeShuttlingOps,
+  };
+}
+
 function summarizeGateParallelism(events) {
   const gates = events.filter((event) => event.type === "gate");
   let maxParallelGates = 0;
@@ -275,6 +310,10 @@ function summarizeGateParallelism(events) {
   }
 
   return { maxParallelGates, crossTrapParallelGates, sameTrapGateOverlaps };
+}
+
+function isShuttlingEvent(event) {
+  return event.type === "split" || event.type === "move" || event.type === "merge";
 }
 
 function eventTrapResource(event) {

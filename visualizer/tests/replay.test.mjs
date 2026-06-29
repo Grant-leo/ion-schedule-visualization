@@ -84,6 +84,19 @@ test("replay reports active events for in-flight animation", () => {
   assert.equal(active[0].type, "split");
 });
 
+test("replay reports live cumulative schedule progress at the current time", () => {
+  const replay = createReplay(trace, 1);
+  const progress = replay.stateAt(25).progressMetrics;
+
+  assert.equal(progress.finishTime, 30);
+  assert.equal(progress.elapsedTime, 25);
+  assert.equal(progress.shuttlingTime, 15);
+  assert.equal(progress.shuttlingOps, 2);
+  assert.equal(progress.activeShuttlingOps, 1);
+  assert.deepEqual(progress.counts, { gate: 1, split: 1, move: 0, merge: 1 });
+  assert.deepEqual(progress.times, { gate: 5, split: 10, move: 0, merge: 5 });
+});
+
 test("validateTrace rejects motion from a stale source", () => {
   const badTrace = structuredClone(trace);
   badTrace.events[1] = {

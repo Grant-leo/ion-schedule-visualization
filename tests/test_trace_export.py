@@ -109,6 +109,9 @@ def test_grid_qccdsim_architecture_can_run_and_exports_rich_topology():
     assert len(trace["topology"]["traps"]) == 9
     assert len(trace["topology"]["segments"]) == 16
     assert len(trace["topology"]["junctions"]) == 6
+    assert sorted(junction["degree"] for junction in trace["topology"]["junctions"]) == [3, 3, 3, 3, 4, 4]
+    assert {junction["junction_type"] for junction in trace["topology"]["junctions"]} == {"J3", "J4"}
+    assert {junction["cross_time"] for junction in trace["topology"]["junctions"]} == {100, 120}
     assert trace["topology"]["layout"]["trap:0"] != trace["topology"]["layout"]["trap:8"]
     assert trace["run"]["machine"] == "G3x3"
     assert trace["validation"]["valid"] is True

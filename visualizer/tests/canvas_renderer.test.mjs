@@ -8,6 +8,7 @@ import {
   interpolatePoint,
   ionLabelSpec,
   ionRenderPoint,
+  junctionRenderSpec,
   motionPathPoints,
   pointAlongPolyline,
   segmentDrawPoints,
@@ -181,6 +182,24 @@ test("ion labels are centered inside the rendered ion sphere", () => {
     xOffset: 0,
     yOffset: 0,
     fontSize: 7,
+  });
+});
+
+test("junctionRenderSpec preserves QCCDSim junction degree types", () => {
+  assert.deepEqual(junctionRenderSpec({ id: 0, degree: 2, junction_type: "J2" }, [{}, {}]), {
+    armCount: 2,
+    kind: "straight",
+    label: "J2",
+  });
+  assert.deepEqual(junctionRenderSpec({ id: 1, degree: 3, junction_type: "J3" }, [{}, {}, {}]), {
+    armCount: 3,
+    kind: "tee",
+    label: "J3",
+  });
+  assert.deepEqual(junctionRenderSpec({ id: 2, degree: 4, junction_type: "J4" }, [{}, {}, {}, {}]), {
+    armCount: 4,
+    kind: "cross",
+    label: "J4",
   });
 });
 

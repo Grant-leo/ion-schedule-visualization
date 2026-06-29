@@ -64,6 +64,35 @@ test("createHeadlineMetricCards highlights execution and shuttling deltas", () =
   assert.deepEqual(cards[2].delta, { text: "+50", tone: "bad" });
 });
 
+test("createHeadlineMetricCards reports live schedule progress against final totals", () => {
+  const cards = createHeadlineMetricCards(
+    {
+      finish_time: 100,
+      shuttling_time: 50,
+      counts: { split: 4, move: 6, merge: 4 },
+    },
+    {
+      elapsedTime: 25,
+      finishTime: 100,
+      shuttlingTime: 12,
+      shuttlingOps: 3,
+      activeShuttlingOps: 1,
+      counts: { split: 1, move: 2, merge: 0 },
+    },
+  );
+
+  assert.equal(cards[0].value, "25");
+  assert.equal(cards[0].detail, "25 / 100 cycles elapsed");
+  assert.equal(cards[0].progress, 0.25);
+  assert.equal(cards[1].value, "3");
+  assert.equal(cards[1].detail, "3 / 14 ops started, 1 active");
+  assert.equal(cards[1].subdetail, "1 split, 2 move, 0 merge");
+  assert.equal(cards[1].progress, 3 / 14);
+  assert.equal(cards[2].value, "12");
+  assert.equal(cards[2].detail, "12 / 50 shuttle cycles");
+  assert.equal(cards[2].progress, 0.24);
+});
+
 test("createScenarioCopy reflects the active generated trace", () => {
   const copy = createScenarioCopy({
     program: { id: "qaoa_n6", label: "QAOA N6" },
