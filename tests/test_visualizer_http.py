@@ -48,6 +48,7 @@ def test_visualizer_options_endpoint_serves_demo_defaults(visualizer_http_server
     assert any(program["id"] == "qft_n4" for program in payload["programs"])
     assert any(program["id"] == "swap_test_n25" for program in payload["programs"])
     assert "G3x3" in payload["machines"]
+    assert payload["machine_trap_counts"]["G3x3"] == 9
     assert "SABRE" in payload["mappers"]
     assert "EJF-GlobalSerial" in payload["schedulers"]
     assert "EJF-ParallelTrap" not in payload["schedulers"]
@@ -70,7 +71,8 @@ def test_visualizer_html_uses_cache_busted_core_assets():
 def test_visualizer_medium_viewport_uses_uncramped_layout_breakpoint():
     css = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
 
-    assert "@media (max-width: 1360px)" in css
+    assert "@media (max-width: 1240px)" in css
+    assert "@media (max-width: 1360px)" not in css
     assert "grid-template-areas:\n      \"header header\"\n      \"left viewport\"\n      \"right right\"" in css
 
 

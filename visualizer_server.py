@@ -45,6 +45,7 @@ def options_payload():
     return {
         "programs": list(PROGRAMS.values()),
         "machines": list(supported_machine_names()),
+        "machine_trap_counts": {machine: _machine_trap_count(machine, 1) for machine in supported_machine_names()},
         "capacities": CAPACITIES,
         "mappers": MAPPERS,
         "orderings": ORDERINGS,

@@ -84,6 +84,56 @@ test("replay reports active events for in-flight animation", () => {
   assert.equal(active[0].type, "split");
 });
 
+test("replay keyframes do not move a long parallel shuttle before it ends", () => {
+  const parallelTrace = structuredClone(trace);
+  parallelTrace.topology.traps = [
+    { id: 0, capacity: 1, slots: [0], orientation: { 0: "R" } },
+    { id: 1, capacity: 1, slots: [0], orientation: { 1: "R" } },
+  ];
+  parallelTrace.topology.segments = [
+    { id: 0, from: "trap:0", to: "junction:0", length: 10 },
+    { id: 1, from: "trap:1", to: "junction:1", length: 10 },
+  ];
+  parallelTrace.topology.junctions = [{ id: 0 }, { id: 1 }];
+  parallelTrace.particles = [
+    { id: 0, initial_location: "trap:0", initial_slot: 0 },
+    { id: 1, initial_location: "trap:1", initial_slot: 0 },
+  ];
+  parallelTrace.events = [
+    {
+      id: 0,
+      type: "split",
+      start: 0,
+      end: 100,
+      ions: [0],
+      source: "trap:0",
+      target: "segment:0",
+      metadata: { endpoint: "R" },
+    },
+    {
+      id: 1,
+      type: "split",
+      start: 1,
+      end: 2,
+      ions: [1],
+      source: "trap:1",
+      target: "segment:1",
+      metadata: { endpoint: "R" },
+    },
+  ];
+  parallelTrace.metrics = { event_count: 2 };
+
+  const replay = createReplay(parallelTrace, 1);
+  const state = replay.stateAt(50);
+
+  assert.equal(state.locations.get(0), "trap:0");
+  assert.equal(state.locations.get(1), "segment:1");
+  assert.deepEqual(
+    state.activeEvents.map((event) => event.id),
+    [0],
+  );
+});
+
 test("replay reports live cumulative schedule progress at the current time", () => {
   const replay = createReplay(trace, 1);
   const progress = replay.stateAt(25).progressMetrics;
@@ -108,6 +158,85 @@ test("validateTrace rejects motion from a stale source", () => {
 
   assert.equal(validation.valid, false);
   assert.match(validation.errors.join("\n"), /not at trap:1/);
+});
+
+test("validateTrace rejects shuttling that skips topology adjacency", () => {
+  const badTrace = structuredClone(trace);
+  badTrace.topology.segments = [
+    { id: 0, from: "trap:0", to: "junction:0", length: 10 },
+    { id: 1, from: "junction:0", to: "trap:1", length: 10 },
+    { id: 2, from: "junction:1", to: "trap:2", length: 10 },
+  ];
+  badTrace.topology.traps.push({ id: 2, capacity: 3, slots: [0, 1, 2], orientation: { 2: "L" } });
+  badTrace.topology.junctions = [{ id: 0 }, { id: 1 }];
+  badTrace.events = [
+    {
+      id: 0,
+      type: "split",
+      start: 0,
+      end: 10,
+      ions: [0],
+      source: "trap:0",
+      target: "segment:0",
+      metadata: { endpoint: "R" },
+    },
+    {
+      id: 1,
+      type: "move",
+      start: 10,
+      end: 20,
+      ions: [0],
+      source: "segment:0",
+      target: "segment:2",
+      metadata: {},
+    },
+  ];
+  badTrace.metrics = { event_count: 2 };
+
+  const validation = validateTrace(badTrace);
+
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors.join("\n"), /not adjacent to segment:2/);
+});
+
+test("validateTrace rejects dynamic trap capacity overflow after merge", () => {
+  const badTrace = structuredClone(trace);
+  badTrace.topology.traps = [
+    { id: 0, capacity: 1, slots: [0], orientation: { 0: "R" } },
+    { id: 1, capacity: 1, slots: [0], orientation: { 0: "L" } },
+  ];
+  badTrace.particles = [
+    { id: 0, initial_location: "trap:0", initial_slot: 0 },
+    { id: 1, initial_location: "trap:1", initial_slot: 0 },
+  ];
+  badTrace.events = [
+    {
+      id: 0,
+      type: "split",
+      start: 0,
+      end: 10,
+      ions: [0],
+      source: "trap:0",
+      target: "segment:0",
+      metadata: { endpoint: "R" },
+    },
+    {
+      id: 1,
+      type: "merge",
+      start: 10,
+      end: 20,
+      ions: [0],
+      source: "segment:0",
+      target: "trap:1",
+      metadata: { endpoint: "L" },
+    },
+  ];
+  badTrace.metrics = { event_count: 2 };
+
+  const validation = validateTrace(badTrace);
+
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors.join("\n"), /trap:1 occupancy 2 exceeds capacity 1/);
 });
 
 test("validateTrace rejects two-qubit gates when ions are not colocated", () => {

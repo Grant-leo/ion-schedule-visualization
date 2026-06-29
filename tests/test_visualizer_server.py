@@ -20,6 +20,8 @@ def test_options_payload_exposes_programs_machines_capacities_and_mappers():
     assert qaoa["qubits"] == 6
     assert qaoa["cx"] == 54
     assert "G3x3" in payload["machines"]
+    assert payload["machine_trap_counts"]["G3x3"] == 9
+    assert payload["machine_trap_counts"]["L6"] == 6
     assert 2 in payload["capacities"]
     assert "Greedy" in payload["mappers"]
     assert "SABRE" in payload["mappers"]

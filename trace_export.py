@@ -38,9 +38,12 @@ def validate_trace(trace):
     trap_busy_until = {}
     pending_transfers = []
     errors = []
-    known_locations = _validate_topology(trace.get("topology", {}), errors)
-    _validate_initial_particles(trace.get("particles", []), trace.get("topology", {}), known_locations, errors)
-    trap_segment_orientation = _trap_segment_orientation(trace.get("topology", {}))
+    topology = trace.get("topology", {})
+    known_locations = _validate_topology(topology, errors)
+    topology_adjacency = _topology_adjacency(topology)
+    trap_capacity = _trap_capacity(topology)
+    occupancy = _validate_initial_particles(trace.get("particles", []), known_locations, trap_capacity, errors)
+    trap_segment_orientation = _trap_segment_orientation(topology)
     expected_events = trace.get("metrics", {}).get("event_count")
     if expected_events is not None and expected_events != len(trace["events"]):
         errors.append(f"metrics event_count {expected_events} does not match {len(trace['events'])} events")
@@ -50,6 +53,8 @@ def validate_trace(trace):
         for transfer in pending_transfers:
             if transfer["end"] <= time:
                 locations[transfer["ion"]] = transfer["target"]
+                if transfer["target"] in trap_capacity:
+                    _increment_trap_occupancy(occupancy, trap_capacity, transfer["target"], transfer["event"], errors)
             else:
                 remaining.append(transfer)
         pending_transfers[:] = remaining
@@ -62,6 +67,7 @@ def validate_trace(trace):
             errors.append(f"event {event['id']} unknown source {source}")
         if target not in known_locations:
             errors.append(f"event {event['id']} unknown target {target}")
+        _validate_event_topology(event, topology_adjacency, errors)
         _validate_event_endpoint(event, trap_segment_orientation, errors)
         if event["end"] < event["start"]:
             errors.append(f"event {event['id']} ends before it starts")
@@ -77,8 +83,10 @@ def validate_trace(trace):
                     errors.append(f"ion {ion} not at {target} for gate {event['id']}; current={current}")
             elif current != source:
                 errors.append(f"ion {ion} not at {source} for {event['type']} {event['id']}; current={current}")
+            if event["type"] == "split" and source in trap_capacity:
+                _decrement_trap_occupancy(occupancy, source, event, errors)
             if event["type"] != "gate":
-                pending_transfers.append({"end": event["end"], "ion": ion, "target": target})
+                pending_transfers.append({"end": event["end"], "ion": ion, "target": target, "event": event})
             busy_until[ion] = max(busy_until.get(ion, 0), event["end"])
         if trap_location:
             trap_busy_until[trap_location] = max(trap_busy_until.get(trap_location, 0), event["end"])
@@ -125,13 +133,26 @@ def _validate_topology(topology, errors):
     return known_locations
 
 
-def _validate_initial_particles(particles, topology, known_locations, errors):
-    particle_ids = set()
-    trap_capacity = {
+def _topology_adjacency(topology):
+    segment_endpoints = {}
+    for segment in topology.get("segments", []):
+        segment_endpoints[location_key("segment", segment.get("id"))] = {
+            segment.get("from"),
+            segment.get("to"),
+        }
+    return {"segment_endpoints": segment_endpoints}
+
+
+def _trap_capacity(topology):
+    return {
         location_key("trap", trap.get("id")): trap.get("capacity")
         for trap in topology.get("traps", [])
         if trap.get("capacity") is not None
     }
+
+
+def _validate_initial_particles(particles, known_locations, trap_capacity, errors):
+    particle_ids = set()
     occupancy = {}
 
     for particle in particles:
@@ -149,6 +170,60 @@ def _validate_initial_particles(particles, topology, known_locations, errors):
         capacity = trap_capacity[location]
         if count > capacity:
             errors.append(f"{location} initial occupancy {count} exceeds capacity {capacity}")
+
+    return occupancy
+
+
+def _validate_event_topology(event, topology_adjacency, errors):
+    event_type = event.get("type")
+    source = event.get("source")
+    target = event.get("target")
+    segment_endpoints = topology_adjacency["segment_endpoints"]
+
+    if event_type == "split":
+        if not str(source).startswith("trap:") or not str(target).startswith("segment:"):
+            errors.append(f"event {event.get('id')} split must move from trap to segment")
+            return
+        if source not in segment_endpoints.get(target, set()):
+            errors.append(f"event {event.get('id')} source {source} not adjacent to {target}")
+        return
+
+    if event_type == "merge":
+        if not str(source).startswith("segment:") or not str(target).startswith("trap:"):
+            errors.append(f"event {event.get('id')} merge must move from segment to trap")
+            return
+        if target not in segment_endpoints.get(source, set()):
+            errors.append(f"event {event.get('id')} source {source} not adjacent to {target}")
+        return
+
+    if event_type == "move":
+        if not str(source).startswith("segment:") or not str(target).startswith("segment:"):
+            errors.append(f"event {event.get('id')} move must stay between channel segments")
+            return
+        source_endpoints = segment_endpoints.get(source, set())
+        target_endpoints = segment_endpoints.get(target, set())
+        shared_junction = any(
+            str(endpoint).startswith("junction:") and endpoint in target_endpoints
+            for endpoint in source_endpoints
+        )
+        if not shared_junction:
+            errors.append(f"event {event.get('id')} source {source} not adjacent to {target}")
+
+
+def _decrement_trap_occupancy(occupancy, location, event, errors):
+    occupancy[location] = occupancy.get(location, 0) - 1
+    if occupancy[location] < 0:
+        errors.append(f"{location} occupancy {occupancy[location]} below zero after event {event.get('id')}")
+
+
+def _increment_trap_occupancy(occupancy, trap_capacity, location, event, errors):
+    occupancy[location] = occupancy.get(location, 0) + 1
+    capacity = trap_capacity.get(location)
+    if capacity is not None and occupancy[location] > capacity:
+        errors.append(
+            f"{location} occupancy {occupancy[location]} exceeds capacity {capacity} "
+            f"after event {event.get('id')}"
+        )
 
 
 def _trap_segment_orientation(topology):

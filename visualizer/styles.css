@@ -146,7 +146,7 @@ select {
   height: 100vh;
   min-height: 0;
   display: grid;
-  grid-template-columns: clamp(292px, 20vw, 320px) minmax(560px, 1fr) clamp(360px, 27vw, 420px);
+  grid-template-columns: clamp(260px, 19vw, 300px) minmax(620px, 1fr) clamp(340px, 26vw, 400px);
   grid-template-rows: 132px minmax(0, 1fr) 60px;
   grid-template-areas:
     "header header right"
@@ -539,6 +539,12 @@ select {
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.42;
+}
+
+.benchmark-meta.is-warning {
+  border-color: rgba(255, 107, 118, 0.42);
+  background: rgba(255, 107, 118, 0.095);
+  color: #ffb8be;
 }
 
 .advanced-config .primary-action {
@@ -985,7 +991,7 @@ select {
   }
 }
 
-@media (max-width: 1360px) {
+@media (max-width: 1240px) {
   body {
     overflow: auto;
   }

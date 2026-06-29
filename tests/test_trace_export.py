@@ -346,6 +346,102 @@ def test_validate_trace_rejects_split_endpoint_that_disagrees_with_architecture_
     assert any("endpoint L does not match trap:0 segment:0 orientation R" in error for error in validation["errors"])
 
 
+def test_validate_trace_rejects_shuttling_that_skips_topology_adjacency():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [
+                {"id": 0, "capacity": 1, "orientation": {"0": "R"}},
+                {"id": 1, "capacity": 1, "orientation": {"1": "L"}},
+                {"id": 2, "capacity": 1, "orientation": {"2": "L"}},
+            ],
+            "segments": [
+                {"id": 0, "from": "trap:0", "to": "junction:0", "length": 10},
+                {"id": 1, "from": "junction:0", "to": "trap:1", "length": 10},
+                {"id": 2, "from": "junction:1", "to": "trap:2", "length": 10},
+            ],
+            "junctions": [{"id": 0}, {"id": 1}],
+        },
+        "particles": [{"id": 0, "initial_location": "trap:0"}],
+        "events": [
+            {
+                "id": 0,
+                "type": "split",
+                "start": 0,
+                "end": 10,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "segment:0",
+                "metadata": {"endpoint": "R"},
+            },
+            {
+                "id": 1,
+                "type": "move",
+                "start": 10,
+                "end": 20,
+                "ions": [0],
+                "source": "segment:0",
+                "target": "segment:2",
+                "metadata": {},
+            },
+        ],
+        "metrics": {"event_count": 2},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("not adjacent to segment:2" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_dynamic_trap_capacity_overflow_after_merge():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [
+                {"id": 0, "capacity": 1, "orientation": {"0": "R"}},
+                {"id": 1, "capacity": 1, "orientation": {"0": "L"}},
+            ],
+            "segments": [{"id": 0, "from": "trap:0", "to": "trap:1", "length": 10}],
+            "junctions": [],
+        },
+        "particles": [
+            {"id": 0, "initial_location": "trap:0"},
+            {"id": 1, "initial_location": "trap:1"},
+        ],
+        "events": [
+            {
+                "id": 0,
+                "type": "split",
+                "start": 0,
+                "end": 10,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "segment:0",
+                "metadata": {"endpoint": "R"},
+            },
+            {
+                "id": 1,
+                "type": "merge",
+                "start": 10,
+                "end": 20,
+                "ions": [0],
+                "source": "segment:0",
+                "target": "trap:1",
+                "metadata": {"endpoint": "L"},
+            },
+        ],
+        "metrics": {"event_count": 2},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("trap:1 occupancy 2 exceeds capacity 1" in error for error in validation["errors"])
+
+
 def test_export_trace_cli_writes_valid_json(tmp_path):
     output = tmp_path / "grover_trace.json"
     result = subprocess.run(

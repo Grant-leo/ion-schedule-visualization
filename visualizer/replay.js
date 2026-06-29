@@ -9,14 +9,23 @@ export function validateTrace(trace) {
   if (!Array.isArray(trace.events)) errors.push("events must be an array");
   if (errors.length > 0) return { valid: false, errors };
 
+  const topologyInfo = validateTopology(trace.topology || {}, errors);
+  const occupancy = validateInitialParticles(trace.particles, topologyInfo, errors);
   const locations = new Map(trace.particles.map((particle) => [particle.id, particle.initial_location]));
   const sortedEvents = sortedTraceEvents(trace.events);
   const busyUntil = new Map();
   const trapBusyUntil = new Map();
   const pendingTransfers = [];
+  const expectedEvents = trace.metrics?.event_count;
+  if (expectedEvents !== undefined && expectedEvents !== trace.events.length) {
+    errors.push(`metrics event_count ${expectedEvents} does not match ${trace.events.length} events`);
+  }
 
   for (const event of sortedEvents) {
     applyCompletedTransfers(pendingTransfers, locations, event.start);
+    validateEventLocations(event, topologyInfo, errors);
+    validateEventTopology(event, topologyInfo, errors);
+    validateEventEndpoint(event, topologyInfo.trapSegmentOrientation, errors);
     if (event.end < event.start) {
       errors.push(`event ${event.id} ends before it starts`);
     }
@@ -36,11 +45,14 @@ export function validateTrace(trace) {
       } else if (current !== event.source) {
         errors.push(`ion ${ion} not at ${event.source} for ${event.type} ${event.id}; current=${current}`);
       }
+      if (event.type === "split" && event.source?.startsWith("trap:")) {
+        decrementTrapOccupancy(occupancy, event.source, event, errors);
+      }
     }
 
     if (event.type !== "gate") {
       for (const ion of event.ions || []) {
-        pendingTransfers.push({ end: event.end, ion, target: event.target });
+        pendingTransfers.push({ end: event.end, ion, target: event.target, event });
       }
     }
     for (const ion of event.ions || []) {
@@ -53,6 +65,19 @@ export function validateTrace(trace) {
 
   applyCompletedTransfers(pendingTransfers, locations, Number.POSITIVE_INFINITY);
   return { valid: errors.length === 0, errors };
+
+  function applyCompletedTransfers(pendingTransfers, locations, time) {
+    for (let index = pendingTransfers.length - 1; index >= 0; index -= 1) {
+      const transfer = pendingTransfers[index];
+      if (transfer.end <= time) {
+        locations.set(transfer.ion, transfer.target);
+        if (transfer.target?.startsWith("trap:")) {
+          incrementTrapOccupancy(occupancy, topologyInfo.trapCapacity, transfer.target, transfer.event, errors);
+        }
+        pendingTransfers.splice(index, 1);
+      }
+    }
+  }
 }
 
 export function createReplay(trace, keyframeInterval = 100) {
@@ -111,14 +136,162 @@ function sortedTraceEvents(events) {
   return [...events].sort((left, right) => left.start - right.start || left.id - right.id);
 }
 
-function applyCompletedTransfers(pendingTransfers, locations, time) {
-  for (let index = pendingTransfers.length - 1; index >= 0; index -= 1) {
-    const transfer = pendingTransfers[index];
-    if (transfer.end <= time) {
-      locations.set(transfer.ion, transfer.target);
-      pendingTransfers.splice(index, 1);
+function validateTopology(topology, errors) {
+  const knownLocations = new Set();
+  const trapCapacity = new Map();
+  const trapSegmentOrientation = new Map();
+  const segmentEndpoints = new Map();
+  const trapIds = new Set();
+  const junctionIds = new Set();
+  const segmentIds = new Set();
+
+  for (const trap of topology.traps || []) {
+    const trapId = trap.id;
+    if (trapIds.has(trapId)) errors.push(`duplicate trap id ${trapId}`);
+    trapIds.add(trapId);
+    const trapLocation = locationKey("trap", trapId);
+    knownLocations.add(trapLocation);
+    if (trap.capacity !== undefined && trap.capacity !== null) {
+      trapCapacity.set(trapLocation, Number(trap.capacity));
+    }
+    for (const [segmentId, side] of Object.entries(trap.orientation || {})) {
+      trapSegmentOrientation.set(`${trapLocation}|${locationKey("segment", segmentId)}`, side);
     }
   }
+
+  for (const junction of topology.junctions || []) {
+    const junctionId = junction.id;
+    if (junctionIds.has(junctionId)) errors.push(`duplicate junction id ${junctionId}`);
+    junctionIds.add(junctionId);
+    knownLocations.add(locationKey("junction", junctionId));
+  }
+
+  for (const segment of topology.segments || []) {
+    const segmentId = segment.id;
+    if (segmentIds.has(segmentId)) errors.push(`duplicate segment id ${segmentId}`);
+    segmentIds.add(segmentId);
+    for (const endpointKey of ["from", "to"]) {
+      const endpoint = segment[endpointKey];
+      if (!knownLocations.has(endpoint)) {
+        errors.push(`segment ${segmentId} unknown ${endpointKey} ${endpoint}`);
+      }
+    }
+    const segmentLocation = locationKey("segment", segmentId);
+    knownLocations.add(segmentLocation);
+    segmentEndpoints.set(segmentLocation, new Set([segment.from, segment.to]));
+  }
+
+  return { knownLocations, trapCapacity, trapSegmentOrientation, segmentEndpoints };
+}
+
+function validateInitialParticles(particles, topologyInfo, errors) {
+  const particleIds = new Set();
+  const occupancy = new Map();
+  for (const particle of particles || []) {
+    if (particleIds.has(particle.id)) errors.push(`duplicate particle id ${particle.id}`);
+    particleIds.add(particle.id);
+    const location = particle.initial_location;
+    if (!topologyInfo.knownLocations.has(location)) {
+      errors.push(`particle ${particle.id} unknown initial_location ${location}`);
+    }
+    if (topologyInfo.trapCapacity.has(location)) {
+      occupancy.set(location, (occupancy.get(location) || 0) + 1);
+    }
+  }
+  for (const [location, count] of occupancy) {
+    const capacity = topologyInfo.trapCapacity.get(location);
+    if (count > capacity) {
+      errors.push(`${location} initial occupancy ${count} exceeds capacity ${capacity}`);
+    }
+  }
+  return occupancy;
+}
+
+function validateEventLocations(event, topologyInfo, errors) {
+  if (event.source && !topologyInfo.knownLocations.has(event.source)) {
+    errors.push(`event ${event.id} unknown source ${event.source}`);
+  }
+  if (event.target && !topologyInfo.knownLocations.has(event.target)) {
+    errors.push(`event ${event.id} unknown target ${event.target}`);
+  }
+}
+
+function validateEventTopology(event, topologyInfo, errors) {
+  if (event.type === "split") {
+    if (!event.source?.startsWith("trap:") || !event.target?.startsWith("segment:")) {
+      errors.push(`event ${event.id} split must move from trap to segment`);
+      return;
+    }
+    if (!topologyInfo.segmentEndpoints.get(event.target)?.has(event.source)) {
+      errors.push(`event ${event.id} source ${event.source} not adjacent to ${event.target}`);
+    }
+    return;
+  }
+
+  if (event.type === "merge") {
+    if (!event.source?.startsWith("segment:") || !event.target?.startsWith("trap:")) {
+      errors.push(`event ${event.id} merge must move from segment to trap`);
+      return;
+    }
+    if (!topologyInfo.segmentEndpoints.get(event.source)?.has(event.target)) {
+      errors.push(`event ${event.id} source ${event.source} not adjacent to ${event.target}`);
+    }
+    return;
+  }
+
+  if (event.type === "move") {
+    if (!event.source?.startsWith("segment:") || !event.target?.startsWith("segment:")) {
+      errors.push(`event ${event.id} move must stay between channel segments`);
+      return;
+    }
+    const sourceEndpoints = topologyInfo.segmentEndpoints.get(event.source) || new Set();
+    const targetEndpoints = topologyInfo.segmentEndpoints.get(event.target) || new Set();
+    const sharedJunction = [...sourceEndpoints].some((endpoint) => endpoint.startsWith("junction:") && targetEndpoints.has(endpoint));
+    if (!sharedJunction) {
+      errors.push(`event ${event.id} source ${event.source} not adjacent to ${event.target}`);
+    }
+  }
+}
+
+function validateEventEndpoint(event, trapSegmentOrientation, errors) {
+  let trapLocation = null;
+  let segmentLocation = null;
+  if (event.type === "split") {
+    trapLocation = event.source;
+    segmentLocation = event.target;
+  } else if (event.type === "merge") {
+    trapLocation = event.target;
+    segmentLocation = event.source;
+  } else {
+    return;
+  }
+
+  const expected = trapSegmentOrientation.get(`${trapLocation}|${segmentLocation}`);
+  if (expected === undefined) return;
+  const actual = event.metadata?.endpoint;
+  if (actual !== expected) {
+    errors.push(`event ${event.id} endpoint ${actual} does not match ${trapLocation} ${segmentLocation} orientation ${expected}`);
+  }
+}
+
+function decrementTrapOccupancy(occupancy, location, event, errors) {
+  if (!location?.startsWith("trap:")) return;
+  const next = (occupancy.get(location) || 0) - 1;
+  occupancy.set(location, next);
+  if (next < 0) errors.push(`${location} occupancy ${next} below zero after event ${event.id}`);
+}
+
+function incrementTrapOccupancy(occupancy, trapCapacity, location, event, errors) {
+  const next = (occupancy.get(location) || 0) + 1;
+  occupancy.set(location, next);
+  const capacity = trapCapacity.get(location);
+  if (capacity !== undefined && next > capacity) {
+    errors.push(`${location} occupancy ${next} exceeds capacity ${capacity} after event ${event?.id}`);
+  }
+}
+
+function locationKey(kind, id) {
+  return `${kind}:${id}`;
 }
 
 function buildTrapChains(trace, locations, activeEvents) {
@@ -183,20 +356,37 @@ function buildKeyframes(events, initialLocations, interval) {
   const safeInterval = Math.max(1, Number(interval) || 1);
   const keyframes = [{ time: 0, eventIndex: 0, locations: new Map(initialLocations) }];
   const locations = new Map(initialLocations);
+  const completedTransfers = events
+    .filter((event) => event.type !== "gate")
+    .sort((left, right) => left.end - right.end || left.start - right.start || left.id - right.id);
+  const checkpointTimes = [
+    ...new Set(
+      events
+        .slice(safeInterval - 1)
+        .filter((_, index) => index % safeInterval === 0)
+        .map((event) => event.end)
+        .sort((left, right) => left - right),
+    ),
+  ];
+  let transferIndex = 0;
 
-  for (let index = 0; index < events.length; index += 1) {
-    const event = events[index];
-    if (event.type !== "gate") {
-      for (const ion of event.ions) {
+  for (const time of checkpointTimes) {
+    while (transferIndex < completedTransfers.length && completedTransfers[transferIndex].end <= time) {
+      const event = completedTransfers[transferIndex];
+      for (const ion of event.ions || []) {
         locations.set(ion, event.target);
       }
+      transferIndex += 1;
     }
-    if ((index + 1) % safeInterval === 0) {
-      keyframes.push({ time: event.end, eventIndex: index + 1, locations: new Map(locations) });
-    }
+    keyframes.push({ time, eventIndex: firstEventEndingAfter(events, time), locations: new Map(locations) });
   }
 
   return keyframes;
+}
+
+function firstEventEndingAfter(events, time) {
+  const index = events.findIndex((event) => event.end > time);
+  return index === -1 ? events.length : index;
 }
 
 function nearestKeyframe(keyframes, time) {

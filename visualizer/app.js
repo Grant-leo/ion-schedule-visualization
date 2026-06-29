@@ -1,6 +1,6 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260629-junction13";
-import { renderDagSvg } from "./dag_renderer.js?v=20260629-junction13";
-import { createReplay, validateTrace } from "./replay.js?v=20260629-junction13";
+import { createRenderer } from "./canvas_renderer.js?v=20260629-junction15";
+import { renderDagSvg } from "./dag_renderer.js?v=20260629-junction15";
+import { createReplay, validateTrace } from "./replay.js?v=20260629-junction15";
 import {
   createHeadlineMetricCards,
   createMetricCards,
@@ -8,7 +8,10 @@ import {
   describeEvent,
   formatLocation,
   summarizeDag,
-} from "./ui_model.js?v=20260629-junction13";
+} from "./ui_model.js?v=20260629-junction15";
+
+const LIVE_PANEL_INTERVAL_MS = 160;
+const PERFORMANCE_PANEL_INTERVAL_MS = 250;
 
 const elements = {
   controlPanel: document.getElementById("controlPanel"),
@@ -62,11 +65,15 @@ let lastInitialLayoutKey = "";
 let lastDagKey = "";
 let lastEventKey = "";
 let programCatalog = new Map();
+let machineTrapCounts = new Map();
+let loadRequestId = 0;
+let lastLivePanelRender = 0;
+let lastPerformancePanelRender = 0;
 
 init().catch((error) => {
   elements.validationPanel.textContent = "Load failed";
   elements.validationPanel.classList.add("is-invalid");
-  elements.eventPanel.textContent = error.stack || String(error);
+  elements.eventPanel.textContent = formatErrorMessage(error);
 });
 
 async function init() {
@@ -101,6 +108,9 @@ function populateTraceSelector(manifest) {
 
 function populateConfigControls(options) {
   programCatalog = new Map((options.programs || []).map((program) => [program.id, program]));
+  machineTrapCounts = new Map(
+    Object.entries(options.machine_trap_counts || {}).map(([machine, count]) => [machine, Number(count)]),
+  );
   fillSelect(
     elements.programSelect,
     options.programs.map((program) => ({ value: program.id, label: programOptionLabel(program) })),
@@ -144,6 +154,7 @@ function wireControls() {
   elements.traceSelect.addEventListener("change", () => {
     const value = elements.traceSelect.value;
     if (generatedTraces.has(value)) {
+      loadRequestId += 1;
       loadTraceData(generatedTraces.get(value));
     } else {
       loadTrace(value);
@@ -151,6 +162,8 @@ function wireControls() {
   });
   elements.loadConfigButton.addEventListener("click", loadSelectedConfig);
   elements.programSelect.addEventListener("change", renderSelectedBenchmark);
+  elements.architectureSelect.addEventListener("change", renderSelectedBenchmark);
+  elements.capacitySelect.addEventListener("change", renderSelectedBenchmark);
   elements.schedulerSelect.addEventListener("change", updateSchedulerModeButtons);
   for (const button of elements.schedulerModeButtons) {
     button.addEventListener("click", async () => {
@@ -166,7 +179,7 @@ function wireControls() {
   elements.stepButton.addEventListener("click", stepToNextEvent);
   elements.timeline.addEventListener("input", () => {
     currentTime = Number(elements.timeline.value);
-    draw();
+    draw({ forcePanels: true });
   });
   window.addEventListener("resize", () => {
     draw();
@@ -174,7 +187,9 @@ function wireControls() {
 }
 
 async function loadTrace(path) {
+  const requestId = ++loadRequestId;
   const nextTrace = await fetchJson(path);
+  if (requestId !== loadRequestId) return;
   loadTraceData(nextTrace);
 }
 
@@ -198,21 +213,30 @@ function loadTraceData(nextTrace) {
 
   const valid = frontendValidation.valid && backendValidation.valid;
   setStatus(valid ? "Schedule verified" : "Trace invalid", valid ? "valid" : "invalid");
-  draw();
+  draw({ forcePanels: true });
   elements.controlPanel.scrollTop = 0;
 }
 
 async function loadSelectedConfig() {
+  const requestId = ++loadRequestId;
   const program = elements.programSelect.value;
   const machine = elements.architectureSelect.value;
   const capacity = Number(elements.capacitySelect.value);
   const mapper = elements.mapperSelect.value;
   const ordering = elements.orderingSelect.value;
   const scheduler = elements.schedulerSelect.value;
+  const feasibility = selectedCapacityFeasibility({ program, machine, capacity });
+  if (!feasibility.valid) {
+    setStatus("Capacity too small", "invalid");
+    elements.eventPanel.textContent = feasibility.message;
+    renderSelectedBenchmark();
+    return;
+  }
+  elements.loadConfigButton.disabled = true;
 
-  if (apiAvailable) {
-    setStatus("Generating schedule", "loading");
-    try {
+  try {
+    if (apiAvailable) {
+      setStatus("Generating schedule", "loading");
       const params = new URLSearchParams({
         program,
         machine,
@@ -222,6 +246,7 @@ async function loadSelectedConfig() {
         scheduler,
       });
       const nextTrace = await fetchJson(`api/trace?${params.toString()}`);
+      if (requestId !== loadRequestId) return;
       const key = `generated:${program}:${machine}:${capacity}:${mapper}:${ordering}:${scheduler}`;
       generatedTraces.set(key, nextTrace);
       upsertTraceOption(
@@ -230,28 +255,35 @@ async function loadSelectedConfig() {
       );
       elements.traceSelect.value = key;
       loadTraceData(nextTrace);
-    } catch (error) {
-      setStatus("Generation failed", "invalid");
-      elements.eventPanel.textContent = error.stack || String(error);
+      return;
     }
-    return;
-  }
 
-  const match = manifestEntries.find(
-    (entry) =>
-      entry.machine === machine &&
-      entry.ions_per_region === capacity &&
-      entry.mapper === mapper &&
-      (entry.reorder === undefined || entry.reorder === ordering) &&
-      (entry.scheduler_policy === undefined || entry.scheduler_policy === scheduler) &&
-      programIdFromPath(entry.program || entry.path || entry.id) === program,
-  );
-  if (!match) {
-    setStatus("Config trace missing", "invalid");
-    return;
+    const match = manifestEntries.find(
+      (entry) =>
+        entry.machine === machine &&
+        entry.ions_per_region === capacity &&
+        entry.mapper === mapper &&
+        (entry.reorder === undefined || entry.reorder === ordering) &&
+        (entry.scheduler_policy === undefined || entry.scheduler_policy === scheduler) &&
+        programIdFromPath(entry.program || entry.path || entry.id) === program,
+    );
+    if (!match) {
+      setStatus("Config trace missing", "invalid");
+      return;
+    }
+    elements.traceSelect.value = match.path;
+    const nextTrace = await fetchJson(match.path);
+    if (requestId !== loadRequestId) return;
+    loadTraceData(nextTrace);
+  } catch (error) {
+    if (requestId !== loadRequestId) return;
+    setStatus("Generation failed", "invalid");
+    elements.eventPanel.textContent = formatErrorMessage(error);
+  } finally {
+    if (requestId === loadRequestId) {
+      elements.loadConfigButton.disabled = false;
+    }
   }
-  elements.traceSelect.value = match.path;
-  await loadTrace(match.path);
 }
 
 function syncConfigControls(nextTrace) {
@@ -320,16 +352,40 @@ function renderSelectedBenchmark() {
   const program = programCatalog.get(elements.programSelect.value);
   if (!program) {
     elements.benchmarkMetaPanel.textContent = "";
+    elements.benchmarkMetaPanel.classList.remove("is-warning");
     return;
   }
+  const feasibility = selectedCapacityFeasibility();
   const meta = [
     program.source || "local",
     program.category,
     `${program.qubits ?? "?"} qubits`,
     `${program.cx ?? 0} CX`,
     `${program.total_ops ?? 0} ops`,
+    feasibility.valid ? null : feasibility.shortMessage,
   ].filter(Boolean);
   elements.benchmarkMetaPanel.textContent = meta.join(" | ");
+  elements.benchmarkMetaPanel.classList.toggle("is-warning", !feasibility.valid);
+}
+
+function selectedCapacityFeasibility(selection = {}) {
+  const programId = selection.program || elements.programSelect.value;
+  const machine = selection.machine || elements.architectureSelect.value;
+  const capacity = Number(selection.capacity ?? elements.capacitySelect.value);
+  const qubits = Number(programCatalog.get(programId)?.qubits || 0);
+  const trapCount = Number(machineTrapCounts.get(machine) || 0);
+  if (!qubits || !trapCount || !capacity) return { valid: true };
+  const requiredCapacity = Math.ceil(qubits / trapCount);
+  if (capacity >= requiredCapacity) return { valid: true, requiredCapacity };
+  const shortMessage = `needs cap ${requiredCapacity}+ on ${machine}`;
+  return {
+    valid: false,
+    requiredCapacity,
+    shortMessage,
+    message: `${programLabelFromId(programId)} requires ${qubits} logical qubits; ${machine} with capacity ${capacity} provides ${
+      trapCount * capacity
+    } ion slots. Choose capacity ${requiredCapacity} or larger.`,
+  };
 }
 
 function renderRunConfig(nextTrace) {
@@ -371,13 +427,13 @@ function restart() {
   currentTime = 0;
   playing = false;
   elements.playPauseButton.textContent = "Play";
-  draw();
+  draw({ forcePanels: true });
 }
 
 function stepToNextEvent() {
   if (!replay) return;
   currentTime = replay.nextEventTime(currentTime);
-  draw();
+  draw({ forcePanels: true });
 }
 
 function loop(now) {
@@ -393,19 +449,24 @@ function loop(now) {
     draw();
   }
 
-  recordFrame(delta);
+  recordFrame(delta, now);
   requestAnimationFrame(loop);
 }
 
-function draw() {
+function draw(options = {}) {
   if (!replay || !trace) return;
+  const forcePanels = Boolean(options.forcePanels);
   const state = replay.stateAt(currentTime);
   renderer.draw(state);
   elements.timeline.value = String(Math.floor(state.time));
   elements.timeReadout.textContent = `${Math.floor(state.time)} / ${replay.finishTime}`;
 
   const metricInput = buildMetricInput(trace.metrics, state.metrics, state.dagState);
-  renderHeadlineMetrics(metricInput, state.progressMetrics);
+  const now = performance.now();
+  if (forcePanels || now - lastLivePanelRender >= LIVE_PANEL_INTERVAL_MS || !lastHeadlineKey) {
+    renderHeadlineMetrics(metricInput, state.progressMetrics);
+    lastLivePanelRender = now;
+  }
 
   const dagKey = dagStateKey(state.dagState);
   if (renderedMetricsTrace !== trace || dagKey !== lastMetricsDagKey) {
@@ -638,21 +699,28 @@ function renderInitialLayout(state) {
   elements.initialLayoutPanel.replaceChildren(container);
 }
 
-function recordFrame(delta) {
+function recordFrame(delta, now = performance.now()) {
   frameTimes.push(delta);
   if (frameTimes.length > 60) frameTimes.shift();
+  if (now - lastPerformancePanelRender < PERFORMANCE_PANEL_INTERVAL_MS) return;
+  lastPerformancePanelRender = now;
   const average = frameTimes.reduce((sum, item) => sum + item, 0) / Math.max(1, frameTimes.length);
   const fps = average > 0 ? 1000 / average : 0;
   elements.performancePanel.textContent = `FPS: ${fps.toFixed(1)} | events: ${trace?.events.length ?? 0}`;
 }
 
 function resetInspectorRenderCache() {
+  frameTimes = [];
+  lastFrame = performance.now();
   renderedMetricsTrace = null;
   lastMetricsDagKey = "";
   lastHeadlineKey = "";
   lastInitialLayoutKey = "";
   lastDagKey = "";
   lastEventKey = "";
+  lastLivePanelRender = 0;
+  lastPerformancePanelRender = 0;
+  elements.performancePanel.textContent = `FPS: -- | events: ${trace?.events.length ?? 0}`;
 }
 
 function trapChainsKey(trapChains) {
@@ -673,7 +741,7 @@ function sortedSetKey(values) {
 
 function focusDagViewport(container) {
   const svg = container.querySelector("svg");
-  const target = container.querySelector(".dag-svg-node.active, .dag-svg-node.ready");
+  const target = container.querySelector(".dag-svg-node.active") || container.querySelector(".dag-svg-node.ready");
   if (!svg || !target) return;
   const transform = target.getAttribute("transform") || "";
   const match = /translate\(([-\d.]+),\s*([-\d.]+)\)/.exec(transform);
@@ -696,4 +764,8 @@ async function fetchJson(path) {
     throw new Error(payload?.error || `Failed to load ${path}: ${response.status}`);
   }
   return payload;
+}
+
+function formatErrorMessage(error) {
+  return String(error?.message || error || "Unknown error").replace(/^Error:\s*/, "").split("\n")[0];
 }
