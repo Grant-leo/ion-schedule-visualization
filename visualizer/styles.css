@@ -711,9 +711,9 @@ select {
 }
 
 .dag-svg-node rect {
-  fill: rgba(25, 28, 33, 0.96);
-  stroke: rgba(255, 255, 255, 0.16);
-  stroke-width: 1.2;
+  fill: rgba(31, 36, 43, 0.98);
+  stroke: rgba(100, 210, 255, 0.44);
+  stroke-width: 1.45;
 }
 
 .dag-svg-node text {
@@ -724,7 +724,7 @@ select {
 }
 
 .dag-svg-node .dag-qubits {
-  fill: var(--color-muted);
+  fill: #c5ccd6;
   font-size: 8px;
 }
 
@@ -747,10 +747,6 @@ select {
   fill: rgba(100, 210, 255, 0.14);
   stroke: var(--color-move);
   stroke-width: 1.7;
-}
-
-.dag-svg-node.blocked text {
-  fill: #858b94;
 }
 
 .metric-grid {

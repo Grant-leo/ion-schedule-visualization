@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { layoutDag } from "../dag_renderer.js";
 
@@ -96,4 +97,12 @@ test("layoutDag wraps dense vertical DAG levels instead of overlapping nodes", (
   assert.equal(overlaps.length, 0);
   assert.ok(new Set(nodes.map((node) => Math.round(node.y))).size > 1);
   assert.ok(graph.height > 420);
+});
+
+test("DAG stylesheet dims only executed dependency nodes", () => {
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  assert.match(css, /\.dag-svg-node\.completed\s*{[^}]*opacity:\s*0\.\d+/s);
+  assert.doesNotMatch(css, /\.dag-svg-node\.(active|ready|blocked)\s*{[^}]*opacity\s*:/s);
+  assert.doesNotMatch(css, /\.dag-svg-node\.blocked\s+text\s*{/);
 });
