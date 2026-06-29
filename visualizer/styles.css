@@ -146,7 +146,7 @@ select {
   height: 100vh;
   min-height: 0;
   display: grid;
-  grid-template-columns: clamp(300px, 22vw, 340px) minmax(520px, 1fr) clamp(392px, 30vw, 460px);
+  grid-template-columns: clamp(292px, 20vw, 320px) minmax(560px, 1fr) clamp(360px, 27vw, 420px);
   grid-template-rows: 132px minmax(0, 1fr) 60px;
   grid-template-areas:
     "header header right"

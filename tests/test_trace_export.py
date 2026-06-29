@@ -117,6 +117,36 @@ def test_grid_qccdsim_architecture_can_run_and_exports_rich_topology():
     assert trace["validation"]["valid"] is True
 
 
+def test_g9_trace_layout_keeps_traps_outside_junction_grid():
+    result = run_simulation(
+        SimulationConfig(
+            program=str(ROOT / "programs" / "benchmarks" / "qasmbench" / "small" / "qft_n4.qasm"),
+            machine="G9",
+            ions=2,
+            mapper="Greedy",
+            reorder="Naive",
+            serial_trap_ops=1,
+            serial_comm=0,
+            serial_all=0,
+            gate_type="FM",
+            swap_type="GateSwap",
+            single_qubit_gate_time=7,
+            single_qubit_gate_fidelity=0.999,
+        )
+    )
+
+    trace = export_trace(result)
+    layout = trace["topology"]["layout"]
+    for segment in trace["topology"]["segments"]:
+        endpoints = {segment["from"], segment["to"]}
+        trap = next((item for item in endpoints if item.startswith("trap:")), None)
+        junction = next((item for item in endpoints if item.startswith("junction:")), None)
+        if trap and junction:
+            assert layout[trap] != layout[junction]
+            distance = abs(layout[trap]["x"] - layout[junction]["x"]) + abs(layout[trap]["y"] - layout[junction]["y"])
+            assert distance >= 0.7
+
+
 def test_validate_trace_rejects_gate_when_ions_are_not_colocated():
     bad_trace = {
         "schema_version": "1.0",

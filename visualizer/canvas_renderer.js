@@ -86,16 +86,19 @@ export function trapSlotPoint(trapPoint, slotIndex, capacity) {
   return { x: left + step * slotIndex, y: trapPoint.y };
 }
 
-export function trapConnectionPoint(trap, trapPoint, segmentLocation) {
-  const side = trapEndpointSide(trap, segmentLocation);
-  return trapPortPoints(trapPoint)[side];
+export function trapRenderWidth(trap) {
+  const highCapacityAllowance = Math.max(0, trap.capacity - 6) * 6;
+  return Math.max(68, Math.min(146, 15 * trap.capacity + 14 + highCapacityAllowance));
 }
 
-export function trapPortPoints(trapPoint) {
-  const offset = trapPoint.width / 2 + RENDER_SIZES.trapPortGap;
+export function trapConnectionPoint(trap, trapPoint, segmentLocation) {
+  return trapSlotPoint(trapPoint, endpointSlotIndex(trap, segmentLocation), trap.capacity);
+}
+
+export function trapPortPoints(trapPoint, capacity = 5) {
   return {
-    L: { x: trapPoint.x - offset, y: trapPoint.y },
-    R: { x: trapPoint.x + offset, y: trapPoint.y },
+    L: trapSlotPoint(trapPoint, 0, capacity),
+    R: trapSlotPoint(trapPoint, Math.max(0, capacity - 1), capacity),
   };
 }
 
@@ -210,8 +213,18 @@ export function junctionRenderSpec(junction = {}, directions = []) {
   if (armCount === 4) kind = "cross";
   return {
     armCount,
+    armLineCap: "butt",
+    armLength: RENDER_SIZES.segmentWidth,
+    centerRadius: RENDER_SIZES.segmentWidth / 2,
+    channelWidth: RENDER_SIZES.segmentWidth,
+    hasEnclosure: false,
+    highlightWidth: 1.4,
     kind,
     label: junction.junction_type || `J${armCount}`,
+    markerArmLength: 8,
+    markerRadius: 3.6,
+    markerWidth: 2.2,
+    outerWidth: RENDER_SIZES.segmentOuterWidth,
   };
 }
 
@@ -253,7 +266,7 @@ function computeLayout(canvas, trace) {
     const scaled = point ? scaleLayoutPoint(point, minX, maxX, minY, maxY, marginX, marginY, width, height) : null;
     const x = scaled ? scaled.x : fallbackX;
     const y = scaled ? scaled.y : height * 0.58;
-    traps.set(location, { x, y, width: Math.max(72, Math.min(150, 18 * trap.capacity + 28)) });
+    traps.set(location, { x, y, width: trapRenderWidth(trap) });
   }
 
   const junctionCount = Math.max(1, trace.topology.junctions.length);
@@ -270,17 +283,49 @@ function computeLayout(canvas, trace) {
     junctions.set(location, { x, y });
   }
 
+  alignJunctionsToTrapPorts(trace, traps, junctions);
+
   for (const segment of trace.topology.segments) {
     const start = resolveSegmentNodePoint(traps, junctions, trace.topology.traps, segment.from, segment.id);
     const end = resolveSegmentNodePoint(traps, junctions, trace.topology.traps, segment.to, segment.id);
     if (!start || !end) continue;
     const key = `segment:${segment.id}`;
-    const route = segmentRoutePoints(start, end, segment.from, segment.to, trace.run?.machine);
+    const route = segmentRoutePoints(start, end, segment.from, segment.to, trace.run?.machine, {
+      traps,
+      junctions,
+      traceTraps: trace.topology.traps,
+      segmentId: segment.id,
+    });
     segments.set(key, pointAlongPolyline(route, 0.5));
     segmentEndpoints.set(key, { start, end, from: segment.from, to: segment.to, route });
   }
 
   return { traps, junctions, segments, segmentEndpoints, traceTrapsFallback: trace.topology.traps };
+}
+
+export function alignJunctionsToTrapPorts(trace, traps, junctions) {
+  if (trace.run?.machine === "G9") return;
+  for (const junction of trace.topology.junctions || []) {
+    const junctionLocation = `junction:${junction.id}`;
+    const junctionPoint = junctions.get(junctionLocation);
+    if (!junctionPoint) continue;
+    const verticalPortXs = [];
+    const horizontalPortYs = [];
+    for (const segment of trace.topology.segments || []) {
+      const trapLocation = segment.from?.startsWith("trap:") ? segment.from : segment.to?.startsWith("trap:") ? segment.to : null;
+      if (!trapLocation || (segment.from !== junctionLocation && segment.to !== junctionLocation)) continue;
+      const trap = trace.topology.traps?.find((item) => `trap:${item.id}` === trapLocation);
+      const trapPoint = traps.get(trapLocation);
+      if (!trap || !trapPoint) continue;
+      const portPoint = trapConnectionPoint(trap, trapPoint, `segment:${segment.id}`);
+      const dx = Math.abs(trapPoint.x - junctionPoint.x);
+      const dy = Math.abs(trapPoint.y - junctionPoint.y);
+      if (dy >= dx) verticalPortXs.push(portPoint.x);
+      else horizontalPortYs.push(portPoint.y);
+    }
+    if (verticalPortXs.length) junctionPoint.x = average(verticalPortXs);
+    if (horizontalPortYs.length) junctionPoint.y = average(horizontalPortYs);
+  }
 }
 
 function scaleLayoutPoint(point, minX, maxX, minY, maxY, marginX, marginY, width, height) {
@@ -484,7 +529,7 @@ function drawTrapPorts(context, trace, layout) {
   for (const trap of trace.topology.traps) {
     const point = layout.traps.get(`trap:${trap.id}`);
     if (!point) continue;
-    const ports = trapPortPoints(point);
+    const ports = trapPortPoints(point, trap.capacity);
     const connected = trapConnectedPortSides(trap);
     for (const side of ["L", "R"]) {
       drawTrapNeck(context, point, ports[side], side, connected.has(side));
@@ -547,57 +592,78 @@ function drawJunctions(context, trace, layout) {
     if (!point) continue;
     const directions = junctionDirections(trace, layout, location, point);
     const spec = junctionRenderSpec(junction, directions);
-    const radius = RENDER_SIZES.junctionRadius;
     context.save();
-    context.shadowColor = "rgba(0, 0, 0, 0.55)";
+    context.shadowColor = "rgba(0, 0, 0, 0.5)";
     context.shadowBlur = 8;
-    context.fillStyle = "rgba(5, 6, 7, 0.98)";
-    context.beginPath();
-    context.arc(point.x, point.y, radius + 7, 0, Math.PI * 2);
-    context.fill();
-    context.shadowColor = "rgba(240, 196, 92, 0.26)";
-    context.shadowBlur = spec.kind === "cross" ? 16 : 11;
-    context.fillStyle = "rgba(11, 12, 13, 0.98)";
-    context.strokeStyle = junctionStrokeColor(spec);
-    context.lineWidth = 1.6;
-    context.beginPath();
-    if (spec.kind === "cross") {
-      roundedRect(context, point.x - radius - 2, point.y - radius - 2, (radius + 2) * 2, (radius + 2) * 2, 7);
-    } else {
-      context.arc(point.x, point.y, radius + 3, 0, Math.PI * 2);
-    }
-    context.fill();
-    context.stroke();
+    drawJunctionPatch(context, point, directions, spec.armLength, spec.outerWidth, "rgba(0, 0, 0, 0.74)", spec.armLineCap);
+    context.shadowColor = "transparent";
     context.shadowBlur = 0;
-
-    context.strokeStyle = junctionStrokeColor(spec);
-    context.lineWidth = 4.2;
-    context.lineCap = "round";
-    for (const direction of directions) {
-      context.beginPath();
-      context.moveTo(point.x, point.y);
-      context.lineTo(point.x + direction.x * (radius + 2), point.y + direction.y * (radius + 2));
-      context.stroke();
-    }
-
-    context.fillStyle = "rgba(5, 6, 7, 0.98)";
-    context.beginPath();
-    context.arc(point.x, point.y, spec.kind === "straight" ? 2.4 : 3.1, 0, Math.PI * 2);
-    context.fill();
-
-    context.fillStyle = junctionStrokeColor(spec);
-    for (const direction of directions) {
-      context.beginPath();
-      context.arc(point.x + direction.x * (radius + 1), point.y + direction.y * (radius + 1), 2.2, 0, Math.PI * 2);
-      context.fill();
-    }
-
-    context.fillStyle = cssColor("--color-junction");
-    context.beginPath();
-    context.arc(point.x, point.y, spec.kind === "straight" ? 2.2 : 2.8, 0, Math.PI * 2);
-    context.fill();
+    drawJunctionPatch(
+      context,
+      point,
+      directions,
+      spec.armLength,
+      spec.channelWidth + 7,
+      spec.kind === "cross" ? "rgba(255, 255, 255, 0.12)" : "rgba(255, 255, 255, 0.105)",
+      spec.armLineCap,
+    );
+    drawJunctionPatch(context, point, directions, spec.armLength, spec.channelWidth, cssColor("--color-segment"), spec.armLineCap);
+    drawJunctionPatch(context, point, directions, spec.armLength, spec.highlightWidth, "rgba(255, 255, 255, 0.2)", spec.armLineCap);
+    drawJunctionMarker(context, point, directions, spec);
     context.restore();
   }
+}
+
+function drawJunctionMarker(context, point, directions, spec) {
+  if (!spec.markerRadius) return;
+  context.save();
+  context.shadowColor = "rgba(255, 209, 102, 0.42)";
+  context.shadowBlur = 9;
+  context.strokeStyle = junctionStrokeColor(spec);
+  context.lineWidth = spec.markerWidth;
+  context.lineCap = "round";
+  for (const direction of directions) {
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+    context.lineTo(point.x + direction.x * spec.markerArmLength, point.y + direction.y * spec.markerArmLength);
+    context.stroke();
+  }
+  context.fillStyle = junctionStrokeColor(spec);
+  context.beginPath();
+  context.arc(point.x, point.y, spec.markerRadius, 0, Math.PI * 2);
+  context.fill();
+  context.shadowBlur = 0;
+  context.fillStyle = "rgba(7, 8, 10, 0.76)";
+  context.beginPath();
+  context.arc(point.x, point.y, Math.max(1.1, spec.markerRadius * 0.38), 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+function drawJunctionPatch(context, point, directions, length, width, color, lineCap) {
+  drawJunctionArms(context, point, directions, length, width, color, lineCap);
+  context.save();
+  context.fillStyle = color;
+  context.beginPath();
+  context.arc(point.x, point.y, width / 2, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+function drawJunctionArms(context, point, directions, length, width, color, lineCap = "butt") {
+  if (!directions.length) return;
+  context.save();
+  context.strokeStyle = color;
+  context.lineWidth = width;
+  context.lineCap = lineCap;
+  context.lineJoin = "round";
+  for (const direction of directions) {
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+    context.lineTo(point.x + direction.x * length, point.y + direction.y * length);
+    context.stroke();
+  }
+  context.restore();
 }
 
 function junctionStrokeColor(spec) {
@@ -607,22 +673,46 @@ function junctionStrokeColor(spec) {
   return cssColor("--color-junction");
 }
 
-function junctionDirections(trace, layout, junctionLocation, point) {
+export function junctionDirections(trace, layout, junctionLocation, point) {
   const directions = [];
   for (const segment of trace.topology.segments || []) {
     if (segment.from !== junctionLocation && segment.to !== junctionLocation) continue;
     const endpoints = layout.segmentEndpoints?.get(`segment:${segment.id}`);
     if (!endpoints) continue;
-    const other = segment.from === junctionLocation ? endpoints.end : endpoints.start;
-    const length = distance(point, other);
-    if (length === 0) continue;
-    const direction = { x: (other.x - point.x) / length, y: (other.y - point.y) / length };
+    const direction = junctionRouteDirection(point, endpoints, segment.from === junctionLocation);
+    if (!direction) continue;
     const duplicate = directions.some(
       (item) => Math.abs(item.x - direction.x) < 0.08 && Math.abs(item.y - direction.y) < 0.08,
     );
     if (!duplicate) directions.push(direction);
   }
   return directions;
+}
+
+function junctionRouteDirection(point, endpoints, junctionIsStart) {
+  const route = endpoints.route || [endpoints.start, endpoints.end].filter(Boolean);
+  const adjacent = junctionAdjacentRoutePoint(point, route);
+  const fallback = junctionIsStart ? endpoints.end : endpoints.start;
+  return normalizedDirection(point, adjacent || fallback);
+}
+
+function junctionAdjacentRoutePoint(point, route) {
+  if (!point || !route || route.length < 2) return null;
+  for (let index = 0; index < route.length; index += 1) {
+    if (!samePoint(point, route[index])) continue;
+    const next = route[index + 1];
+    if (next && distance(point, next) > 0) return next;
+    const previous = route[index - 1];
+    if (previous && distance(point, previous) > 0) return previous;
+  }
+  return null;
+}
+
+function normalizedDirection(from, to) {
+  if (!from || !to) return null;
+  const length = distance(from, to);
+  if (length === 0) return null;
+  return { x: (to.x - from.x) / length, y: (to.y - from.y) / length };
 }
 
 function drawActiveEvents(context, layout, state) {
@@ -793,8 +883,19 @@ function drawMotionPath(context, path) {
   context.restore();
 }
 
-function segmentRoutePoints(start, end, fromLocation, toLocation, machineName) {
+export function segmentRoutePoints(start, end, fromLocation, toLocation, machineName, routingContext = {}) {
   if (machineName === "H6") return [start, end];
+  const fromDirection = endpointPortDirection(fromLocation, toLocation, start, routingContext);
+  const toDirection = endpointPortDirection(toLocation, fromLocation, end, routingContext);
+  if (sameAxis(start, end) && endpointDirectionsFollowAxis(start, end, fromDirection, toDirection)) {
+    return [start, end];
+  }
+  if (fromDirection || toDirection) {
+    const leadDistance = junctionPortLeadDistance();
+    const fromLead = fromDirection ? translatePoint(start, fromDirection, leadDistance) : start;
+    const toLead = toDirection ? translatePoint(end, toDirection, leadDistance) : end;
+    return compactPath([start, fromLead, ...orthogonalConnectorPoints(fromLead, toLead, fromDirection), toLead, end]);
+  }
   if (sameAxis(start, end)) return [start, end];
   if (fromLocation?.startsWith("trap:") && toLocation?.startsWith("trap:")) {
     const midY = (start.y + end.y) / 2;
@@ -807,6 +908,67 @@ function segmentRoutePoints(start, end, fromLocation, toLocation, machineName) {
     return compactPath([start, { x: end.x, y: start.y }, end]);
   }
   return compactPath([start, { x: start.x, y: end.y }, end]);
+}
+
+function endpointPortDirection(location, neighborLocation, endpointPoint, routingContext) {
+  if (location?.startsWith("junction:")) {
+    const center = nodeCenterPoint(routingContext, location) || endpointPoint;
+    const neighbor = nodeCenterPoint(routingContext, neighborLocation);
+    return dominantAxisDirection(center, neighbor);
+  }
+  if (location?.startsWith("trap:")) {
+    return null;
+  }
+  return null;
+}
+
+function trapForRoutingContext(routingContext, location) {
+  return (routingContext?.traceTraps || []).find((trap) => `trap:${trap.id}` === location) || null;
+}
+
+function nodeCenterPoint(routingContext, location) {
+  return routingContext?.traps?.get(location) || routingContext?.junctions?.get(location) || null;
+}
+
+function dominantAxisDirection(from, to) {
+  if (!from || !to) return null;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return null;
+  if (Math.abs(dx) >= Math.abs(dy)) return { x: Math.sign(dx) || 1, y: 0 };
+  return { x: 0, y: Math.sign(dy) || 1 };
+}
+
+function junctionPortLeadDistance() {
+  return RENDER_SIZES.segmentWidth * 2.2;
+}
+
+function endpointDirectionsFollowAxis(start, end, fromDirection, toDirection) {
+  const forward = dominantAxisDirection(start, end);
+  const backward = dominantAxisDirection(end, start);
+  return (!fromDirection || sameDirection(fromDirection, forward)) && (!toDirection || sameDirection(toDirection, backward));
+}
+
+function sameDirection(a, b) {
+  if (!a || !b) return false;
+  return Math.abs(a.x - b.x) < 0.001 && Math.abs(a.y - b.y) < 0.001;
+}
+
+function average(values) {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function translatePoint(point, direction, distanceValue) {
+  return {
+    x: point.x + direction.x * distanceValue,
+    y: point.y + direction.y * distanceValue,
+  };
+}
+
+function orthogonalConnectorPoints(start, end, fromDirection) {
+  if (!start || !end || sameAxis(start, end)) return [];
+  if (fromDirection && Math.abs(fromDirection.x) > 0) return [{ x: start.x, y: end.y }];
+  return [{ x: end.x, y: start.y }];
 }
 
 function segmentEndpointToCenterPath(layout, segmentLocation, endpointLocationOrPoint) {

@@ -292,6 +292,8 @@ def _paired_trap_layout(machine):
 
 
 def _grid_layout(machine):
+    if len(machine.junctions) == 9:
+        return _g9_grid_layout(machine)
     layout = {}
     trap_columns = 3
     for trap in machine.traps:
@@ -305,6 +307,68 @@ def _grid_layout(machine):
             col = junction.id % 3
         layout[location_key("junction", junction.id)] = {"x": col, "y": row}
     return layout
+
+
+def _g9_grid_layout(machine):
+    layout = {}
+    junction_points = {}
+    for junction in machine.junctions:
+        point = {"x": junction.id % 3, "y": junction.id // 3}
+        junction_points[junction] = point
+        layout[location_key("junction", junction.id)] = point
+
+    traps_by_junction = {}
+    for trap in sorted(machine.traps, key=lambda item: item.id):
+        connected = [obj for obj in machine.graph.neighbors(trap) if isinstance(obj, Junction)]
+        if not connected:
+            layout[location_key("trap", trap.id)] = {"x": trap.id % 3, "y": trap.id // 3}
+            continue
+        traps_by_junction.setdefault(connected[0], []).append(trap)
+
+    for junction, traps in traps_by_junction.items():
+        base = junction_points[junction]
+        free_ports = _junction_free_grid_ports(machine, junction, junction_points)
+        for index, trap in enumerate(traps):
+            direction = free_ports[index % len(free_ports)]
+            spacing = 0.72 + 0.16 * (index // len(free_ports))
+            layout[location_key("trap", trap.id)] = {
+                "x": base["x"] + direction[0] * spacing,
+                "y": base["y"] + direction[1] * spacing,
+            }
+    return layout
+
+
+def _junction_free_grid_ports(machine, junction, junction_points):
+    base = junction_points[junction]
+    used = set()
+    for neighbor in machine.graph.neighbors(junction):
+        if not isinstance(neighbor, Junction):
+            continue
+        neighbor_point = junction_points[neighbor]
+        dx = neighbor_point["x"] - base["x"]
+        dy = neighbor_point["y"] - base["y"]
+        if abs(dx) >= abs(dy):
+            used.add((1 if dx > 0 else -1, 0))
+        else:
+            used.add((0, 1 if dy > 0 else -1))
+
+    preferences = []
+    if base["y"] == 0:
+        preferences.append((0, -1))
+    if base["x"] == 2:
+        preferences.append((1, 0))
+    if base["y"] == 2:
+        preferences.append((0, 1))
+    if base["x"] == 0:
+        preferences.append((-1, 0))
+    preferences.extend([(0, -1), (1, 0), (0, 1), (-1, 0)])
+
+    free_ports = []
+    for direction in preferences:
+        if direction in used or direction in free_ports:
+            continue
+        free_ports.append(direction)
+    return free_ports or [(0, -1)]
 
 
 def _circle_layout(machine):
