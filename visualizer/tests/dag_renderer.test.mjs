@@ -68,3 +68,32 @@ test("layoutDag keeps vertical DAG within the inspector width", () => {
   assert.ok(Math.max(...graph.nodes.map((node) => node.x + node.width / 2)) <= graph.width);
   assert.ok(Math.min(...graph.nodes.map((node) => node.x - node.width / 2)) >= 0);
 });
+
+test("layoutDag wraps dense vertical DAG levels instead of overlapping nodes", () => {
+  const dagState = {
+    nodes: new Map(
+      Array.from({ length: 36 }, (_, id) => [
+        id,
+        { id, gate_name: id % 3 === 0 ? "h" : "cx", qubits: [id % 9], state: "ready" },
+      ]),
+    ),
+    edges: [],
+  };
+
+  const graph = layoutDag(dagState, { width: 340, height: 420, direction: "vertical" });
+  const nodes = graph.nodes;
+  const overlaps = [];
+  for (const [index, left] of nodes.entries()) {
+    for (const right of nodes.slice(index + 1)) {
+      const separatedX = left.x + left.width / 2 + 8 <= right.x - right.width / 2 ||
+        right.x + right.width / 2 + 8 <= left.x - left.width / 2;
+      const separatedY = left.y + left.height / 2 + 8 <= right.y - right.height / 2 ||
+        right.y + right.height / 2 + 8 <= left.y - left.height / 2;
+      if (!separatedX && !separatedY) overlaps.push([left.id, right.id]);
+    }
+  }
+
+  assert.equal(overlaps.length, 0);
+  assert.ok(new Set(nodes.map((node) => Math.round(node.y))).size > 1);
+  assert.ok(graph.height > 420);
+});

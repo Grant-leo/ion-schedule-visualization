@@ -28,6 +28,9 @@ def test_options_payload_exposes_programs_machines_capacities_and_mappers():
     assert "EJF-SerialComm" in payload["schedulers"]
     assert "EJF-ParallelTrap" not in payload["schedulers"]
     assert all(option["id"] != "EJF-ParallelTrap" for option in payload["scheduler_options"])
+    labels = {option["id"]: option["label"] for option in payload["scheduler_options"]}
+    assert labels["EJF"] == "Parallel schedule"
+    assert labels["EJF-GlobalSerial"] == "Serial schedule"
 
 
 def test_generate_trace_uses_selected_architecture_capacity_and_mapper():

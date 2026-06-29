@@ -29,25 +29,16 @@ export function layoutDag(dagState, options = {}) {
     byLevel.get(level).push(node);
   }
 
+  if (direction === "vertical") {
+    const graph = layoutVerticalDag(byLevel, edges, options);
+    return graph;
+  }
+
   const levelCount = Math.max(1, byLevel.size);
   const maxLevelSize = Math.max(1, ...[...byLevel.values()].map((items) => items.length));
-  const requestedWidth = Math.max(options.width || 360, 240);
-  const width =
-    direction === "vertical"
-      ? requestedWidth
-      : Math.max(options.width || 420, 120 + levelCount * 110);
-  const height =
-    direction === "vertical"
-      ? Math.max(options.height || 520, 100 + levelCount * 92)
-      : Math.max(options.height || 220, 80 + maxLevelSize * 68);
-  const nodeWidth =
-    direction === "vertical"
-      ? maxLevelSize >= 7
-        ? 54
-        : maxLevelSize >= 5
-          ? 64
-          : 86
-      : 84;
+  const width = Math.max(options.width || 420, 120 + levelCount * 110);
+  const height = Math.max(options.height || 220, 80 + maxLevelSize * 68);
+  const nodeWidth = 84;
   const nodeHeight = 34;
   const xPad = direction === "vertical" ? nodeWidth / 2 + 4 : 44;
   const yPad = 40;
@@ -76,6 +67,59 @@ export function layoutDag(dagState, options = {}) {
     .filter((edge) => edge.sourceNode && edge.targetNode);
 
   return { width, height, direction, nodes: layoutNodes.sort((left, right) => left.id - right.id), edges: layoutEdges };
+}
+
+function layoutVerticalDag(byLevel, edges, options) {
+  const requestedWidth = Math.max(options.width || 360, 240);
+  const minHeight = Math.max(options.height || 520, 260);
+  const width = requestedWidth;
+  const nodeWidth = requestedWidth < 300 ? 62 : 68;
+  const nodeHeight = 34;
+  const xPad = 16;
+  const yPad = 42;
+  const nodeGap = 10;
+  const rowGap = 12;
+  const levelGap = 46;
+  const availableWidth = Math.max(nodeWidth, width - xPad * 2);
+  const maxPerRow = Math.max(1, Math.floor((availableWidth + nodeGap) / (nodeWidth + nodeGap)));
+
+  const layoutNodes = [];
+  let y = yPad;
+  for (const [level, items] of [...byLevel.entries()].sort((left, right) => left[0] - right[0])) {
+    const rows = chunk(items, maxPerRow);
+    for (const row of rows) {
+      const rowWidth = row.length * nodeWidth + Math.max(0, row.length - 1) * nodeGap;
+      const startX = (width - rowWidth) / 2 + nodeWidth / 2;
+      for (const [index, node] of row.entries()) {
+        layoutNodes.push({
+          ...node,
+          level,
+          x: startX + index * (nodeWidth + nodeGap),
+          y: y + nodeHeight / 2,
+          width: nodeWidth,
+          height: nodeHeight,
+        });
+      }
+      y += nodeHeight + rowGap;
+    }
+    y += levelGap;
+  }
+
+  const height = Math.max(minHeight, y + yPad - levelGap - rowGap);
+  const nodeById = new Map(layoutNodes.map((node) => [node.id, node]));
+  const layoutEdges = edges
+    .map((edge) => ({ ...edge, sourceNode: nodeById.get(edge.source), targetNode: nodeById.get(edge.target) }))
+    .filter((edge) => edge.sourceNode && edge.targetNode);
+
+  return { width, height, direction: "vertical", nodes: layoutNodes.sort((left, right) => left.id - right.id), edges: layoutEdges };
+}
+
+function chunk(items, size) {
+  const rows = [];
+  for (let index = 0; index < items.length; index += size) {
+    rows.push(items.slice(index, index + size));
+  }
+  return rows;
 }
 
 export function renderDagSvg(container, dagState, options = {}) {

@@ -1,13 +1,14 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260629-parallel3";
-import { renderDagSvg } from "./dag_renderer.js?v=20260629-parallel3";
-import { createReplay, validateTrace } from "./replay.js?v=20260629-parallel3";
+import { createRenderer } from "./canvas_renderer.js?v=20260629-parallel4";
+import { renderDagSvg } from "./dag_renderer.js?v=20260629-parallel4";
+import { createReplay, validateTrace } from "./replay.js?v=20260629-parallel4";
 import {
+  createHeadlineMetricCards,
   createMetricCards,
   createScenarioCopy,
   describeEvent,
   formatLocation,
   summarizeDag,
-} from "./ui_model.js?v=20260629-parallel3";
+} from "./ui_model.js?v=20260629-parallel4";
 
 const elements = {
   controlPanel: document.getElementById("controlPanel"),
@@ -20,6 +21,7 @@ const elements = {
   mapperSelect: document.getElementById("mapperSelect"),
   orderingSelect: document.getElementById("orderingSelect"),
   schedulerSelect: document.getElementById("schedulerSelect"),
+  schedulerModeButtons: [...document.querySelectorAll("[data-scheduler-mode]")],
   loadConfigButton: document.getElementById("loadConfigButton"),
   playPauseButton: document.getElementById("playPauseButton"),
   restartButton: document.getElementById("restartButton"),
@@ -27,6 +29,7 @@ const elements = {
   speedSelect: document.getElementById("speedSelect"),
   timeline: document.getElementById("timeline"),
   canvas: document.getElementById("vizCanvas"),
+  headlineMetricsPanel: document.getElementById("headlineMetricsPanel"),
   metricsPanel: document.getElementById("metricsPanel"),
   initialLayoutPanel: document.getElementById("initialLayoutPanel"),
   dagPanel: document.getElementById("dagPanel"),
@@ -51,6 +54,7 @@ let manifestEntries = [];
 let generatedTraces = new Map();
 let apiOptions = null;
 let apiAvailable = false;
+let previousTraceMetrics = null;
 let renderedMetricsTrace = null;
 let lastMetricsDagKey = "";
 let lastInitialLayoutKey = "";
@@ -105,6 +109,7 @@ function populateConfigControls(options) {
   fillSelect(elements.mapperSelect, options.mappers);
   fillSelect(elements.orderingSelect, options.orderings || ["Naive", "Fidelity"]);
   fillSelect(elements.schedulerSelect, options.scheduler_options || options.schedulers || ["EJF"]);
+  updateSchedulerModeButtons();
   renderSelectedBenchmark();
 }
 
@@ -145,6 +150,16 @@ function wireControls() {
   });
   elements.loadConfigButton.addEventListener("click", loadSelectedConfig);
   elements.programSelect.addEventListener("change", renderSelectedBenchmark);
+  elements.schedulerSelect.addEventListener("change", updateSchedulerModeButtons);
+  for (const button of elements.schedulerModeButtons) {
+    button.addEventListener("click", async () => {
+      const scheduler = button.dataset.schedulerMode;
+      if (!scheduler || button.disabled) return;
+      setSelectValue(elements.schedulerSelect, scheduler);
+      updateSchedulerModeButtons();
+      await loadSelectedConfig();
+    });
+  }
   elements.playPauseButton.addEventListener("click", togglePlayback);
   elements.restartButton.addEventListener("click", restart);
   elements.stepButton.addEventListener("click", stepToNextEvent);
@@ -163,6 +178,7 @@ async function loadTrace(path) {
 }
 
 function loadTraceData(nextTrace) {
+  previousTraceMetrics = trace?.metrics || null;
   trace = nextTrace;
   const frontendValidation = validateTrace(trace);
   const backendValidation = trace.validation || { valid: true, errors: [] };
@@ -245,6 +261,7 @@ function syncConfigControls(nextTrace) {
   setSelectValue(elements.mapperSelect, run.mapper);
   setSelectValue(elements.orderingSelect, run.reorder);
   setSelectValue(elements.schedulerSelect, run.scheduler_policy);
+  updateSchedulerModeButtons();
   renderSelectedBenchmark();
 }
 
@@ -263,6 +280,7 @@ function applyDefaultConfig(defaults = {}) {
   setSelectValue(elements.mapperSelect, defaults.mapper);
   setSelectValue(elements.orderingSelect, defaults.ordering);
   setSelectValue(elements.schedulerSelect, defaults.scheduler);
+  updateSchedulerModeButtons();
   renderSelectedBenchmark();
 }
 
@@ -414,7 +432,7 @@ function draw() {
 
 function renderMetrics(metrics, replayMetrics, dagState) {
   const dagSummary = summarizeDag(dagState);
-  const cards = createMetricCards({
+  const metricInput = {
     event_count: metrics?.event_count ?? replayMetrics?.eventCount,
     finish_time: metrics?.finish_time ?? replayMetrics?.finishTime,
     counts: metrics?.counts ?? replayMetrics?.counts,
@@ -430,7 +448,9 @@ function renderMetrics(metrics, replayMetrics, dagState) {
     same_trap_gate_overlaps: metrics?.same_trap_gate_overlaps ?? replayMetrics?.sameTrapGateOverlaps,
     blocked_ops: dagSummary.blocked,
     ready_ops: dagSummary.ready,
-  });
+  };
+  renderHeadlineMetrics(metricInput);
+  const cards = createMetricCards(metricInput);
   const grid = document.createElement("div");
   grid.className = "metric-grid";
   for (const card of cards) {
@@ -449,6 +469,45 @@ function renderMetrics(metrics, replayMetrics, dagState) {
     grid.appendChild(item);
   }
   elements.metricsPanel.replaceChildren(grid);
+}
+
+function renderHeadlineMetrics(metricInput) {
+  const cards = createHeadlineMetricCards(metricInput, previousTraceMetrics);
+  const fragment = document.createDocumentFragment();
+  for (const card of cards) {
+    const item = document.createElement("article");
+    item.className = "headline-metric";
+    const label = document.createElement("span");
+    label.className = "headline-metric-label";
+    label.textContent = card.label;
+    const valueRow = document.createElement("div");
+    valueRow.className = "headline-metric-value-row";
+    const value = document.createElement("strong");
+    value.textContent = card.value;
+    const unit = document.createElement("span");
+    unit.textContent = card.unit;
+    valueRow.append(value, unit);
+    const detail = document.createElement("span");
+    detail.className = "headline-metric-detail";
+    detail.textContent = card.detail;
+    const delta = document.createElement("span");
+    delta.className = `headline-delta delta-${card.delta.tone}`;
+    delta.textContent = card.delta.text === "baseline" ? "baseline" : `${card.delta.text} vs prev`;
+    item.append(label, valueRow, detail, delta);
+    fragment.appendChild(item);
+  }
+  elements.headlineMetricsPanel.replaceChildren(fragment);
+}
+
+function updateSchedulerModeButtons() {
+  const availableSchedulers = new Set([...elements.schedulerSelect.options].map((option) => option.value));
+  for (const button of elements.schedulerModeButtons) {
+    const scheduler = button.dataset.schedulerMode;
+    const active = elements.schedulerSelect.value === scheduler;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
+    button.disabled = !availableSchedulers.has(scheduler);
+  }
 }
 
 function renderCurrentEvent(state) {

@@ -60,6 +60,9 @@ def test_visualizer_html_uses_cache_busted_core_assets():
     assert './app.js?v=' in html
     assert 'id="orderingSelect"' in html
     assert 'id="schedulerSelect"' in html
+    assert 'id="parallelSchedulerButton"' in html
+    assert 'id="serialSchedulerButton"' in html
+    assert 'id="headlineMetricsPanel"' in html
     assert 'id="benchmarkMetaPanel"' in html
     assert 'id="runConfigPanel"' in html
 

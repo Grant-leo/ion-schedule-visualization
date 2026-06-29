@@ -34,6 +34,11 @@ ORDERINGS = list(supported_reorder_policies())
 SCHEDULERS = list(supported_scheduler_policies())
 VISUALIZER_UNSAFE_SCHEDULERS = {"EJF-ParallelTrap"}
 VISUALIZER_SCHEDULERS = [policy for policy in SCHEDULERS if policy not in VISUALIZER_UNSAFE_SCHEDULERS]
+VISUALIZER_SCHEDULER_LABELS = {
+    "EJF": "Parallel schedule",
+    "EJF-SerialComm": "Serial shuttling",
+    "EJF-GlobalSerial": "Serial schedule",
+}
 
 
 def options_payload():
@@ -44,9 +49,7 @@ def options_payload():
         "mappers": MAPPERS,
         "orderings": ORDERINGS,
         "schedulers": VISUALIZER_SCHEDULERS,
-        "scheduler_options": [
-            option for option in scheduler_policy_options() if option["id"] in VISUALIZER_SCHEDULERS
-        ],
+        "scheduler_options": _visualizer_scheduler_options(),
         "defaults": {
             "program": "swap_test_n25",
             "machine": "G3x3",
@@ -56,6 +59,14 @@ def options_payload():
             "scheduler": "EJF",
         },
     }
+
+
+def _visualizer_scheduler_options():
+    return [
+        {**option, "label": VISUALIZER_SCHEDULER_LABELS.get(option["id"], option["label"])}
+        for option in scheduler_policy_options()
+        if option["id"] in VISUALIZER_SCHEDULERS
+    ]
 
 
 def generate_trace(program_id, machine, capacity, mapper, ordering="Naive", scheduler="EJF"):

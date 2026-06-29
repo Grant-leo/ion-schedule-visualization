@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createMetricCards, createScenarioCopy, describeEvent, summarizeDag } from "../ui_model.js";
+import { createHeadlineMetricCards, createMetricCards, createScenarioCopy, describeEvent, summarizeDag } from "../ui_model.js";
 
 test("createMetricCards derives shuttling burden and gate mix for executive metrics", () => {
   const cards = createMetricCards({
@@ -37,6 +37,31 @@ test("createMetricCards derives shuttling burden and gate mix for executive metr
   assert.equal(cards[4].detail, "7 swap hops, 11 ion hops");
   assert.equal(cards[5].value, "18");
   assert.equal(cards[5].detail, "blocked DAG ops, 2 ready");
+});
+
+test("createHeadlineMetricCards highlights execution and shuttling deltas", () => {
+  const cards = createHeadlineMetricCards(
+    {
+      finish_time: 920,
+      shuttling_time: 260,
+      counts: { split: 8, move: 12, merge: 8 },
+    },
+    {
+      finish_time: 1000,
+      shuttling_time: 210,
+      counts: { split: 6, move: 9, merge: 6 },
+    },
+  );
+
+  assert.deepEqual(cards.map((card) => card.label), ["Execution time", "Shuttling ops", "Shuttling time"]);
+  assert.equal(cards[0].value, "920");
+  assert.equal(cards[0].unit, "cycles");
+  assert.deepEqual(cards[0].delta, { text: "-80", tone: "good" });
+  assert.equal(cards[1].value, "28");
+  assert.equal(cards[1].detail, "8 split, 12 move, 8 merge");
+  assert.deepEqual(cards[1].delta, { text: "+7", tone: "bad" });
+  assert.equal(cards[2].detail, "28.3% of schedule");
+  assert.deepEqual(cards[2].delta, { text: "+50", tone: "bad" });
 });
 
 test("createScenarioCopy reflects the active generated trace", () => {

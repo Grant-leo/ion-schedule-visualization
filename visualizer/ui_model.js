@@ -49,6 +49,36 @@ export function createMetricCards(metrics = {}) {
   ];
 }
 
+export function createHeadlineMetricCards(metrics = {}, previousMetrics = null) {
+  const current = headlineMetrics(metrics);
+  const previous = previousMetrics ? headlineMetrics(previousMetrics) : null;
+  return [
+    {
+      label: "Execution time",
+      value: formatNumber(current.finishTime),
+      unit: "cycles",
+      detail: "end-to-end schedule",
+      delta: metricDelta(current.finishTime, previous?.finishTime),
+    },
+    {
+      label: "Shuttling ops",
+      value: formatNumber(current.shuttlingOps),
+      unit: "ops",
+      detail: `${formatNumber(current.splitCount)} split, ${formatNumber(current.moveCount)} move, ${formatNumber(
+        current.mergeCount,
+      )} merge`,
+      delta: metricDelta(current.shuttlingOps, previous?.shuttlingOps),
+    },
+    {
+      label: "Shuttling time",
+      value: formatNumber(current.shuttlingTime),
+      unit: "cycles",
+      detail: `${current.shuttlingRatio.toFixed(1)}% of schedule`,
+      delta: metricDelta(current.shuttlingTime, previous?.shuttlingTime),
+    },
+  ];
+}
+
 export function createScenarioCopy({ run = {}, program = null } = {}) {
   const programId = programIdFromPath(run.program);
   const programLabel = program?.label || labelFromId(programId) || "QCCD schedule";
@@ -126,6 +156,35 @@ function formatEndpoint(endpoint) {
 
 function formatNumber(value) {
   return String(Number(value || 0));
+}
+
+function headlineMetrics(metrics = {}) {
+  const counts = metrics.counts || {};
+  const finishTime = Number(metrics.finish_time ?? metrics.finishTime ?? 0);
+  const shuttlingTime = Number(metrics.shuttling_time ?? metrics.shuttlingTime ?? 0);
+  const splitCount = Number(counts.split ?? metrics.split_count ?? metrics.splitCount ?? 0);
+  const moveCount = Number(counts.move ?? metrics.move_count ?? metrics.moveCount ?? 0);
+  const mergeCount = Number(counts.merge ?? metrics.merge_count ?? metrics.mergeCount ?? 0);
+  return {
+    finishTime,
+    shuttlingTime,
+    splitCount,
+    moveCount,
+    mergeCount,
+    shuttlingOps: splitCount + moveCount + mergeCount,
+    shuttlingRatio: finishTime > 0 ? (shuttlingTime / finishTime) * 100 : 0,
+  };
+}
+
+function metricDelta(current, previous) {
+  if (previous === undefined || previous === null || Number.isNaN(previous)) {
+    return { text: "baseline", tone: "neutral" };
+  }
+  const delta = Number(current || 0) - Number(previous || 0);
+  const text = delta > 0 ? `+${formatNumber(delta)}` : formatNumber(delta);
+  if (delta < 0) return { text, tone: "good" };
+  if (delta > 0) return { text, tone: "bad" };
+  return { text, tone: "neutral" };
 }
 
 function programIdFromPath(path = "") {

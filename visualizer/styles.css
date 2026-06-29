@@ -147,7 +147,7 @@ select {
   min-height: 0;
   display: grid;
   grid-template-columns: clamp(300px, 22vw, 340px) minmax(520px, 1fr) clamp(392px, 30vw, 460px);
-  grid-template-rows: 68px minmax(0, 1fr) 60px;
+  grid-template-rows: 88px minmax(0, 1fr) 60px;
   grid-template-areas:
     "header header header"
     "left viewport right"
@@ -204,6 +204,70 @@ select {
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
+  min-width: min(640px, 58vw);
+}
+
+.headline-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(112px, 1fr));
+  gap: var(--space-2);
+  min-width: min(440px, 42vw);
+}
+
+.headline-metric {
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-2);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.018)),
+    rgba(18, 21, 25, 0.9);
+  box-shadow: var(--shadow-control);
+}
+
+.headline-metric-label,
+.headline-metric-detail,
+.headline-delta {
+  display: block;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 10px;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.headline-metric-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: 3px 0 2px;
+}
+
+.headline-metric-value-row strong {
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.headline-metric-value-row span {
+  color: var(--color-subtle);
+  font-size: 10px;
+}
+
+.headline-delta {
+  margin-top: 3px;
+  font-family: var(--font-mono);
+}
+
+.headline-delta.delta-good {
+  color: var(--color-gate);
+}
+
+.headline-delta.delta-bad {
+  color: var(--color-warning);
 }
 
 .scope-pill,
@@ -319,12 +383,61 @@ select {
   display: none;
 }
 
-.left-control-panel label {
+.left-control-panel label,
+.field-label {
   display: block;
   margin: 10px 0 6px;
   color: var(--color-muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.scheduler-mode-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.scheduler-mode-toggle button {
+  min-height: 54px;
+  padding: 8px 9px;
+  text-align: left;
+}
+
+.scheduler-mode-toggle strong,
+.scheduler-mode-toggle span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scheduler-mode-toggle strong {
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.15;
+}
+
+.scheduler-mode-toggle span {
+  margin-top: 3px;
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.scheduler-mode-toggle button.is-active {
+  border-color: rgba(100, 210, 255, 0.62);
+  background:
+    linear-gradient(180deg, rgba(100, 210, 255, 0.26), rgba(100, 210, 255, 0.055)),
+    #14232b;
+}
+
+.scheduler-mode-toggle button.is-active strong {
+  color: #eefaff;
+}
+
+.scheduler-mode-toggle button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
 }
 
 .advanced-config {
@@ -835,6 +948,14 @@ select {
     grid-column: 1 / -1;
     min-height: 520px;
   }
+
+  .header-meta {
+    min-width: 0;
+  }
+
+  .headline-metrics {
+    min-width: 100%;
+  }
 }
 
 @media (max-width: 760px) {
@@ -865,6 +986,19 @@ select {
 
   .metric-grid {
     grid-template-columns: 1fr;
+  }
+
+  .headline-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .headline-metric {
+    padding: 6px;
+  }
+
+  .headline-metric-value-row strong {
+    font-size: 15px;
   }
 
   .bottom-timeline {
