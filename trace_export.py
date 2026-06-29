@@ -35,6 +35,7 @@ def write_trace(trace, output_path):
 def validate_trace(trace):
     locations = {particle["id"]: particle["initial_location"] for particle in trace["particles"]}
     busy_until = {}
+    trap_busy_until = {}
     pending_transfers = []
     errors = []
     known_locations = _validate_topology(trace.get("topology", {}), errors)
@@ -64,6 +65,9 @@ def validate_trace(trace):
         _validate_event_endpoint(event, trap_segment_orientation, errors)
         if event["end"] < event["start"]:
             errors.append(f"event {event['id']} ends before it starts")
+        trap_location = _event_trap_resource(event)
+        if trap_location and trap_busy_until.get(trap_location, 0) > event["start"]:
+            errors.append(f"{trap_location} busy until {trap_busy_until[trap_location]} for event {event['id']}")
         for ion in event["ions"]:
             if busy_until.get(ion, 0) > event["start"]:
                 errors.append(f"ion {ion} busy until {busy_until[ion]} for event {event['id']}")
@@ -76,6 +80,8 @@ def validate_trace(trace):
             if event["type"] != "gate":
                 pending_transfers.append({"end": event["end"], "ion": ion, "target": target})
             busy_until[ion] = max(busy_until.get(ion, 0), event["end"])
+        if trap_location:
+            trap_busy_until[trap_location] = max(trap_busy_until.get(trap_location, 0), event["end"])
     apply_completed_transfers(float("inf"))
     return {
         "valid": len(errors) == 0,
@@ -174,6 +180,17 @@ def _validate_event_endpoint(event, trap_segment_orientation, errors):
             f"event {event.get('id')} endpoint {actual} does not match "
             f"{trap_location} {segment_location} orientation {expected}"
         )
+
+
+def _event_trap_resource(event):
+    event_type = event.get("type")
+    if event_type == "gate" and str(event.get("target", "")).startswith("trap:"):
+        return event["target"]
+    if event_type == "split" and str(event.get("source", "")).startswith("trap:"):
+        return event["source"]
+    if event_type == "merge" and str(event.get("target", "")).startswith("trap:"):
+        return event["target"]
+    return None
 
 
 def _run_config(result):
@@ -387,6 +404,9 @@ def _metrics(schedule):
     time_by_type = {"gate": 0, "split": 0, "move": 0, "merge": 0}
     one_q = 0
     two_q = 0
+    swap_count = 0
+    swap_hops = 0
+    ion_hops = 0
     for event in events:
         event_type = event[1]
         duration = event[3] - event[2]
@@ -400,12 +420,16 @@ def _metrics(schedule):
         elif event_type == Schedule.Split:
             by_type["split"] += 1
             time_by_type["split"] += duration
+            swap_count += int(event[4].get("swap_cnt", 0) or 0)
+            swap_hops += int(event[4].get("swap_hops", 0) or 0)
+            ion_hops += int(event[4].get("ion_hops", 0) or 0)
         elif event_type == Schedule.Move:
             by_type["move"] += 1
             time_by_type["move"] += duration
         elif event_type == Schedule.Merge:
             by_type["merge"] += 1
             time_by_type["merge"] += duration
+    parallel = _gate_parallel_metrics(events)
     return {
         "event_count": len(events),
         "finish_time": max((event[3] for event in events), default=0),
@@ -414,4 +438,37 @@ def _metrics(schedule):
         "one_qubit_gates": one_q,
         "two_qubit_gates": two_q,
         "shuttling_time": time_by_type["split"] + time_by_type["move"] + time_by_type["merge"],
+        "swap_count": swap_count,
+        "swap_hops": swap_hops,
+        "ion_hops": ion_hops,
+        **parallel,
+    }
+
+
+def _gate_parallel_metrics(events):
+    gates = [event for event in events if event[1] == Schedule.Gate]
+    max_parallel = 0
+    cross_trap_parallel = 0
+    same_trap_overlaps = 0
+
+    for index, left in enumerate(gates):
+        active_at_start = [
+            gate
+            for gate in gates
+            if gate[2] <= left[2] < gate[3]
+        ]
+        max_parallel = max(max_parallel, len(active_at_start))
+        if len({gate[4]["trap"] for gate in active_at_start}) > 1:
+            cross_trap_parallel += 1
+
+        for right in gates[index + 1 :]:
+            if left[4]["trap"] != right[4]["trap"]:
+                continue
+            if left[2] < right[3] and right[2] < left[3]:
+                same_trap_overlaps += 1
+
+    return {
+        "max_parallel_gates": max_parallel,
+        "cross_trap_parallel_gates": cross_trap_parallel,
+        "same_trap_gate_overlaps": same_trap_overlaps,
     }

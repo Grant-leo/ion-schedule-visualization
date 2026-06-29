@@ -1,13 +1,13 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260629-demo9";
-import { renderDagSvg } from "./dag_renderer.js?v=20260629-demo9";
-import { createReplay, validateTrace } from "./replay.js?v=20260629-demo9";
+import { createRenderer } from "./canvas_renderer.js?v=20260629-parallel3";
+import { renderDagSvg } from "./dag_renderer.js?v=20260629-parallel3";
+import { createReplay, validateTrace } from "./replay.js?v=20260629-parallel3";
 import {
   createMetricCards,
   createScenarioCopy,
   describeEvent,
   formatLocation,
   summarizeDag,
-} from "./ui_model.js?v=20260629-demo9";
+} from "./ui_model.js?v=20260629-parallel3";
 
 const elements = {
   controlPanel: document.getElementById("controlPanel"),
@@ -52,6 +52,7 @@ let generatedTraces = new Map();
 let apiOptions = null;
 let apiAvailable = false;
 let renderedMetricsTrace = null;
+let lastMetricsDagKey = "";
 let lastInitialLayoutKey = "";
 let lastDagKey = "";
 let lastEventKey = "";
@@ -149,6 +150,9 @@ function wireControls() {
   elements.stepButton.addEventListener("click", stepToNextEvent);
   elements.timeline.addEventListener("input", () => {
     currentTime = Number(elements.timeline.value);
+    draw();
+  });
+  window.addEventListener("resize", () => {
     draw();
   });
 }
@@ -380,9 +384,12 @@ function draw() {
   renderer.draw(state);
   elements.timeline.value = String(Math.floor(state.time));
   elements.timeReadout.textContent = `${Math.floor(state.time)} / ${replay.finishTime}`;
-  if (renderedMetricsTrace !== trace) {
-    renderMetrics(trace.metrics, state.metrics);
+
+  const dagKey = dagStateKey(state.dagState);
+  if (renderedMetricsTrace !== trace || dagKey !== lastMetricsDagKey) {
+    renderMetrics(trace.metrics, state.metrics, state.dagState);
     renderedMetricsTrace = trace;
+    lastMetricsDagKey = dagKey;
   }
 
   const initialLayoutKey = trapChainsKey(state.trapChains);
@@ -391,7 +398,6 @@ function draw() {
     lastInitialLayoutKey = initialLayoutKey;
   }
 
-  const dagKey = dagStateKey(state.dagState);
   if (dagKey !== lastDagKey) {
     renderDagSummary(state.dagState);
     renderDagSvg(elements.dagPanel, state.dagState, { direction: "vertical" });
@@ -406,10 +412,24 @@ function draw() {
   }
 }
 
-function renderMetrics(metrics, replayMetrics) {
+function renderMetrics(metrics, replayMetrics, dagState) {
+  const dagSummary = summarizeDag(dagState);
   const cards = createMetricCards({
-    ...(metrics || {}),
+    event_count: metrics?.event_count ?? replayMetrics?.eventCount,
+    finish_time: metrics?.finish_time ?? replayMetrics?.finishTime,
+    counts: metrics?.counts ?? replayMetrics?.counts,
+    times: metrics?.times ?? replayMetrics?.times,
+    one_qubit_gates: metrics?.one_qubit_gates ?? replayMetrics?.oneQubitGates,
+    two_qubit_gates: metrics?.two_qubit_gates ?? replayMetrics?.twoQubitGates,
     shuttling_time: metrics?.shuttling_time ?? replayMetrics?.shuttlingTime,
+    swap_count: metrics?.swap_count ?? replayMetrics?.swapCount,
+    swap_hops: metrics?.swap_hops ?? replayMetrics?.swapHops,
+    ion_hops: metrics?.ion_hops ?? replayMetrics?.ionHops,
+    max_parallel_gates: metrics?.max_parallel_gates ?? replayMetrics?.maxParallelGates,
+    cross_trap_parallel_gates: metrics?.cross_trap_parallel_gates ?? replayMetrics?.crossTrapParallelGates,
+    same_trap_gate_overlaps: metrics?.same_trap_gate_overlaps ?? replayMetrics?.sameTrapGateOverlaps,
+    blocked_ops: dagSummary.blocked,
+    ready_ops: dagSummary.ready,
   });
   const grid = document.createElement("div");
   grid.className = "metric-grid";
@@ -534,6 +554,7 @@ function recordFrame(delta) {
 
 function resetInspectorRenderCache() {
   renderedMetricsTrace = null;
+  lastMetricsDagKey = "";
   lastInitialLayoutKey = "";
   lastDagKey = "";
   lastEventKey = "";

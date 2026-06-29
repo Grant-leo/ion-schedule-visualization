@@ -407,7 +407,7 @@ select {
     linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
     linear-gradient(0deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
   background-size: 48px 48px;
-  opacity: 0.45;
+  opacity: 0.26;
 }
 
 #vizCanvas {
@@ -430,24 +430,21 @@ select {
 }
 
 .stage-overlay.top-left {
-  left: var(--space-4);
-  top: var(--space-4);
-  max-width: min(445px, calc(100% - 32px));
-  padding: var(--space-3);
+  display: none;
 }
 
 .stage-overlay strong {
   display: block;
   margin-top: 4px;
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1.2;
 }
 
 .run-config-panel {
-  margin-top: var(--space-2);
+  margin-top: 6px;
   color: #e6f5ff;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -455,10 +452,10 @@ select {
 .legend-row {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3);
-  margin-top: var(--space-3);
+  gap: var(--space-2);
+  margin-top: var(--space-2);
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .legend-row span {

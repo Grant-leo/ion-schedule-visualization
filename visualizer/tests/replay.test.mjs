@@ -138,6 +138,37 @@ test("validateTrace rejects overlapping events for the same ion", () => {
   assert.match(validation.errors.join("\n"), /busy until 20/);
 });
 
+test("validateTrace rejects overlapping operations on the same trap", () => {
+  const badTrace = structuredClone(trace);
+  badTrace.events = [
+    {
+      id: 0,
+      type: "gate",
+      start: 0,
+      end: 10,
+      ions: [0],
+      source: "trap:0",
+      target: "trap:0",
+      metadata: { arity: 1 },
+    },
+    {
+      id: 1,
+      type: "gate",
+      start: 5,
+      end: 15,
+      ions: [1],
+      source: "trap:0",
+      target: "trap:0",
+      metadata: { arity: 1 },
+    },
+  ];
+
+  const validation = validateTrace(badTrace);
+
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors.join("\n"), /trap:0 busy until 10/);
+});
+
 test("nextEventTime advances to the next event start", () => {
   const replay = createReplay(trace, 1);
 
@@ -170,6 +201,56 @@ test("replay exposes active internal swaps before endpoint shuttling", () => {
   assert.equal(active.type, "split");
   assert.equal(active.metadata.swap_count, 1);
   assert.deepEqual(active.metadata.swap_ions, [0, 1]);
+});
+
+test("replay summarizes swap and parallel gate metrics when trace metrics are stale", () => {
+  const metricsTrace = structuredClone(trace);
+  metricsTrace.particles = [
+    { id: 0, initial_location: "trap:0", initial_slot: 0 },
+    { id: 1, initial_location: "trap:1", initial_slot: 0 },
+  ];
+  metricsTrace.events = [
+    {
+      id: 0,
+      type: "gate",
+      start: 0,
+      end: 5,
+      ions: [0],
+      source: "trap:0",
+      target: "trap:0",
+      metadata: { gate_id: 0, gate_name: "h", arity: 1 },
+    },
+    {
+      id: 1,
+      type: "gate",
+      start: 0,
+      end: 5,
+      ions: [1],
+      source: "trap:1",
+      target: "trap:1",
+      metadata: { gate_id: 2, gate_name: "x", arity: 1 },
+    },
+    {
+      id: 2,
+      type: "split",
+      start: 10,
+      end: 20,
+      ions: [0],
+      source: "trap:0",
+      target: "segment:0",
+      metadata: { endpoint: "R", swap_count: 2, swap_hops: 3, ion_hops: 4 },
+    },
+  ];
+
+  const replay = createReplay(metricsTrace, 1);
+  const metrics = replay.stateAt(0).metrics;
+
+  assert.equal(metrics.maxParallelGates, 2);
+  assert.equal(metrics.crossTrapParallelGates, 2);
+  assert.equal(metrics.sameTrapGateOverlaps, 0);
+  assert.equal(metrics.swapCount, 2);
+  assert.equal(metrics.swapHops, 3);
+  assert.equal(metrics.ionHops, 4);
 });
 
 test("replay derives dependency graph node states from gate completion", () => {

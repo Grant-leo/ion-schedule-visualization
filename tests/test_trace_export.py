@@ -185,6 +185,46 @@ def test_validate_trace_rejects_overlapping_events_for_same_ion():
     assert any("busy until 10" in error for error in validation["errors"])
 
 
+def test_validate_trace_rejects_overlapping_trap_operations_on_different_ions():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {"traps": [{"id": 0, "capacity": 3}], "segments": [], "junctions": []},
+        "particles": [
+            {"id": 0, "initial_location": "trap:0"},
+            {"id": 1, "initial_location": "trap:0"},
+        ],
+        "events": [
+            {
+                "id": 0,
+                "type": "gate",
+                "start": 0,
+                "end": 10,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "trap:0",
+                "metadata": {"arity": 1},
+            },
+            {
+                "id": 1,
+                "type": "gate",
+                "start": 5,
+                "end": 15,
+                "ions": [1],
+                "source": "trap:0",
+                "target": "trap:0",
+                "metadata": {"arity": 1},
+            },
+        ],
+        "metrics": {"event_count": 2},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("trap:0 busy until 10" in error for error in validation["errors"])
+
+
 def test_validate_trace_rejects_duplicate_topology_ids_and_missing_locations():
     bad_trace = {
         "schema_version": "1.0",

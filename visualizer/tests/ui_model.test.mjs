@@ -10,20 +10,33 @@ test("createMetricCards derives shuttling burden and gate mix for executive metr
     one_qubit_gates: 9,
     two_qubit_gates: 5,
     shuttling_time: 250,
+    swap_count: 3,
+    swap_hops: 7,
+    ion_hops: 11,
+    max_parallel_gates: 4,
+    blocked_ops: 18,
+    ready_ops: 2,
     counts: { gate: 14, split: 4, move: 6, merge: 4 },
     times: { gate: 500, split: 80, move: 120, merge: 50 },
   });
 
   assert.deepEqual(cards.map((card) => card.label), [
     "Finish time",
-    "Schedule events",
+    "Parallel gates",
     "Gate mix",
-    "Shuttling burden",
+    "Motion ops",
+    "Swap work",
+    "DAG pressure",
   ]);
   assert.equal(cards[0].value, "1000");
+  assert.equal(cards[1].value, "4");
   assert.equal(cards[2].value, "9 / 5");
-  assert.equal(cards[3].value, "250");
-  assert.equal(cards[3].detail, "aggregate cycles, 25.0% of makespan");
+  assert.equal(cards[3].value, "4 / 6 / 4");
+  assert.equal(cards[3].detail, "split / move / merge, 25.0% shuttle time");
+  assert.equal(cards[4].value, "3");
+  assert.equal(cards[4].detail, "7 swap hops, 11 ion hops");
+  assert.equal(cards[5].value, "18");
+  assert.equal(cards[5].detail, "blocked DAG ops, 2 ready");
 });
 
 test("createScenarioCopy reflects the active generated trace", () => {

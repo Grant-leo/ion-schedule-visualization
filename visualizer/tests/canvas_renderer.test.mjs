@@ -23,6 +23,8 @@ test("hardware shuttle channels render wider than moving ions", () => {
   assert.ok(RENDER_SIZES.segmentWidth > movingIonDiameter);
   assert.ok(RENDER_SIZES.activeSegmentWidth > movingIonDiameter);
   assert.ok(RENDER_SIZES.motionPathWidth > movingIonDiameter);
+  assert.ok(RENDER_SIZES.junctionRadius >= RENDER_SIZES.segmentWidth / 2);
+  assert.ok(RENDER_SIZES.couplerWidth >= RENDER_SIZES.segmentWidth);
 });
 
 test("eventProgress clamps time inside event duration", () => {

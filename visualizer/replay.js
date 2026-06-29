@@ -12,12 +12,17 @@ export function validateTrace(trace) {
   const locations = new Map(trace.particles.map((particle) => [particle.id, particle.initial_location]));
   const sortedEvents = sortedTraceEvents(trace.events);
   const busyUntil = new Map();
+  const trapBusyUntil = new Map();
   const pendingTransfers = [];
 
   for (const event of sortedEvents) {
     applyCompletedTransfers(pendingTransfers, locations, event.start);
     if (event.end < event.start) {
       errors.push(`event ${event.id} ends before it starts`);
+    }
+    const trapResource = eventTrapResource(event);
+    if (trapResource && (trapBusyUntil.get(trapResource) || 0) > event.start) {
+      errors.push(`${trapResource} busy until ${trapBusyUntil.get(trapResource)} for event ${event.id}`);
     }
     for (const ion of event.ions || []) {
       if ((busyUntil.get(ion) || 0) > event.start) {
@@ -40,6 +45,9 @@ export function validateTrace(trace) {
     }
     for (const ion of event.ions || []) {
       busyUntil.set(ion, Math.max(busyUntil.get(ion) || 0, event.end));
+    }
+    if (trapResource) {
+      trapBusyUntil.set(trapResource, Math.max(trapBusyUntil.get(trapResource) || 0, event.end));
     }
   }
 
@@ -205,11 +213,29 @@ function nearestKeyframe(keyframes, time) {
 function summarize(events) {
   const counts = { gate: 0, split: 0, move: 0, merge: 0 };
   const times = { gate: 0, split: 0, move: 0, merge: 0 };
+  let swapCount = 0;
+  let swapHops = 0;
+  let ionHops = 0;
+  let oneQubitGates = 0;
+  let twoQubitGates = 0;
 
   for (const event of events) {
     counts[event.type] = (counts[event.type] || 0) + 1;
     times[event.type] = (times[event.type] || 0) + Math.max(0, event.end - event.start);
+    if (event.type === "gate") {
+      if (Number(event.metadata?.arity ?? event.ions?.length ?? 0) === 1) {
+        oneQubitGates += 1;
+      } else {
+        twoQubitGates += 1;
+      }
+    }
+    if (event.type === "split") {
+      swapCount += Number(event.metadata?.swap_count || 0);
+      swapHops += Number(event.metadata?.swap_hops || 0);
+      ionHops += Number(event.metadata?.ion_hops || 0);
+    }
   }
+  const parallel = summarizeGateParallelism(events);
 
   return {
     counts,
@@ -217,7 +243,45 @@ function summarize(events) {
     eventCount: events.length,
     finishTime: events.reduce((maxTime, event) => Math.max(maxTime, event.end), 0),
     shuttlingTime: times.split + times.move + times.merge,
+    oneQubitGates,
+    twoQubitGates,
+    swapCount,
+    swapHops,
+    ionHops,
+    ...parallel,
   };
+}
+
+function summarizeGateParallelism(events) {
+  const gates = events.filter((event) => event.type === "gate");
+  let maxParallelGates = 0;
+  let crossTrapParallelGates = 0;
+  let sameTrapGateOverlaps = 0;
+
+  for (let index = 0; index < gates.length; index += 1) {
+    const left = gates[index];
+    const activeAtStart = gates.filter((gate) => gate.start <= left.start && left.start < gate.end);
+    maxParallelGates = Math.max(maxParallelGates, activeAtStart.length);
+    if (new Set(activeAtStart.map((gate) => gate.target)).size > 1) {
+      crossTrapParallelGates += 1;
+    }
+
+    for (const right of gates.slice(index + 1)) {
+      if (left.target !== right.target) continue;
+      if (left.start < right.end && right.start < left.end) {
+        sameTrapGateOverlaps += 1;
+      }
+    }
+  }
+
+  return { maxParallelGates, crossTrapParallelGates, sameTrapGateOverlaps };
+}
+
+function eventTrapResource(event) {
+  if (event.type === "gate" && event.target?.startsWith("trap:")) return event.target;
+  if (event.type === "split" && event.source?.startsWith("trap:")) return event.source;
+  if (event.type === "merge" && event.target?.startsWith("trap:")) return event.target;
+  return null;
 }
 
 function clamp(value, min, max) {

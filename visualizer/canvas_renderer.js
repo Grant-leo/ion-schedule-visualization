@@ -26,6 +26,9 @@ export const RENDER_SIZES = Object.freeze({
   trapHeight: 28,
   trapPortGap: 14,
   trapPortRadius: 5,
+  couplerWidth: 24,
+  couplerLength: 18,
+  junctionRadius: 14,
 });
 
 export function createRenderer(canvas) {
@@ -47,6 +50,7 @@ export function createRenderer(canvas) {
       context.clearRect(0, 0, canvas.width, canvas.height);
       drawBackground(context, canvas);
       drawSegments(context, trace, layout, state);
+      drawChannelTerminals(context, trace, layout, state);
       drawTraps(context, trace, layout);
       drawTrapPorts(context, trace, layout);
       drawJunctions(context, trace, layout);
@@ -223,8 +227,9 @@ function computeLayout(canvas, trace) {
       trapCount === 1
         ? width / 2
         : marginX + (index * (width - marginX * 2)) / Math.max(1, trapCount - 1);
-    const x = point ? scaleValue(point.x, minX, maxX, marginX, width - marginX) : fallbackX;
-    const y = point ? scaleValue(point.y, minY, maxY, marginY, height - marginY) : height * 0.58;
+    const scaled = point ? scaleLayoutPoint(point, minX, maxX, minY, maxY, marginX, marginY, width, height) : null;
+    const x = scaled ? scaled.x : fallbackX;
+    const y = scaled ? scaled.y : height * 0.58;
     traps.set(location, { x, y, width: Math.max(72, Math.min(150, 18 * trap.capacity + 28)) });
   }
 
@@ -236,8 +241,9 @@ function computeLayout(canvas, trace) {
       junctionCount === 1
         ? width / 2
         : marginX + (index * (width - marginX * 2)) / Math.max(1, junctionCount - 1);
-    const x = point ? scaleValue(point.x, minX, maxX, marginX, width - marginX) : fallbackX;
-    const y = point ? scaleValue(point.y, minY, maxY, marginY, height - marginY) : height * 0.34;
+    const scaled = point ? scaleLayoutPoint(point, minX, maxX, minY, maxY, marginX, marginY, width, height) : null;
+    const x = scaled ? scaled.x : fallbackX;
+    const y = scaled ? scaled.y : height * 0.34;
     junctions.set(location, { x, y });
   }
 
@@ -246,7 +252,7 @@ function computeLayout(canvas, trace) {
     const end = resolveSegmentNodePoint(traps, junctions, trace.topology.traps, segment.to, segment.id);
     if (!start || !end) continue;
     const key = `segment:${segment.id}`;
-    const route = segmentRoutePoints(start, end, segment.from, segment.to);
+    const route = segmentRoutePoints(start, end, segment.from, segment.to, trace.run?.machine);
     segments.set(key, pointAlongPolyline(route, 0.5));
     segmentEndpoints.set(key, { start, end, from: segment.from, to: segment.to, route });
   }
@@ -254,9 +260,20 @@ function computeLayout(canvas, trace) {
   return { traps, junctions, segments, segmentEndpoints, traceTrapsFallback: trace.topology.traps };
 }
 
-function scaleValue(value, minInput, maxInput, minOutput, maxOutput) {
-  if (maxInput === minInput) return (minOutput + maxOutput) / 2;
-  return minOutput + ((value - minInput) / (maxInput - minInput)) * (maxOutput - minOutput);
+function scaleLayoutPoint(point, minX, maxX, minY, maxY, marginX, marginY, width, height) {
+  const spanX = Math.max(1, maxX - minX);
+  const spanY = Math.max(1, maxY - minY);
+  const availableX = Math.max(1, width - marginX * 2);
+  const availableY = Math.max(1, height - marginY * 2);
+  const scale = Math.min(availableX / spanX, availableY / spanY);
+  const usedX = spanX * scale;
+  const usedY = spanY * scale;
+  const offsetX = (width - usedX) / 2;
+  const offsetY = (height - usedY) / 2;
+  return {
+    x: offsetX + (point.x - minX) * scale,
+    y: offsetY + (point.y - minY) * scale,
+  };
 }
 
 function resolveNodePoint(traps, junctions, location) {
@@ -286,7 +303,7 @@ function drawBackground(context, canvas) {
   context.fillStyle = cssColor("--color-canvas");
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.save();
-  context.strokeStyle = "rgba(255, 255, 255, 0.035)";
+  context.strokeStyle = "rgba(255, 255, 255, 0.024)";
   context.lineWidth = 1;
   const grid = Math.max(42, Math.floor(canvas.width / 18));
   for (let x = grid; x < canvas.width; x += grid) {
@@ -301,7 +318,7 @@ function drawBackground(context, canvas) {
     context.lineTo(canvas.width, y);
     context.stroke();
   }
-  context.strokeStyle = "rgba(255, 255, 255, 0.07)";
+  context.strokeStyle = "rgba(255, 255, 255, 0.055)";
   context.strokeRect(0.5, 0.5, canvas.width - 1, canvas.height - 1);
   context.restore();
 }
@@ -318,10 +335,14 @@ function drawSegments(context, trace, layout, state) {
     const isActive = activeMotion.has(segmentKey);
 
     context.save();
-    context.strokeStyle = "rgba(0, 0, 0, 0.68)";
+    context.strokeStyle = "rgba(0, 0, 0, 0.74)";
     context.lineWidth = isActive ? RENDER_SIZES.activeSegmentOuterWidth : RENDER_SIZES.segmentOuterWidth;
     context.lineCap = "round";
     context.lineJoin = "round";
+    strokePolyline(context, points);
+
+    context.strokeStyle = isActive ? "rgba(100, 210, 255, 0.36)" : "rgba(255, 255, 255, 0.105)";
+    context.lineWidth = (isActive ? RENDER_SIZES.activeSegmentWidth : RENDER_SIZES.segmentWidth) + 7;
     strokePolyline(context, points);
 
     if (isActive) {
@@ -333,11 +354,54 @@ function drawSegments(context, trace, layout, state) {
     strokePolyline(context, points);
 
     context.shadowBlur = 0;
-    context.strokeStyle = isActive ? "rgba(255, 255, 255, 0.44)" : "rgba(255, 255, 255, 0.18)";
-    context.lineWidth = 1.2;
+    context.strokeStyle = isActive ? "rgba(255, 255, 255, 0.54)" : "rgba(255, 255, 255, 0.2)";
+    context.lineWidth = 1.4;
     strokePolyline(context, points);
     context.restore();
   }
+}
+
+function drawChannelTerminals(context, trace, layout, state) {
+  const activeMotion = new Set(
+    state.activeEvents.filter((event) => MOTION_TYPES.has(event.type)).flatMap((event) => [event.source, event.target]),
+  );
+
+  for (const segment of trace.topology.segments) {
+    const key = `segment:${segment.id}`;
+    const endpoints = layout.segmentEndpoints?.get(key);
+    if (!endpoints) continue;
+    const route = endpoints.route || [endpoints.start, endpoints.end].filter(Boolean);
+    const isActive = activeMotion.has(key);
+    drawTerminalForEndpoint(context, route, endpoints.start, endpoints.from, isActive);
+    drawTerminalForEndpoint(context, [...route].reverse(), endpoints.end, endpoints.to, isActive);
+  }
+}
+
+function drawTerminalForEndpoint(context, route, point, location, active) {
+  if (!point) return;
+  if (location?.startsWith("trap:")) {
+    const next = route?.[1] || point;
+    drawTrapCoupler(context, point, next, active);
+  }
+}
+
+function drawTrapCoupler(context, point, nextPoint, active) {
+  const horizontal = Math.abs((nextPoint?.x ?? point.x) - point.x) >= Math.abs((nextPoint?.y ?? point.y) - point.y);
+  const length = RENDER_SIZES.couplerLength;
+  const width = RENDER_SIZES.couplerWidth;
+  const x = point.x - (horizontal ? length / 2 : width / 2);
+  const y = point.y - (horizontal ? width / 2 : length / 2);
+
+  context.save();
+  context.fillStyle = active ? "rgba(100, 210, 255, 0.32)" : "rgba(124, 135, 152, 0.36)";
+  context.strokeStyle = active ? cssColor("--color-move") : "rgba(255, 255, 255, 0.24)";
+  context.lineWidth = active ? 1.8 : 1.2;
+  context.shadowColor = active ? cssColor("--color-move") : "rgba(0, 0, 0, 0.42)";
+  context.shadowBlur = active ? 12 : 4;
+  roundedRect(context, x, y, horizontal ? length : width, horizontal ? width : length, 5);
+  context.fill();
+  context.stroke();
+  context.restore();
 }
 
 function drawTraps(context, trace, layout) {
@@ -352,18 +416,29 @@ function drawTrapChain(context, trap, point) {
   const width = point.width;
   const height = RENDER_SIZES.trapHeight;
   context.save();
-  context.shadowColor = "rgba(94, 143, 242, 0.22)";
-  context.shadowBlur = 10;
-  context.fillStyle = "rgba(94, 143, 242, 0.16)";
+  context.shadowColor = "rgba(94, 143, 242, 0.2)";
+  context.shadowBlur = 14;
+  context.fillStyle = "rgba(13, 17, 24, 0.92)";
+  context.strokeStyle = "rgba(255, 255, 255, 0.14)";
+  context.lineWidth = 1.2;
+  roundedRect(context, point.x - width / 2 - 4, point.y - height / 2 - 4, width + 8, height + 8, 8);
+  context.fill();
+  context.stroke();
+
+  context.shadowBlur = 0;
+  const gradient = context.createLinearGradient(point.x - width / 2, point.y, point.x + width / 2, point.y);
+  gradient.addColorStop(0, "rgba(94, 143, 242, 0.26)");
+  gradient.addColorStop(0.5, "rgba(94, 143, 242, 0.12)");
+  gradient.addColorStop(1, "rgba(94, 143, 242, 0.26)");
+  context.fillStyle = gradient;
   context.strokeStyle = cssColor("--color-trap");
-  context.lineWidth = 1.5;
+  context.lineWidth = 1.6;
   roundedRect(context, point.x - width / 2, point.y - height / 2, width, height, 5);
   context.fill();
   context.stroke();
-  context.shadowBlur = 0;
 
-  context.strokeStyle = "rgba(255, 255, 255, 0.18)";
-  context.lineWidth = 1;
+  context.strokeStyle = "rgba(255, 255, 255, 0.24)";
+  context.lineWidth = 1.2;
   context.beginPath();
   context.moveTo(point.x - width / 2 + 8, point.y);
   context.lineTo(point.x + width / 2 - 8, point.y);
@@ -389,46 +464,108 @@ function drawTrapPorts(context, trace, layout) {
     const ports = trapPortPoints(point);
     const connected = trapConnectedPortSides(trap);
     for (const side of ["L", "R"]) {
+      drawTrapNeck(context, point, ports[side], side, connected.has(side));
       drawTrapPort(context, ports[side], side, connected.has(side));
     }
   }
 }
 
+function drawTrapNeck(context, trapPoint, portPoint, side, connected) {
+  if (!connected) return;
+  const sign = side === "R" ? 1 : -1;
+  const edge = { x: trapPoint.x + sign * trapPoint.width / 2, y: trapPoint.y };
+  context.save();
+  context.strokeStyle = "rgba(0, 0, 0, 0.62)";
+  context.lineWidth = RENDER_SIZES.couplerWidth + 6;
+  context.lineCap = "round";
+  context.beginPath();
+  context.moveTo(edge.x, edge.y);
+  context.lineTo(portPoint.x, portPoint.y);
+  context.stroke();
+  context.strokeStyle = "rgba(124, 135, 152, 0.42)";
+  context.lineWidth = RENDER_SIZES.couplerWidth;
+  context.beginPath();
+  context.moveTo(edge.x, edge.y);
+  context.lineTo(portPoint.x, portPoint.y);
+  context.stroke();
+  context.strokeStyle = "rgba(255, 255, 255, 0.18)";
+  context.lineWidth = 1.1;
+  context.beginPath();
+  context.moveTo(edge.x, edge.y);
+  context.lineTo(portPoint.x, portPoint.y);
+  context.stroke();
+  context.restore();
+}
+
 function drawTrapPort(context, point, side, connected) {
   context.save();
-  context.fillStyle = connected ? cssColor("--color-segment") : "rgba(115, 127, 145, 0.18)";
-  context.strokeStyle = connected ? cssColor("--color-trap") : "rgba(115, 127, 145, 0.36)";
-  context.lineWidth = connected ? 1.5 : 1;
+  context.fillStyle = connected ? "rgba(14, 18, 24, 0.98)" : "rgba(115, 127, 145, 0.18)";
+  context.strokeStyle = connected ? "rgba(100, 210, 255, 0.54)" : "rgba(115, 127, 145, 0.36)";
+  context.lineWidth = connected ? 1.8 : 1;
+  context.shadowColor = connected ? "rgba(100, 210, 255, 0.24)" : "transparent";
+  context.shadowBlur = connected ? 8 : 0;
   context.beginPath();
-  context.arc(point.x, point.y, RENDER_SIZES.trapPortRadius, 0, Math.PI * 2);
+  context.arc(point.x, point.y, connected ? RENDER_SIZES.trapPortRadius + 1 : RENDER_SIZES.trapPortRadius, 0, Math.PI * 2);
   context.fill();
   context.stroke();
 
-  context.fillStyle = connected ? cssColor("--color-text") : "rgba(168, 179, 195, 0.48)";
-  context.font = "9px Segoe UI, system-ui, sans-serif";
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.fillText(side, point.x, point.y);
+  context.shadowBlur = 0;
+  context.fillStyle = connected ? "rgba(100, 210, 255, 0.92)" : "rgba(168, 179, 195, 0.48)";
+  context.beginPath();
+  context.arc(point.x, point.y, 2.2, 0, Math.PI * 2);
+  context.fill();
   context.restore();
 }
 
 function drawJunctions(context, trace, layout) {
   for (const junction of trace.topology.junctions) {
-    const point = layout.junctions.get(`junction:${junction.id}`);
+    const location = `junction:${junction.id}`;
+    const point = layout.junctions.get(location);
     if (!point) continue;
+    const directions = junctionDirections(trace, layout, location, point);
     context.save();
-    context.shadowColor = cssColor("--color-junction");
-    context.shadowBlur = 12;
+    const radius = RENDER_SIZES.junctionRadius;
+    context.shadowColor = "rgba(240, 196, 92, 0.28)";
+    context.shadowBlur = 14;
+    context.fillStyle = "rgba(18, 17, 13, 0.96)";
+    context.strokeStyle = cssColor("--color-junction");
+    context.lineWidth = 1.8;
+    roundedRect(context, point.x - radius, point.y - radius, radius * 2, radius * 2, 6);
+    context.fill();
+    context.stroke();
+    context.shadowBlur = 0;
+    context.strokeStyle = "rgba(240, 196, 92, 0.7)";
+    context.lineWidth = 2;
+    for (const direction of directions) {
+      context.beginPath();
+      context.moveTo(point.x + direction.x * 4, point.y + direction.y * 4);
+      context.lineTo(point.x + direction.x * (radius - 4), point.y + direction.y * (radius - 4));
+      context.stroke();
+    }
     context.fillStyle = cssColor("--color-junction");
     context.beginPath();
-    context.arc(point.x, point.y, 9, 0, Math.PI * 2);
+    context.arc(point.x, point.y, 4, 0, Math.PI * 2);
     context.fill();
-    context.shadowBlur = 0;
-    context.strokeStyle = "rgba(255, 255, 255, 0.42)";
-    context.lineWidth = 1;
-    context.stroke();
     context.restore();
   }
+}
+
+function junctionDirections(trace, layout, junctionLocation, point) {
+  const directions = [];
+  for (const segment of trace.topology.segments || []) {
+    if (segment.from !== junctionLocation && segment.to !== junctionLocation) continue;
+    const endpoints = layout.segmentEndpoints?.get(`segment:${segment.id}`);
+    if (!endpoints) continue;
+    const other = segment.from === junctionLocation ? endpoints.end : endpoints.start;
+    const length = distance(point, other);
+    if (length === 0) continue;
+    const direction = { x: (other.x - point.x) / length, y: (other.y - point.y) / length };
+    const duplicate = directions.some(
+      (item) => Math.abs(item.x - direction.x) < 0.08 && Math.abs(item.y - direction.y) < 0.08,
+    );
+    if (!duplicate) directions.push(direction);
+  }
+  return directions;
 }
 
 function drawActiveEvents(context, layout, state) {
@@ -585,20 +722,22 @@ function trapForLocation(trace, location) {
 function drawMotionPath(context, path) {
   if (!path || path.length < 2) return;
   context.save();
-  context.strokeStyle = "rgba(100, 210, 255, 0.28)";
-  context.lineWidth = RENDER_SIZES.motionPathWidth;
-  context.setLineDash([8, 8]);
+  context.shadowColor = cssColor("--color-move");
+  context.shadowBlur = 16;
+  context.strokeStyle = "rgba(100, 210, 255, 0.3)";
+  context.lineWidth = 14;
   context.lineCap = "round";
+  context.lineJoin = "round";
   strokePolyline(context, path);
+  context.shadowBlur = 0;
   context.strokeStyle = "rgba(255, 255, 255, 0.72)";
-  context.lineWidth = 1.2;
-  context.setLineDash([]);
+  context.lineWidth = 2;
   strokePolyline(context, path);
-  context.setLineDash([]);
   context.restore();
 }
 
-function segmentRoutePoints(start, end, fromLocation, toLocation) {
+function segmentRoutePoints(start, end, fromLocation, toLocation, machineName) {
+  if (machineName === "H6") return [start, end];
   if (sameAxis(start, end)) return [start, end];
   if (fromLocation?.startsWith("trap:") && toLocation?.startsWith("trap:")) {
     const midY = (start.y + end.y) / 2;

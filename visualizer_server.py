@@ -32,6 +32,8 @@ CAPACITIES = [1, 2, 3, 4, 5, 6, 8]
 MAPPERS = list(supported_mapper_names())
 ORDERINGS = list(supported_reorder_policies())
 SCHEDULERS = list(supported_scheduler_policies())
+VISUALIZER_UNSAFE_SCHEDULERS = {"EJF-ParallelTrap"}
+VISUALIZER_SCHEDULERS = [policy for policy in SCHEDULERS if policy not in VISUALIZER_UNSAFE_SCHEDULERS]
 
 
 def options_payload():
@@ -41,13 +43,15 @@ def options_payload():
         "capacities": CAPACITIES,
         "mappers": MAPPERS,
         "orderings": ORDERINGS,
-        "schedulers": SCHEDULERS,
-        "scheduler_options": scheduler_policy_options(),
+        "schedulers": VISUALIZER_SCHEDULERS,
+        "scheduler_options": [
+            option for option in scheduler_policy_options() if option["id"] in VISUALIZER_SCHEDULERS
+        ],
         "defaults": {
-            "program": "qft_n4",
+            "program": "swap_test_n25",
             "machine": "G3x3",
-            "capacity": 2,
-            "mapper": "Greedy",
+            "capacity": 3,
+            "mapper": "SABRE",
             "ordering": "Naive",
             "scheduler": "EJF",
         },
@@ -70,8 +74,8 @@ def _generate_trace_json(program_id, machine, capacity, mapper, ordering, schedu
         raise ValueError(f"Unsupported mapper: {mapper}")
     if ordering not in ORDERINGS:
         raise ValueError(f"Unsupported ordering: {ordering}")
-    if scheduler not in SCHEDULERS:
-        raise ValueError(f"Unsupported scheduler: {scheduler}")
+    if scheduler not in VISUALIZER_SCHEDULERS:
+        raise ValueError(f"Unsupported visualizer scheduler: {scheduler}")
     _validate_demo_capacity(program_id, machine, capacity)
     serial_trap_ops, serial_comm, serial_all = scheduler_policy_flags(scheduler)
 

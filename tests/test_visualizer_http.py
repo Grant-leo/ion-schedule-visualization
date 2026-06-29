@@ -38,10 +38,10 @@ def test_visualizer_options_endpoint_serves_demo_defaults(visualizer_http_server
     payload = read_json(f"{visualizer_http_server}/api/options")
 
     assert payload["defaults"] == {
-        "program": "qft_n4",
+        "program": "swap_test_n25",
         "machine": "G3x3",
-        "capacity": 2,
-        "mapper": "Greedy",
+        "capacity": 3,
+        "mapper": "SABRE",
         "ordering": "Naive",
         "scheduler": "EJF",
     }
@@ -50,6 +50,7 @@ def test_visualizer_options_endpoint_serves_demo_defaults(visualizer_http_server
     assert "G3x3" in payload["machines"]
     assert "SABRE" in payload["mappers"]
     assert "EJF-GlobalSerial" in payload["schedulers"]
+    assert "EJF-ParallelTrap" not in payload["schedulers"]
 
 
 def test_visualizer_html_uses_cache_busted_core_assets():

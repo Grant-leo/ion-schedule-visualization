@@ -1,17 +1,30 @@
 export function createMetricCards(metrics = {}) {
   const finishTime = Number(metrics.finish_time ?? metrics.finishTime ?? 0);
   const shuttlingTime = Number(metrics.shuttling_time ?? metrics.shuttlingTime ?? 0);
+  const eventCount = Number(metrics.event_count ?? metrics.eventCount ?? 0);
+  const counts = metrics.counts || {};
+  const splitCount = Number(counts.split ?? metrics.split_count ?? metrics.splitCount ?? 0);
+  const moveCount = Number(counts.move ?? metrics.move_count ?? metrics.moveCount ?? 0);
+  const mergeCount = Number(counts.merge ?? metrics.merge_count ?? metrics.mergeCount ?? 0);
+  const maxParallel = Number(metrics.max_parallel_gates ?? metrics.maxParallelGates ?? 0);
+  const crossTrapParallel = Number(metrics.cross_trap_parallel_gates ?? metrics.crossTrapParallelGates ?? 0);
+  const sameTrapOverlaps = Number(metrics.same_trap_gate_overlaps ?? metrics.sameTrapGateOverlaps ?? 0);
+  const swapCount = Number(metrics.swap_count ?? metrics.swapCount ?? 0);
+  const swapHops = Number(metrics.swap_hops ?? metrics.swapHops ?? 0);
+  const ionHops = Number(metrics.ion_hops ?? metrics.ionHops ?? 0);
+  const blockedOps = Number(metrics.blocked_ops ?? metrics.blockedOps ?? 0);
+  const readyOps = Number(metrics.ready_ops ?? metrics.readyOps ?? 0);
   const ratio = finishTime > 0 ? (shuttlingTime / finishTime) * 100 : 0;
   return [
     {
       label: "Finish time",
       value: formatNumber(finishTime),
-      detail: "cycles in the scheduled trace",
+      detail: `${formatNumber(eventCount)} scheduled events`,
     },
     {
-      label: "Schedule events",
-      value: formatNumber(metrics.event_count ?? metrics.eventCount ?? 0),
-      detail: "gate + split/move/merge operations",
+      label: "Parallel gates",
+      value: formatNumber(maxParallel),
+      detail: `${formatNumber(crossTrapParallel)} cross-trap overlaps, ${formatNumber(sameTrapOverlaps)} same-trap`,
     },
     {
       label: "Gate mix",
@@ -19,9 +32,19 @@ export function createMetricCards(metrics = {}) {
       detail: "1Q / 2Q gates preserved",
     },
     {
-      label: "Shuttling burden",
-      value: formatNumber(shuttlingTime),
-      detail: `aggregate cycles, ${ratio.toFixed(1)}% of makespan`,
+      label: "Motion ops",
+      value: `${formatNumber(splitCount)} / ${formatNumber(moveCount)} / ${formatNumber(mergeCount)}`,
+      detail: `split / move / merge, ${ratio.toFixed(1)}% shuttle time`,
+    },
+    {
+      label: "Swap work",
+      value: formatNumber(swapCount),
+      detail: `${formatNumber(swapHops)} swap hops, ${formatNumber(ionHops)} ion hops`,
+    },
+    {
+      label: "DAG pressure",
+      value: formatNumber(blockedOps),
+      detail: `blocked DAG ops, ${formatNumber(readyOps)} ready`,
     },
   ];
 }
