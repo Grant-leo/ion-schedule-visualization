@@ -1,6 +1,6 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260629-parallel4";
-import { renderDagSvg } from "./dag_renderer.js?v=20260629-parallel4";
-import { createReplay, validateTrace } from "./replay.js?v=20260629-parallel4";
+import { createRenderer } from "./canvas_renderer.js?v=20260629-visualfix2";
+import { renderDagSvg } from "./dag_renderer.js?v=20260629-visualfix2";
+import { createReplay, validateTrace } from "./replay.js?v=20260629-visualfix2";
 import {
   createHeadlineMetricCards,
   createMetricCards,
@@ -8,7 +8,7 @@ import {
   describeEvent,
   formatLocation,
   summarizeDag,
-} from "./ui_model.js?v=20260629-parallel4";
+} from "./ui_model.js?v=20260629-visualfix2";
 
 const elements = {
   controlPanel: document.getElementById("controlPanel"),

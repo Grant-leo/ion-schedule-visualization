@@ -6,6 +6,7 @@ import {
   endpointSlotIndex,
   eventProgress,
   interpolatePoint,
+  ionLabelSpec,
   ionRenderPoint,
   motionPathPoints,
   pointAlongPolyline,
@@ -24,7 +25,9 @@ test("hardware shuttle channels render wider than moving ions", () => {
   assert.ok(RENDER_SIZES.activeSegmentWidth > movingIonDiameter);
   assert.ok(RENDER_SIZES.motionPathWidth > movingIonDiameter);
   assert.ok(RENDER_SIZES.junctionRadius >= RENDER_SIZES.segmentWidth / 2);
+  assert.ok(RENDER_SIZES.junctionRadius <= RENDER_SIZES.segmentWidth / 2);
   assert.ok(RENDER_SIZES.couplerWidth >= RENDER_SIZES.segmentWidth);
+  assert.ok(RENDER_SIZES.couplerWidth <= RENDER_SIZES.segmentWidth);
 });
 
 test("eventProgress clamps time inside event duration", () => {
@@ -164,6 +167,21 @@ test("ionRenderPoint keeps trap-chain ions exactly on their slots", () => {
 
   assert.deepEqual(ionRenderPoint(basePoint, "trap:0", null, 3), basePoint);
   assert.notDeepEqual(ionRenderPoint(basePoint, "segment:0", null, 1), basePoint);
+});
+
+test("ion labels are centered inside the rendered ion sphere", () => {
+  assert.deepEqual(ionLabelSpec(4, RENDER_SIZES.ionRadius), {
+    text: "4",
+    xOffset: 0,
+    yOffset: 0,
+    fontSize: 9,
+  });
+  assert.deepEqual(ionLabelSpec(21, RENDER_SIZES.ionRadius), {
+    text: "21",
+    xOffset: 0,
+    yOffset: 0,
+    fontSize: 7,
+  });
 });
 
 test("motionPathPoints routes segment moves through the shared junction", () => {

@@ -16,19 +16,19 @@ const FALLBACK_COLORS = {
 const MOTION_TYPES = new Set(["split", "move", "merge"]);
 
 export const RENDER_SIZES = Object.freeze({
-  ionRadius: 7,
-  activeIonRadius: 8,
+  ionRadius: 8,
+  activeIonRadius: 9,
   segmentWidth: 20,
-  activeSegmentWidth: 27,
-  segmentOuterWidth: 30,
-  activeSegmentOuterWidth: 38,
+  activeSegmentWidth: 26,
+  segmentOuterWidth: 28,
+  activeSegmentOuterWidth: 36,
   motionPathWidth: 28,
   trapHeight: 28,
   trapPortGap: 14,
   trapPortRadius: 5,
-  couplerWidth: 24,
-  couplerLength: 18,
-  junctionRadius: 14,
+  couplerWidth: 20,
+  couplerLength: 16,
+  junctionRadius: 10,
 });
 
 export function createRenderer(canvas) {
@@ -190,6 +190,16 @@ export function ionRenderPoint(basePoint, location, activeMotion, offsetIndex) {
   if (!basePoint) return null;
   if (!activeMotion && location?.startsWith("trap:")) return basePoint;
   return offsetPoint(basePoint, offsetIndex);
+}
+
+export function ionLabelSpec(id, radius) {
+  const text = String(id);
+  return {
+    text,
+    xOffset: 0,
+    yOffset: 0,
+    fontSize: text.length >= 2 ? Math.max(7, Math.floor(radius * 0.88)) : Math.max(9, Math.floor(radius * 1.08)),
+  };
 }
 
 function resizeCanvas(canvas) {
@@ -525,26 +535,25 @@ function drawJunctions(context, trace, layout) {
     const directions = junctionDirections(trace, layout, location, point);
     context.save();
     const radius = RENDER_SIZES.junctionRadius;
-    context.shadowColor = "rgba(240, 196, 92, 0.28)";
-    context.shadowBlur = 14;
-    context.fillStyle = "rgba(18, 17, 13, 0.96)";
-    context.strokeStyle = cssColor("--color-junction");
-    context.lineWidth = 1.8;
-    roundedRect(context, point.x - radius, point.y - radius, radius * 2, radius * 2, 6);
+    context.shadowColor = "rgba(240, 196, 92, 0.22)";
+    context.shadowBlur = 10;
+    context.fillStyle = "rgba(8, 9, 11, 0.96)";
+    context.strokeStyle = "rgba(240, 196, 92, 0.92)";
+    context.lineWidth = 1.6;
+    context.beginPath();
+    context.arc(point.x, point.y, radius + 2, 0, Math.PI * 2);
     context.fill();
     context.stroke();
     context.shadowBlur = 0;
-    context.strokeStyle = "rgba(240, 196, 92, 0.7)";
-    context.lineWidth = 2;
+    context.fillStyle = "rgba(240, 196, 92, 0.72)";
     for (const direction of directions) {
       context.beginPath();
-      context.moveTo(point.x + direction.x * 4, point.y + direction.y * 4);
-      context.lineTo(point.x + direction.x * (radius - 4), point.y + direction.y * (radius - 4));
-      context.stroke();
+      context.arc(point.x + direction.x * (radius - 3), point.y + direction.y * (radius - 3), 1.7, 0, Math.PI * 2);
+      context.fill();
     }
     context.fillStyle = cssColor("--color-junction");
     context.beginPath();
-    context.arc(point.x, point.y, 4, 0, Math.PI * 2);
+    context.arc(point.x, point.y, 3.2, 0, Math.PI * 2);
     context.fill();
     context.restore();
   }
@@ -653,7 +662,7 @@ function drawIons(context, trace, layout, state) {
     context.restore();
 
     if (showLabels) {
-      drawLabel(context, String(particle.id), point.x, point.y - 10, cssColor("--color-text"));
+      drawIonLabel(context, particle.id, point, radius);
     }
   }
 }
@@ -900,6 +909,20 @@ function drawLabel(context, text, x, y, color) {
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillText(text, x, y);
+  context.restore();
+}
+
+function drawIonLabel(context, id, point, radius) {
+  const spec = ionLabelSpec(id, radius);
+  context.save();
+  context.font = `800 ${spec.fontSize}px -apple-system, BlinkMacSystemFont, Segoe UI, system-ui, sans-serif`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.lineWidth = 2.2;
+  context.strokeStyle = "rgba(0, 0, 0, 0.72)";
+  context.fillStyle = "#f8fbff";
+  context.strokeText(spec.text, point.x + spec.xOffset, point.y + spec.yOffset);
+  context.fillText(spec.text, point.x + spec.xOffset, point.y + spec.yOffset);
   context.restore();
 }
 

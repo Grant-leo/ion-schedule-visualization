@@ -67,6 +67,21 @@ def test_visualizer_html_uses_cache_busted_core_assets():
     assert 'id="runConfigPanel"' in html
 
 
+def test_visualizer_medium_viewport_uses_uncramped_layout_breakpoint():
+    css = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
+
+    assert "@media (max-width: 1360px)" in css
+    assert "grid-template-areas:\n      \"header header\"\n      \"left viewport\"\n      \"right right\"" in css
+
+
+def test_visualizer_desktop_dag_inspector_spans_full_page_height():
+    css = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
+
+    assert "grid-template-areas:\n    \"header header right\"\n    \"left viewport right\"\n    \"timeline timeline right\"" in css
+    assert "height: 100vh;\n  overflow: auto;" in css
+    assert "min-height: calc(100vh - (var(--space-5) * 2));" in css
+
+
 def test_visualizer_static_assets_are_not_cached_between_demo_iterations(visualizer_http_server):
     with urllib.request.urlopen(f"{visualizer_http_server}/canvas_renderer.js", timeout=30) as response:
         assert response.headers["Cache-Control"] == "no-store"
