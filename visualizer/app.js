@@ -1,15 +1,16 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260629-demo8";
-import { renderDagSvg } from "./dag_renderer.js?v=20260629-demo8";
-import { createReplay, validateTrace } from "./replay.js?v=20260629-demo8";
+import { createRenderer } from "./canvas_renderer.js?v=20260629-demo9";
+import { renderDagSvg } from "./dag_renderer.js?v=20260629-demo9";
+import { createReplay, validateTrace } from "./replay.js?v=20260629-demo9";
 import {
   createMetricCards,
   createScenarioCopy,
   describeEvent,
   formatLocation,
   summarizeDag,
-} from "./ui_model.js?v=20260629-demo8";
+} from "./ui_model.js?v=20260629-demo9";
 
 const elements = {
+  controlPanel: document.getElementById("controlPanel"),
   traceSelect: document.getElementById("traceSelect"),
   scenarioTitle: document.getElementById("scenarioTitle"),
   scenarioDescription: document.getElementById("scenarioDescription"),
@@ -177,6 +178,7 @@ function loadTraceData(nextTrace) {
   const valid = frontendValidation.valid && backendValidation.valid;
   setStatus(valid ? "Schedule verified" : "Trace invalid", valid ? "valid" : "invalid");
   draw();
+  elements.controlPanel.scrollTop = 0;
 }
 
 async function loadSelectedConfig() {
@@ -393,6 +395,7 @@ function draw() {
   if (dagKey !== lastDagKey) {
     renderDagSummary(state.dagState);
     renderDagSvg(elements.dagPanel, state.dagState, { direction: "vertical" });
+    focusDagViewport(elements.dagPanel);
     lastDagKey = dagKey;
   }
 
@@ -550,6 +553,23 @@ function activeEventKey(activeEvents) {
 
 function sortedSetKey(values) {
   return [...(values || [])].sort((left, right) => left - right).join(",");
+}
+
+function focusDagViewport(container) {
+  const svg = container.querySelector("svg");
+  const target = container.querySelector(".dag-svg-node.active, .dag-svg-node.ready");
+  if (!svg || !target) return;
+  const transform = target.getAttribute("transform") || "";
+  const match = /translate\(([-\d.]+),\s*([-\d.]+)\)/.exec(transform);
+  if (!match) return;
+  const viewBoxHeight = Number(svg.getAttribute("viewBox")?.split(/\s+/)[3] || svg.getAttribute("height") || 1);
+  const scale = svg.clientHeight > 0 && viewBoxHeight > 0 ? svg.clientHeight / viewBoxHeight : 1;
+  const targetTop = Number(match[2]) * scale - container.clientHeight * 0.32;
+  const nextScrollTop = Math.max(0, targetTop);
+  if (Math.abs(container.scrollTop - nextScrollTop) > 24) {
+    container.scrollTop = nextScrollTop;
+  }
+  container.scrollLeft = 0;
 }
 
 async function fetchJson(path) {

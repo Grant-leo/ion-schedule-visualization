@@ -1,5 +1,6 @@
 const FALLBACK_COLORS = {
   "--color-bg": "#101216",
+  "--color-canvas": "#050607",
   "--color-panel": "#181c22",
   "--color-border": "#2f3742",
   "--color-text": "#eef2f7",
@@ -15,14 +16,14 @@ const FALLBACK_COLORS = {
 const MOTION_TYPES = new Set(["split", "move", "merge"]);
 
 export const RENDER_SIZES = Object.freeze({
-  ionRadius: 6,
-  activeIonRadius: 7,
-  segmentWidth: 18,
-  activeSegmentWidth: 24,
-  segmentOuterWidth: 24,
-  activeSegmentOuterWidth: 30,
-  motionPathWidth: 22,
-  trapHeight: 26,
+  ionRadius: 7,
+  activeIonRadius: 8,
+  segmentWidth: 20,
+  activeSegmentWidth: 27,
+  segmentOuterWidth: 30,
+  activeSegmentOuterWidth: 38,
+  motionPathWidth: 28,
+  trapHeight: 28,
   trapPortGap: 14,
   trapPortRadius: 5,
 });
@@ -282,8 +283,27 @@ function resolveLocationPoint(layout, location) {
 }
 
 function drawBackground(context, canvas) {
-  context.fillStyle = cssColor("--color-bg");
+  context.fillStyle = cssColor("--color-canvas");
   context.fillRect(0, 0, canvas.width, canvas.height);
+  context.save();
+  context.strokeStyle = "rgba(255, 255, 255, 0.035)";
+  context.lineWidth = 1;
+  const grid = Math.max(42, Math.floor(canvas.width / 18));
+  for (let x = grid; x < canvas.width; x += grid) {
+    context.beginPath();
+    context.moveTo(x, 0);
+    context.lineTo(x, canvas.height);
+    context.stroke();
+  }
+  for (let y = grid; y < canvas.height; y += grid) {
+    context.beginPath();
+    context.moveTo(0, y);
+    context.lineTo(canvas.width, y);
+    context.stroke();
+  }
+  context.strokeStyle = "rgba(255, 255, 255, 0.07)";
+  context.strokeRect(0.5, 0.5, canvas.width - 1, canvas.height - 1);
+  context.restore();
 }
 
 function drawSegments(context, trace, layout, state) {
@@ -297,15 +317,26 @@ function drawSegments(context, trace, layout, state) {
     const segmentKey = `segment:${segment.id}`;
     const isActive = activeMotion.has(segmentKey);
 
-    context.strokeStyle = "rgba(5, 8, 12, 0.72)";
+    context.save();
+    context.strokeStyle = "rgba(0, 0, 0, 0.68)";
     context.lineWidth = isActive ? RENDER_SIZES.activeSegmentOuterWidth : RENDER_SIZES.segmentOuterWidth;
     context.lineCap = "round";
     context.lineJoin = "round";
     strokePolyline(context, points);
 
+    if (isActive) {
+      context.shadowColor = cssColor("--color-move");
+      context.shadowBlur = 16;
+    }
     context.strokeStyle = isActive ? cssColor("--color-move") : cssColor("--color-segment");
     context.lineWidth = isActive ? RENDER_SIZES.activeSegmentWidth : RENDER_SIZES.segmentWidth;
     strokePolyline(context, points);
+
+    context.shadowBlur = 0;
+    context.strokeStyle = isActive ? "rgba(255, 255, 255, 0.44)" : "rgba(255, 255, 255, 0.18)";
+    context.lineWidth = 1.2;
+    strokePolyline(context, points);
+    context.restore();
   }
 }
 
@@ -320,11 +351,22 @@ function drawTraps(context, trace, layout) {
 function drawTrapChain(context, trap, point) {
   const width = point.width;
   const height = RENDER_SIZES.trapHeight;
-  context.fillStyle = "rgba(70, 119, 200, 0.22)";
+  context.save();
+  context.shadowColor = "rgba(94, 143, 242, 0.22)";
+  context.shadowBlur = 10;
+  context.fillStyle = "rgba(94, 143, 242, 0.16)";
   context.strokeStyle = cssColor("--color-trap");
   context.lineWidth = 1.5;
   roundedRect(context, point.x - width / 2, point.y - height / 2, width, height, 5);
   context.fill();
+  context.stroke();
+  context.shadowBlur = 0;
+
+  context.strokeStyle = "rgba(255, 255, 255, 0.18)";
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(point.x - width / 2 + 8, point.y);
+  context.lineTo(point.x + width / 2 - 8, point.y);
   context.stroke();
 
   for (const slot of trap.slots || []) {
@@ -337,6 +379,7 @@ function drawTrapChain(context, trap, point) {
   }
 
   drawLabel(context, `T${trap.id}`, point.x, point.y + 24, cssColor("--color-muted"));
+  context.restore();
 }
 
 function drawTrapPorts(context, trace, layout) {
@@ -352,6 +395,7 @@ function drawTrapPorts(context, trace, layout) {
 }
 
 function drawTrapPort(context, point, side, connected) {
+  context.save();
   context.fillStyle = connected ? cssColor("--color-segment") : "rgba(115, 127, 145, 0.18)";
   context.strokeStyle = connected ? cssColor("--color-trap") : "rgba(115, 127, 145, 0.36)";
   context.lineWidth = connected ? 1.5 : 1;
@@ -365,16 +409,25 @@ function drawTrapPort(context, point, side, connected) {
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillText(side, point.x, point.y);
+  context.restore();
 }
 
 function drawJunctions(context, trace, layout) {
   for (const junction of trace.topology.junctions) {
     const point = layout.junctions.get(`junction:${junction.id}`);
     if (!point) continue;
+    context.save();
+    context.shadowColor = cssColor("--color-junction");
+    context.shadowBlur = 12;
     context.fillStyle = cssColor("--color-junction");
     context.beginPath();
     context.arc(point.x, point.y, 9, 0, Math.PI * 2);
     context.fill();
+    context.shadowBlur = 0;
+    context.strokeStyle = "rgba(255, 255, 255, 0.42)";
+    context.lineWidth = 1;
+    context.stroke();
+    context.restore();
   }
 }
 
@@ -386,11 +439,15 @@ function drawActiveEvents(context, layout, state) {
       if (!point) continue;
       drawMotionPath(context, path);
       drawSwapCue(context, layout, event);
+      context.save();
+      context.shadowColor = cssColor("--color-move");
+      context.shadowBlur = 18;
       context.strokeStyle = cssColor("--color-move");
       context.lineWidth = 2;
       context.beginPath();
       context.arc(point.x, point.y, 24, 0, Math.PI * 2);
       context.stroke();
+      context.restore();
       continue;
     }
 
@@ -403,6 +460,7 @@ function drawActiveEvents(context, layout, state) {
 function drawSwapCue(context, layout, event) {
   const path = splitInternalSwapPoints(layout, event);
   if (path.length < 2) return;
+  context.save();
   context.strokeStyle = "rgba(230, 186, 96, 0.88)";
   context.lineWidth = 3;
   context.setLineDash([4, 5]);
@@ -418,6 +476,7 @@ function drawSwapCue(context, layout, event) {
   context.fill();
   context.stroke();
   drawLabel(context, "SWAP", midpoint.x, midpoint.y - 16, cssColor("--color-warning"));
+  context.restore();
 }
 
 function drawIons(context, trace, layout, state) {
@@ -439,19 +498,22 @@ function drawIons(context, trace, layout, state) {
     offsets.set(offsetKey, offsetIndex + 1);
     const point = ionRenderPoint(basePoint, location, activeMotion, offsetIndex);
 
-    context.fillStyle = ionColor(particle.id);
+    context.save();
+    const radius = activeMotion ? RENDER_SIZES.activeIonRadius : RENDER_SIZES.ionRadius;
+    const gradient = context.createRadialGradient(point.x - radius * 0.35, point.y - radius * 0.45, 1, point.x, point.y, radius);
+    gradient.addColorStop(0, "#ffffff");
+    gradient.addColorStop(0.18, ionColor(particle.id));
+    gradient.addColorStop(1, shadeColor(ionColor(particle.id), -24));
+    context.shadowColor = activeMotion ? cssColor("--color-move") : "rgba(0, 0, 0, 0.45)";
+    context.shadowBlur = activeMotion ? 16 : 5;
+    context.fillStyle = gradient;
     context.strokeStyle = "rgba(16, 18, 22, 0.95)";
     context.lineWidth = 2;
     context.beginPath();
-    context.arc(
-      point.x,
-      point.y,
-      activeMotion ? RENDER_SIZES.activeIonRadius : RENDER_SIZES.ionRadius,
-      0,
-      Math.PI * 2,
-    );
+    context.arc(point.x, point.y, radius, 0, Math.PI * 2);
     context.fill();
     context.stroke();
+    context.restore();
 
     if (showLabels) {
       drawLabel(context, String(particle.id), point.x, point.y - 10, cssColor("--color-text"));
@@ -488,12 +550,22 @@ function eventEndpointPoint(layout, event, location) {
 }
 
 function drawGateLaser(context, layout, state, event) {
-  context.strokeStyle = cssColor("--color-gate");
-  context.lineWidth = 3;
+  context.save();
   for (const ion of event.ions || []) {
     const particle = { id: ion, initial_slot: 0 };
     const point = particlePoint(layout, { topology: { traps: layout.traceTrapsFallback || [] } }, state, particle, event.target);
     if (!point) continue;
+    context.shadowColor = cssColor("--color-gate");
+    context.shadowBlur = 18;
+    context.strokeStyle = "rgba(158, 227, 125, 0.52)";
+    context.lineWidth = 7;
+    context.beginPath();
+    context.moveTo(point.x, point.y - 104);
+    context.lineTo(point.x, point.y - 8);
+    context.stroke();
+    context.shadowBlur = 0;
+    context.strokeStyle = cssColor("--color-gate");
+    context.lineWidth = 2.4;
     context.beginPath();
     context.moveTo(point.x, point.y - 96);
     context.lineTo(point.x, point.y - 8);
@@ -502,6 +574,7 @@ function drawGateLaser(context, layout, state, event) {
     context.arc(point.x, point.y, 20, 0, Math.PI * 2);
     context.stroke();
   }
+  context.restore();
 }
 
 function trapForLocation(trace, location) {
@@ -511,12 +584,18 @@ function trapForLocation(trace, location) {
 
 function drawMotionPath(context, path) {
   if (!path || path.length < 2) return;
-  context.strokeStyle = "rgba(97, 175, 239, 0.42)";
+  context.save();
+  context.strokeStyle = "rgba(100, 210, 255, 0.28)";
   context.lineWidth = RENDER_SIZES.motionPathWidth;
   context.setLineDash([8, 8]);
   context.lineCap = "round";
   strokePolyline(context, path);
+  context.strokeStyle = "rgba(255, 255, 255, 0.72)";
+  context.lineWidth = 1.2;
   context.setLineDash([]);
+  strokePolyline(context, path);
+  context.setLineDash([]);
+  context.restore();
 }
 
 function segmentRoutePoints(start, end, fromLocation, toLocation) {
@@ -672,16 +751,31 @@ function roundedRect(context, x, y, width, height, radius) {
 }
 
 function drawLabel(context, text, x, y, color) {
+  context.save();
+  context.fillStyle = "rgba(5, 6, 7, 0.58)";
+  const width = Math.max(12, String(text).length * 7 + 6);
+  roundedRect(context, x - width / 2, y - 7, width, 14, 4);
+  context.fill();
   context.fillStyle = color;
-  context.font = "12px Segoe UI, system-ui, sans-serif";
+  context.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, system-ui, sans-serif";
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillText(text, x, y);
+  context.restore();
 }
 
 function ionColor(id) {
   const palette = ["#57c7b8", "#f07178", "#c678dd", "#e5c07b", "#61afef", "#98c379", "#d5a84f"];
   return palette[Math.abs(id) % palette.length];
+}
+
+function shadeColor(hex, percent) {
+  const value = Number.parseInt(hex.replace("#", ""), 16);
+  const amount = Math.round(2.55 * percent);
+  const red = clamp((value >> 16) + amount, 0, 255);
+  const green = clamp(((value >> 8) & 0xff) + amount, 0, 255);
+  const blue = clamp((value & 0xff) + amount, 0, 255);
+  return `#${(0x1000000 + red * 0x10000 + green * 0x100 + blue).toString(16).slice(1)}`;
 }
 
 function cssColor(name) {

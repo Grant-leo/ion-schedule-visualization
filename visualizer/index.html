@@ -4,7 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>QCCD Schedule Visual Debugger</title>
-    <link rel="stylesheet" href="./styles.css?v=20260629-demo8" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070809'/%3E%3Cpath d='M7 16h18M16 7v18' stroke='%2364d2ff' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23ffd166'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css?v=20260629-demo9" />
   </head>
   <body>
     <div class="app-shell">
@@ -16,10 +17,10 @@
         </div>
         <div class="header-meta">
           <span class="scope-pill">Ion-trap QCCD only</span>
-          <div id="validationPanel" class="status-pill is-loading">Loading trace</div>
+          <div id="validationPanel" class="status-pill is-loading" aria-live="polite">Loading trace</div>
         </div>
       </header>
-      <aside class="left-control-panel">
+      <aside id="controlPanel" class="left-control-panel">
         <section class="control-section">
           <span class="panel-eyebrow">Demo scenario</span>
           <h2 id="scenarioTitle">QCCD schedule replay</h2>
@@ -27,7 +28,7 @@
           <label for="traceSelect">Verified trace</label>
           <select id="traceSelect"></select>
         </section>
-        <details class="advanced-config">
+        <details class="advanced-config" open>
           <summary>Experiment configuration</summary>
           <label for="programSelect">Circuit</label>
           <select id="programSelect"></select>
@@ -109,6 +110,6 @@
         <span id="timeReadout">0 / 0</span>
       </footer>
     </div>
-    <script type="module" src="./app.js?v=20260629-demo8"></script>
+    <script type="module" src="./app.js?v=20260629-demo9"></script>
   </body>
 </html>

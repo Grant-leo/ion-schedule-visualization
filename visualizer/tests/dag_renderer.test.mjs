@@ -50,3 +50,21 @@ test("layoutDag supports a vertical dependency page layout", () => {
   assert.ok(graph.nodes[1].y < graph.nodes[2].y);
   assert.equal(graph.direction, "vertical");
 });
+
+test("layoutDag keeps vertical DAG within the inspector width", () => {
+  const dagState = {
+    nodes: new Map(
+      Array.from({ length: 8 }, (_, id) => [
+        id,
+        { id, gate_name: id % 2 === 0 ? "rz" : "cx", qubits: [id % 4], state: "ready" },
+      ]),
+    ),
+    edges: [],
+  };
+
+  const graph = layoutDag(dagState, { width: 320, height: 420, direction: "vertical" });
+
+  assert.equal(graph.width, 320);
+  assert.ok(Math.max(...graph.nodes.map((node) => node.x + node.width / 2)) <= graph.width);
+  assert.ok(Math.min(...graph.nodes.map((node) => node.x - node.width / 2)) >= 0);
+});

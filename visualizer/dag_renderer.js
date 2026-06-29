@@ -31,17 +31,25 @@ export function layoutDag(dagState, options = {}) {
 
   const levelCount = Math.max(1, byLevel.size);
   const maxLevelSize = Math.max(1, ...[...byLevel.values()].map((items) => items.length));
+  const requestedWidth = Math.max(options.width || 360, 240);
   const width =
     direction === "vertical"
-      ? Math.max(options.width || 360, 128 + maxLevelSize * 118)
+      ? requestedWidth
       : Math.max(options.width || 420, 120 + levelCount * 110);
   const height =
     direction === "vertical"
       ? Math.max(options.height || 520, 100 + levelCount * 92)
       : Math.max(options.height || 220, 80 + maxLevelSize * 68);
-  const nodeWidth = direction === "vertical" ? 96 : 84;
+  const nodeWidth =
+    direction === "vertical"
+      ? maxLevelSize >= 7
+        ? 54
+        : maxLevelSize >= 5
+          ? 64
+          : 86
+      : 84;
   const nodeHeight = 34;
-  const xPad = 44;
+  const xPad = direction === "vertical" ? nodeWidth / 2 + 4 : 44;
   const yPad = 40;
   const xStep = levelCount <= 1 ? 0 : (width - xPad * 2) / (levelCount - 1);
   const yLevelStep = levelCount <= 1 ? 0 : (height - yPad * 2) / (levelCount - 1);
@@ -100,6 +108,8 @@ export function renderDagSvg(container, dagState, options = {}) {
   for (const node of graph.nodes) {
     const group = svgElement("g", {
       class: `dag-svg-node ${node.state || "blocked"}`,
+      "data-node-id": node.id,
+      "data-state": node.state || "blocked",
       transform: `translate(${node.x - node.width / 2}, ${node.y - node.height / 2})`,
     });
     group.appendChild(svgElement("rect", { width: node.width, height: node.height, rx: 6, ry: 6 }));
