@@ -270,6 +270,108 @@ class QubitMapPO:
         num_qubits = _program_qubit_count(self.parse_obj)
         return _sequential_qubit_mapping(num_qubits, _trap_sizes(self.machine_obj, self.excess_capacity))
 
+
+class QubitMapSABRE:
+    """A deterministic SABRE-style initial placement heuristic.
+
+    Qiskit's SABRE is a dynamic layout/routing pass for circuit coupling maps.
+    QCCDSim maps qubits to ion traps instead, so this mapper keeps the same
+    core idea: place front-layer and high-interaction qubits close on the
+    hardware graph, with a small occupancy decay term to avoid overfilling.
+    """
+
+    def __init__(self, parse_obj, machine_obj, excess_capacity=0):
+        self.parse_obj = parse_obj
+        self.machine_obj = machine_obj
+        self.excess_capacity = excess_capacity
+        self.router = BasicRoute(machine_obj)
+
+    def compute_mapping(self):
+        num_qubits = _program_qubit_count(self.parse_obj)
+        trap_sizes = _trap_sizes(self.machine_obj, self.excess_capacity)
+        _ensure_capacity(num_qubits, trap_sizes)
+        if num_qubits == 0:
+            return {}
+
+        weights = self._interaction_weights(num_qubits)
+        order = self._placement_order(num_qubits, weights)
+        distances = self._trap_distances()
+        used = {trap_id: 0 for trap_id in range(len(trap_sizes))}
+        mapping = {}
+
+        for qubit in order:
+            candidate = self._best_trap_for_qubit(qubit, mapping, used, trap_sizes, weights, distances)
+            mapping[qubit] = candidate
+            used[candidate] += 1
+
+        return _fill_unmapped_qubit_mapping(mapping, num_qubits, trap_sizes)
+
+    def _interaction_weights(self, num_qubits):
+        weights = {qubit: {} for qubit in range(num_qubits)}
+        for left, right, data in self.parse_obj.cx_graph.edges(data=True):
+            weight = data.get('weight', 1)
+            weights.setdefault(left, {})[right] = weights.setdefault(left, {}).get(right, 0) + weight
+            weights.setdefault(right, {})[left] = weights.setdefault(right, {}).get(left, 0) + weight
+        return weights
+
+    def _placement_order(self, num_qubits, weights):
+        front_score = {qubit: 0 for qubit in range(num_qubits)}
+        for index, gate in enumerate(nx.topological_sort(self.parse_obj.gate_graph)):
+            gate_qubits = self.parse_obj.gate_qubit_map.get(gate, [])
+            for qubit in gate_qubits:
+                front_score[qubit] += max(1, num_qubits * 4 - index)
+
+        return sorted(
+            range(num_qubits),
+            key=lambda qubit: (
+                -sum(weights.get(qubit, {}).values()),
+                -front_score.get(qubit, 0),
+                qubit,
+            ),
+        )
+
+    def _trap_distances(self):
+        distances = {}
+        for src in range(len(self.machine_obj.traps)):
+            for dest in range(len(self.machine_obj.traps)):
+                if src == dest:
+                    distances[(src, dest)] = 0
+                    continue
+                route = self.router.find_route(src, dest)
+                distances[(src, dest)] = max(1, len(route) - 1)
+        return distances
+
+    def _best_trap_for_qubit(self, qubit, mapping, used, trap_sizes, weights, distances):
+        best = None
+        best_score = float('inf')
+        average_distance = self._average_trap_distance(distances, len(trap_sizes))
+        for trap_id, capacity in enumerate(trap_sizes):
+            if used[trap_id] >= capacity:
+                continue
+            score = 0
+            mapped_neighbors = 0
+            for neighbor, weight in weights.get(qubit, {}).items():
+                if neighbor not in mapping:
+                    continue
+                mapped_neighbors += 1
+                score += weight * distances[(trap_id, mapping[neighbor])]
+            if mapped_neighbors == 0:
+                score += average_distance[trap_id]
+            score += used[trap_id] * 0.01
+            if score < best_score:
+                best = trap_id
+                best_score = score
+        if best is None:
+            raise ValueError("Machine capacity is smaller than the number of program qubits")
+        return best
+
+    def _average_trap_distance(self, distances, trap_count):
+        average = {}
+        for trap_id in range(trap_count):
+            total = sum(distances[(trap_id, other)] for other in range(trap_count))
+            average[trap_id] = total / max(1, trap_count)
+        return average
+
 class QubitMapMetis:
     def __init__(self, parse_obj, machine_obj):
         self.parse_obj = parse_obj

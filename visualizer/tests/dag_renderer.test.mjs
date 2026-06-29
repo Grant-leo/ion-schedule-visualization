@@ -30,3 +30,23 @@ test("layoutDag places Qiskit-style DAG nodes by dependency layer and keeps edge
   assert.ok(graph.nodes[0].x < graph.nodes[1].x);
   assert.ok(graph.nodes[1].x < graph.nodes[2].x);
 });
+
+test("layoutDag supports a vertical dependency page layout", () => {
+  const dagState = {
+    nodes: new Map([
+      [0, { id: 0, gate_name: "h", qubits: [0], state: "completed" }],
+      [1, { id: 1, gate_name: "cx", qubits: [0, 1], state: "active" }],
+      [2, { id: 2, gate_name: "x", qubits: [1], state: "blocked" }],
+    ]),
+    edges: [
+      { source: 0, target: 1 },
+      { source: 1, target: 2 },
+    ],
+  };
+
+  const graph = layoutDag(dagState, { width: 260, height: 500, direction: "vertical" });
+
+  assert.ok(graph.nodes[0].y < graph.nodes[1].y);
+  assert.ok(graph.nodes[1].y < graph.nodes[2].y);
+  assert.equal(graph.direction, "vertical");
+});

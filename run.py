@@ -118,14 +118,18 @@ elif mapper_choice == "PO":
     qm = QubitMapPO(ip, m)
 elif mapper_choice == "Greedy":
     qm = QubitMapGreedy(ip, m)
+elif mapper_choice == "SABRE":
+    qm = QubitMapSABRE(ip, m)
 else:
     assert 0
 mapping = qm.compute_mapping()
 
 #Reorder qubits within a region to increse the use of high fidelity operations
-if mapper_choice == "Greedy":
+if mapper_choice == "Greedy" and reorder_choice == "Naive":
     init_qubit_layout = mapping
 else:
+    if mapper_choice == "Greedy":
+        mapping = {qubit: trap_id for trap_id, qubits in mapping.items() for qubit in qubits}
     qo = QubitOrdering(ip, m, mapping)
     if reorder_choice == "Naive":
         init_qubit_layout = qo.reorder_naive()

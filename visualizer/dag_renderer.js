@@ -1,6 +1,7 @@
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 export function layoutDag(dagState, options = {}) {
+  const direction = options.direction === "vertical" ? "vertical" : "horizontal";
   const nodes = [...(dagState.nodes?.values() || [])].sort((left, right) => left.id - right.id);
   const edges = dagState.edges || [];
   const incoming = new Map(nodes.map((node) => [node.id, []]));
@@ -30,23 +31,31 @@ export function layoutDag(dagState, options = {}) {
 
   const levelCount = Math.max(1, byLevel.size);
   const maxLevelSize = Math.max(1, ...[...byLevel.values()].map((items) => items.length));
-  const width = Math.max(options.width || 420, 120 + levelCount * 110);
-  const height = Math.max(options.height || 220, 80 + maxLevelSize * 68);
-  const nodeWidth = 84;
+  const width =
+    direction === "vertical"
+      ? Math.max(options.width || 360, 128 + maxLevelSize * 118)
+      : Math.max(options.width || 420, 120 + levelCount * 110);
+  const height =
+    direction === "vertical"
+      ? Math.max(options.height || 520, 100 + levelCount * 92)
+      : Math.max(options.height || 220, 80 + maxLevelSize * 68);
+  const nodeWidth = direction === "vertical" ? 96 : 84;
   const nodeHeight = 34;
   const xPad = 44;
   const yPad = 40;
   const xStep = levelCount <= 1 ? 0 : (width - xPad * 2) / (levelCount - 1);
+  const yLevelStep = levelCount <= 1 ? 0 : (height - yPad * 2) / (levelCount - 1);
 
   const layoutNodes = [];
   for (const [level, items] of [...byLevel.entries()].sort((left, right) => left[0] - right[0])) {
     const yStep = items.length <= 1 ? 0 : (height - yPad * 2) / (items.length - 1);
+    const xItemStep = items.length <= 1 ? 0 : (width - xPad * 2) / (items.length - 1);
     for (const [index, node] of items.entries()) {
       layoutNodes.push({
         ...node,
         level,
-        x: xPad + level * xStep,
-        y: items.length === 1 ? height / 2 : yPad + index * yStep,
+        x: direction === "vertical" ? (items.length === 1 ? width / 2 : xPad + index * xItemStep) : xPad + level * xStep,
+        y: direction === "vertical" ? yPad + level * yLevelStep : items.length === 1 ? height / 2 : yPad + index * yStep,
         width: nodeWidth,
         height: nodeHeight,
       });
@@ -58,14 +67,15 @@ export function layoutDag(dagState, options = {}) {
     .map((edge) => ({ ...edge, sourceNode: nodeById.get(edge.source), targetNode: nodeById.get(edge.target) }))
     .filter((edge) => edge.sourceNode && edge.targetNode);
 
-  return { width, height, nodes: layoutNodes.sort((left, right) => left.id - right.id), edges: layoutEdges };
+  return { width, height, direction, nodes: layoutNodes.sort((left, right) => left.id - right.id), edges: layoutEdges };
 }
 
-export function renderDagSvg(container, dagState) {
+export function renderDagSvg(container, dagState, options = {}) {
   const rect = container.getBoundingClientRect();
   const graph = layoutDag(dagState, {
     width: Math.max(360, Math.floor(rect.width || 0)),
-    height: 240,
+    height: Math.max(360, Math.floor(rect.height || 0)),
+    direction: options.direction,
   });
 
   const svg = svgElement("svg", {
@@ -82,18 +92,7 @@ export function renderDagSvg(container, dagState) {
   for (const edge of graph.edges) {
     const source = edge.sourceNode;
     const target = edge.targetNode;
-    const x1 = source.x + source.width / 2;
-    const y1 = source.y;
-    const x2 = target.x - target.width / 2 - 4;
-    const y2 = target.y;
-    const midX = x1 + Math.max(24, (x2 - x1) / 2);
-    edgeLayer.appendChild(
-      svgElement("path", {
-        class: "dag-edge",
-        d: `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`,
-        "marker-end": "url(#dag-arrow)",
-      }),
-    );
+    edgeLayer.appendChild(dagEdgePath(graph.direction, source, target));
   }
   svg.appendChild(edgeLayer);
 
@@ -113,6 +112,31 @@ export function renderDagSvg(container, dagState) {
   }
   svg.appendChild(nodeLayer);
   container.replaceChildren(svg);
+}
+
+function dagEdgePath(direction, source, target) {
+  if (direction === "vertical") {
+    const x1 = source.x;
+    const y1 = source.y + source.height / 2;
+    const x2 = target.x;
+    const y2 = target.y - target.height / 2 - 4;
+    const midY = y1 + Math.max(18, (y2 - y1) / 2);
+    return svgElement("path", {
+      class: "dag-edge",
+      d: `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`,
+      "marker-end": "url(#dag-arrow)",
+    });
+  }
+  const x1 = source.x + source.width / 2;
+  const y1 = source.y;
+  const x2 = target.x - target.width / 2 - 4;
+  const y2 = target.y;
+  const midX = x1 + Math.max(24, (x2 - x1) / 2);
+  return svgElement("path", {
+    class: "dag-edge",
+    d: `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`,
+    "marker-end": "url(#dag-arrow)",
+  });
 }
 
 function arrowMarker() {

@@ -152,6 +152,26 @@ test("replay returns trap chains with active split ions removed from the chain",
   assert.deepEqual(replay.stateAt(15).trapChains.get("trap:0"), [1]);
 });
 
+test("replay exposes active internal swaps before endpoint shuttling", () => {
+  const swapTrace = structuredClone(trace);
+  swapTrace.events[1] = {
+    ...swapTrace.events[1],
+    metadata: {
+      endpoint: "R",
+      swap_count: 1,
+      swap_hops: 2,
+      swap_ions: [0, 1],
+    },
+  };
+
+  const replay = createReplay(swapTrace, 1);
+  const active = replay.stateAt(15).activeEvents[0];
+
+  assert.equal(active.type, "split");
+  assert.equal(active.metadata.swap_count, 1);
+  assert.deepEqual(active.metadata.swap_ions, [0, 1]);
+});
+
 test("replay derives dependency graph node states from gate completion", () => {
   const replay = createReplay(trace, 1);
 

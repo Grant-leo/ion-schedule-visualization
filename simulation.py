@@ -4,7 +4,15 @@ import numpy as np
 
 from ejf_schedule import EJFSchedule
 from machine import MachineParams
-from mappers import QubitMapAgg, QubitMapGreedy, QubitMapLPFS, QubitMapPO, QubitMapRandom, QubitOrdering
+from mappers import (
+    QubitMapAgg,
+    QubitMapGreedy,
+    QubitMapLPFS,
+    QubitMapPO,
+    QubitMapRandom,
+    QubitMapSABRE,
+    QubitOrdering,
+)
 from parse import InputParse
 from test_machines import (
     make_3x3_grid,
@@ -32,6 +40,7 @@ class SimulationConfig:
     swap_type: str = "GateSwap"
     single_qubit_gate_time: int = 7
     single_qubit_gate_fidelity: float = 0.999
+    scheduler_policy: str = ""
 
 
 @dataclass
@@ -54,6 +63,69 @@ def make_machine_params(config):
 
 def supported_machine_names():
     return tuple(MACHINE_BUILDERS.keys())
+
+
+MAPPER_NAMES = ("Greedy", "Random", "LPFS", "Agg", "PO", "SABRE")
+REORDER_POLICIES = ("Naive", "Fidelity")
+SCHEDULER_POLICIES = {
+    "EJF": {
+        "serial_trap_ops": 1,
+        "serial_comm": 0,
+        "serial_all": 0,
+        "label": "EJF baseline",
+    },
+    "EJF-ParallelTrap": {
+        "serial_trap_ops": 0,
+        "serial_comm": 0,
+        "serial_all": 0,
+        "label": "EJF parallel traps",
+    },
+    "EJF-SerialComm": {
+        "serial_trap_ops": 1,
+        "serial_comm": 1,
+        "serial_all": 0,
+        "label": "EJF serial shuttling",
+    },
+    "EJF-GlobalSerial": {
+        "serial_trap_ops": 1,
+        "serial_comm": 1,
+        "serial_all": 1,
+        "label": "EJF global serial",
+    },
+}
+
+
+def supported_mapper_names():
+    return MAPPER_NAMES
+
+
+def supported_reorder_policies():
+    return REORDER_POLICIES
+
+
+def supported_scheduler_policies():
+    return tuple(SCHEDULER_POLICIES.keys())
+
+
+def scheduler_policy_options():
+    return [
+        {"id": policy, "label": values["label"]}
+        for policy, values in SCHEDULER_POLICIES.items()
+    ]
+
+
+def scheduler_policy_flags(policy):
+    try:
+        values = SCHEDULER_POLICIES[policy]
+    except KeyError as exc:
+        raise ValueError("Unsupported scheduler policy: " + policy) from exc
+    return values["serial_trap_ops"], values["serial_comm"], values["serial_all"]
+
+
+def effective_scheduler_flags(config):
+    if config.scheduler_policy:
+        return scheduler_policy_flags(config.scheduler_policy)
+    return config.serial_trap_ops, config.serial_comm, config.serial_all
 
 
 def _linear6(capacity, params):
@@ -92,13 +164,17 @@ def build_mapper(config, parser, machine):
         return QubitMapPO(parser, machine)
     if config.mapper == "Greedy":
         return QubitMapGreedy(parser, machine)
+    if config.mapper == "SABRE":
+        return QubitMapSABRE(parser, machine)
     raise ValueError("Unsupported mapper: " + config.mapper)
 
 
 def build_initial_layout(config, parser, machine):
     mapping = build_mapper(config, parser, machine).compute_mapping()
-    if config.mapper == "Greedy":
+    if config.mapper == "Greedy" and config.reorder == "Naive":
         return mapping
+    if config.mapper == "Greedy":
+        mapping = _layout_to_qubit_mapping(mapping)
     ordering = QubitOrdering(parser, machine, mapping)
     if config.reorder == "Naive":
         return ordering.reorder_naive()
@@ -107,20 +183,29 @@ def build_initial_layout(config, parser, machine):
     raise ValueError("Unsupported reorder policy: " + config.reorder)
 
 
+def _layout_to_qubit_mapping(layout):
+    mapping = {}
+    for trap_id, ions in layout.items():
+        for ion in ions:
+            mapping[ion] = trap_id
+    return mapping
+
+
 def run_simulation(config):
     np.random.seed(12345)
     parser = InputParse()
     parser.parse_ir(config.program)
     machine = build_machine(config)
     initial_layout = build_initial_layout(config, parser, machine)
+    serial_trap_ops, serial_comm, serial_all = effective_scheduler_flags(config)
     scheduler = EJFSchedule(
         parser.gate_graph,
         parser.cx_gate_map,
         machine,
         initial_layout,
-        config.serial_trap_ops,
-        config.serial_comm,
-        config.serial_all,
+        serial_trap_ops,
+        serial_comm,
+        serial_all,
         gate_qubit_map=parser.gate_qubit_map,
         gate_name_map=parser.gate_name_map,
     )

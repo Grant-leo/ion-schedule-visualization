@@ -15,6 +15,7 @@ def parse_args():
     parser.add_argument("--serial-trap-ops", type=int, default=1)
     parser.add_argument("--serial-comm", type=int, default=0)
     parser.add_argument("--serial-all", type=int, default=0)
+    parser.add_argument("--scheduler-policy", default="")
     parser.add_argument("--gate-type", default="FM")
     parser.add_argument("--swap-type", default="GateSwap")
     parser.add_argument("--single-qubit-gate-time", type=int, default=7)
@@ -33,6 +34,7 @@ def main():
         serial_trap_ops=args.serial_trap_ops,
         serial_comm=args.serial_comm,
         serial_all=args.serial_all,
+        scheduler_policy=args.scheduler_policy,
         gate_type=args.gate_type,
         swap_type=args.swap_type,
         single_qubit_gate_time=args.single_qubit_gate_time,

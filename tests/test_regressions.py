@@ -5,7 +5,7 @@ import importlib
 import pytest
 
 from dag_visualize import dag_image_name
-from mappers import QubitMapAgg, QubitMapGreedy, QubitMapMetis, QubitMapPO
+from mappers import QubitMapAgg, QubitMapGreedy, QubitMapMetis, QubitMapPO, QubitMapSABRE
 from naive_schedule import create_routing_graph, routing_graph
 from parse import InputParse
 from route import RouteAlgorithm
@@ -122,6 +122,9 @@ def test_all_local_mappers_cover_every_program_qubit():
     greedy_mapping = QubitMapGreedy(parser, machine).compute_mapping()
     greedy_qubits = {qubit for qubits in greedy_mapping.values() for qubit in qubits}
     assert greedy_qubits == set(range(parser.qbit_count))
+
+    sabre_mapping = QubitMapSABRE(parser, machine).compute_mapping()
+    assert set(sabre_mapping) == set(range(parser.qbit_count))
 
 
 def test_metis_mapper_fails_with_actionable_dependency_message():

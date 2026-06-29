@@ -11,6 +11,11 @@ __pycache__
 
 # output logs
 *.log
+output/
+outputs/
+tmp/
+.pytest_cache/
+.ruff_cache/
 
 # graphs
 *.gexf

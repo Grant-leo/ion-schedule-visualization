@@ -185,6 +185,94 @@ def test_validate_trace_rejects_overlapping_events_for_same_ion():
     assert any("busy until 10" in error for error in validation["errors"])
 
 
+def test_validate_trace_rejects_duplicate_topology_ids_and_missing_locations():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [{"id": 0, "capacity": 2}, {"id": 0, "capacity": 2}],
+            "segments": [{"id": 0, "from": "trap:0", "to": "junction:0", "length": 10}],
+            "junctions": [{"id": 0}, {"id": 0}],
+        },
+        "particles": [{"id": 0, "initial_location": "trap:0"}],
+        "events": [
+            {
+                "id": 0,
+                "type": "split",
+                "start": 0,
+                "end": 10,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "segment:missing",
+                "metadata": {},
+            }
+        ],
+        "metrics": {"event_count": 1},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("duplicate trap id 0" in error for error in validation["errors"])
+    assert any("duplicate junction id 0" in error for error in validation["errors"])
+    assert any("unknown target segment:missing" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_initial_trap_capacity_overflow_and_event_count_mismatch():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [{"id": 0, "capacity": 1}],
+            "segments": [],
+            "junctions": [],
+        },
+        "particles": [
+            {"id": 0, "initial_location": "trap:0"},
+            {"id": 1, "initial_location": "trap:0"},
+        ],
+        "events": [],
+        "metrics": {"event_count": 3},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("trap:0 initial occupancy 2 exceeds capacity 1" in error for error in validation["errors"])
+    assert any("metrics event_count 3 does not match 0 events" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_split_endpoint_that_disagrees_with_architecture_port():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [{"id": 0, "capacity": 1, "orientation": {"0": "R"}}],
+            "segments": [{"id": 0, "from": "trap:0", "to": "junction:0", "length": 10}],
+            "junctions": [{"id": 0}],
+        },
+        "particles": [{"id": 0, "initial_location": "trap:0"}],
+        "events": [
+            {
+                "id": 0,
+                "type": "split",
+                "start": 0,
+                "end": 80,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "segment:0",
+                "metadata": {"endpoint": "L"},
+            }
+        ],
+        "metrics": {"event_count": 1},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("endpoint L does not match trap:0 segment:0 orientation R" in error for error in validation["errors"])
+
+
 def test_export_trace_cli_writes_valid_json(tmp_path):
     output = tmp_path / "grover_trace.json"
     result = subprocess.run(

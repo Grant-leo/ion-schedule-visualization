@@ -1,6 +1,7 @@
-import { createRenderer } from "./canvas_renderer.js";
-import { renderDagSvg } from "./dag_renderer.js";
-import { createReplay, validateTrace } from "./replay.js";
+import { createRenderer } from "./canvas_renderer.js?v=20260629-demo7";
+import { renderDagSvg } from "./dag_renderer.js?v=20260629-demo7";
+import { createReplay, validateTrace } from "./replay.js?v=20260629-demo7";
+import { createMetricCards, describeEvent, formatLocation, summarizeDag } from "./ui_model.js?v=20260629-demo7";
 
 const elements = {
   traceSelect: document.getElementById("traceSelect"),
@@ -8,6 +9,8 @@ const elements = {
   architectureSelect: document.getElementById("architectureSelect"),
   capacitySelect: document.getElementById("capacitySelect"),
   mapperSelect: document.getElementById("mapperSelect"),
+  orderingSelect: document.getElementById("orderingSelect"),
+  schedulerSelect: document.getElementById("schedulerSelect"),
   loadConfigButton: document.getElementById("loadConfigButton"),
   playPauseButton: document.getElementById("playPauseButton"),
   restartButton: document.getElementById("restartButton"),
@@ -18,9 +21,12 @@ const elements = {
   metricsPanel: document.getElementById("metricsPanel"),
   initialLayoutPanel: document.getElementById("initialLayoutPanel"),
   dagPanel: document.getElementById("dagPanel"),
+  dagSummaryPanel: document.getElementById("dagSummaryPanel"),
   eventPanel: document.getElementById("eventPanel"),
   validationPanel: document.getElementById("validationPanel"),
   performancePanel: document.getElementById("performancePanel"),
+  benchmarkMetaPanel: document.getElementById("benchmarkMetaPanel"),
+  runConfigPanel: document.getElementById("runConfigPanel"),
   timeReadout: document.getElementById("timeReadout"),
 };
 
@@ -40,6 +46,7 @@ let renderedMetricsTrace = null;
 let lastInitialLayoutKey = "";
 let lastDagKey = "";
 let lastEventKey = "";
+let programCatalog = new Map();
 
 init().catch((error) => {
   elements.validationPanel.textContent = "Load failed";
@@ -78,21 +85,25 @@ function populateTraceSelector(manifest) {
 }
 
 function populateConfigControls(options) {
+  programCatalog = new Map((options.programs || []).map((program) => [program.id, program]));
   fillSelect(
     elements.programSelect,
-    options.programs.map((program) => ({ value: program.id, label: program.label || program.id })),
+    options.programs.map((program) => ({ value: program.id, label: programOptionLabel(program) })),
   );
   fillSelect(elements.architectureSelect, options.machines);
   fillSelect(elements.capacitySelect, options.capacities.map(String));
   fillSelect(elements.mapperSelect, options.mappers);
+  fillSelect(elements.orderingSelect, options.orderings || ["Naive", "Fidelity"]);
+  fillSelect(elements.schedulerSelect, options.scheduler_options || options.schedulers || ["EJF"]);
+  renderSelectedBenchmark();
 }
 
 function fillSelect(select, values) {
   select.replaceChildren();
   for (const value of values) {
     const option = document.createElement("option");
-    option.value = typeof value === "object" ? value.value : value;
-    option.textContent = typeof value === "object" ? value.label : value;
+    option.value = typeof value === "object" ? value.value ?? value.id : value;
+    option.textContent = typeof value === "object" ? value.label ?? value.id : value;
     select.appendChild(option);
   }
 }
@@ -108,6 +119,8 @@ function configOptionsFromManifest(manifest) {
     machines: uniqueValues(manifest, "machine"),
     capacities: uniqueValues(manifest, "ions_per_region"),
     mappers: uniqueValues(manifest, "mapper"),
+    orderings: ["Naive"],
+    schedulers: ["EJF"],
   };
 }
 
@@ -121,6 +134,7 @@ function wireControls() {
     }
   });
   elements.loadConfigButton.addEventListener("click", loadSelectedConfig);
+  elements.programSelect.addEventListener("change", renderSelectedBenchmark);
   elements.playPauseButton.addEventListener("click", togglePlayback);
   elements.restartButton.addEventListener("click", restart);
   elements.stepButton.addEventListener("click", stepToNextEvent);
@@ -148,10 +162,11 @@ function loadTraceData(nextTrace) {
   elements.timeline.max = String(Math.max(1, replay.finishTime));
   elements.timeline.value = "0";
   syncConfigControls(trace);
+  renderRunConfig(trace);
   resetInspectorRenderCache();
 
   const valid = frontendValidation.valid && backendValidation.valid;
-  setStatus(valid ? "Valid trace" : "Invalid trace", valid ? "valid" : "invalid");
+  setStatus(valid ? "Schedule verified" : "Trace invalid", valid ? "valid" : "invalid");
   draw();
 }
 
@@ -160,15 +175,27 @@ async function loadSelectedConfig() {
   const machine = elements.architectureSelect.value;
   const capacity = Number(elements.capacitySelect.value);
   const mapper = elements.mapperSelect.value;
+  const ordering = elements.orderingSelect.value;
+  const scheduler = elements.schedulerSelect.value;
 
   if (apiAvailable) {
     setStatus("Generating schedule", "loading");
     try {
-      const params = new URLSearchParams({ program, machine, capacity: String(capacity), mapper });
+      const params = new URLSearchParams({
+        program,
+        machine,
+        capacity: String(capacity),
+        mapper,
+        ordering,
+        scheduler,
+      });
       const nextTrace = await fetchJson(`api/trace?${params.toString()}`);
-      const key = `generated:${program}:${machine}:${capacity}:${mapper}`;
+      const key = `generated:${program}:${machine}:${capacity}:${mapper}:${ordering}:${scheduler}`;
       generatedTraces.set(key, nextTrace);
-      upsertTraceOption(key, `${programLabelFromId(program)} | ${machine} | cap ${capacity} | ${mapper}`);
+      upsertTraceOption(
+        key,
+        `${programLabelFromId(program)} | ${machine} | cap ${capacity} | ${mapper} | ${ordering} | ${scheduler}`,
+      );
       elements.traceSelect.value = key;
       loadTraceData(nextTrace);
     } catch (error) {
@@ -183,6 +210,8 @@ async function loadSelectedConfig() {
       entry.machine === machine &&
       entry.ions_per_region === capacity &&
       entry.mapper === mapper &&
+      (entry.reorder === undefined || entry.reorder === ordering) &&
+      (entry.scheduler_policy === undefined || entry.scheduler_policy === scheduler) &&
       programIdFromPath(entry.program || entry.path || entry.id) === program,
   );
   if (!match) {
@@ -199,6 +228,9 @@ function syncConfigControls(nextTrace) {
   setSelectValue(elements.architectureSelect, run.machine);
   setSelectValue(elements.capacitySelect, String(run.ions_per_region));
   setSelectValue(elements.mapperSelect, run.mapper);
+  setSelectValue(elements.orderingSelect, run.reorder);
+  setSelectValue(elements.schedulerSelect, run.scheduler_policy);
+  renderSelectedBenchmark();
 }
 
 function setSelectValue(select, value) {
@@ -214,6 +246,9 @@ function applyDefaultConfig(defaults = {}) {
   setSelectValue(elements.architectureSelect, defaults.machine);
   setSelectValue(elements.capacitySelect, String(defaults.capacity));
   setSelectValue(elements.mapperSelect, defaults.mapper);
+  setSelectValue(elements.orderingSelect, defaults.ordering);
+  setSelectValue(elements.schedulerSelect, defaults.scheduler);
+  renderSelectedBenchmark();
 }
 
 function upsertTraceOption(value, label) {
@@ -238,6 +273,43 @@ function programIdFromPath(path = "") {
 
 function programLabelFromId(id = "") {
   return id.replaceAll("_", " ");
+}
+
+function programOptionLabel(program) {
+  const label = program.label || program.id;
+  if (!Number.isInteger(program.qubits)) return label;
+  const category = program.category ? `${program.category}, ` : "";
+  return `${label} (${category}${program.qubits}q, CX ${program.cx ?? 0})`;
+}
+
+function renderSelectedBenchmark() {
+  const program = programCatalog.get(elements.programSelect.value);
+  if (!program) {
+    elements.benchmarkMetaPanel.textContent = "";
+    return;
+  }
+  const meta = [
+    program.source || "local",
+    program.category,
+    `${program.qubits ?? "?"} qubits`,
+    `${program.cx ?? 0} CX`,
+    `${program.total_ops ?? 0} ops`,
+  ].filter(Boolean);
+  elements.benchmarkMetaPanel.textContent = meta.join(" | ");
+}
+
+function renderRunConfig(nextTrace) {
+  const run = nextTrace.run || {};
+  const program = programCatalog.get(programIdFromPath(run.program));
+  const items = [
+    program?.label || programLabelFromId(programIdFromPath(run.program)),
+    run.machine,
+    `cap ${run.ions_per_region}`,
+    run.mapper ? `mapper ${run.mapper}` : null,
+    run.reorder ? `ordering ${run.reorder}` : null,
+    run.scheduler_policy ? `scheduler ${run.scheduler_policy}` : null,
+  ].filter(Boolean);
+  elements.runConfigPanel.textContent = items.join(" | ");
 }
 
 function setStatus(message, state) {
@@ -302,7 +374,8 @@ function draw() {
 
   const dagKey = dagStateKey(state.dagState);
   if (dagKey !== lastDagKey) {
-    renderDagSvg(elements.dagPanel, state.dagState);
+    renderDagSummary(state.dagState);
+    renderDagSvg(elements.dagPanel, state.dagState, { direction: "vertical" });
     lastDagKey = dagKey;
   }
 
@@ -314,30 +387,99 @@ function draw() {
 }
 
 function renderMetrics(metrics, replayMetrics) {
-  const values = [
-    ["Finish", metrics.finish_time],
-    ["Events", metrics.event_count],
-    ["1Q / 2Q Gates", `${metrics.one_qubit_gates} / ${metrics.two_qubit_gates}`],
-    ["Gate Count", metrics.counts.gate],
-    ["Split / Move / Merge", `${metrics.counts.split} / ${metrics.counts.move} / ${metrics.counts.merge}`],
-    ["Gate Time", metrics.times.gate],
-    ["Shuttling Time", metrics.shuttling_time ?? replayMetrics.shuttlingTime],
-  ];
-
-  const list = document.createElement("dl");
-  for (const [label, value] of values) {
-    const term = document.createElement("dt");
-    term.textContent = label;
-    const detail = document.createElement("dd");
-    detail.textContent = String(value ?? 0);
-    list.append(term, detail);
+  const cards = createMetricCards({
+    ...(metrics || {}),
+    shuttling_time: metrics?.shuttling_time ?? replayMetrics?.shuttlingTime,
+  });
+  const grid = document.createElement("div");
+  grid.className = "metric-grid";
+  for (const card of cards) {
+    const item = document.createElement("article");
+    item.className = "metric-card";
+    const label = document.createElement("span");
+    label.className = "metric-label";
+    label.textContent = card.label;
+    const value = document.createElement("strong");
+    value.className = "metric-value";
+    value.textContent = card.value;
+    const detail = document.createElement("span");
+    detail.className = "metric-detail";
+    detail.textContent = card.detail;
+    item.append(label, value, detail);
+    grid.appendChild(item);
   }
-  elements.metricsPanel.replaceChildren(list);
+  elements.metricsPanel.replaceChildren(grid);
 }
 
 function renderCurrentEvent(state) {
-  const event = state.activeEvents[0];
-  elements.eventPanel.textContent = event ? JSON.stringify(event, null, 2) : "No active event";
+  const activeEvents = state.activeEvents || [];
+  if (activeEvents.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "event-empty";
+    empty.textContent = "No active hardware operation";
+    elements.eventPanel.replaceChildren(empty);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  for (const event of activeEvents.slice(0, 3)) {
+    const item = document.createElement("article");
+    item.className = `event-item event-${event.type || "operation"}`;
+    const type = document.createElement("span");
+    type.className = "event-type";
+    type.textContent = String(event.type || "operation").toUpperCase();
+    const summary = document.createElement("strong");
+    summary.className = "event-summary";
+    summary.textContent = describeEvent(event);
+    const meta = document.createElement("span");
+    meta.className = "event-meta";
+    meta.textContent = `t=${event.start}-${event.end} | ${formatLocation(event.source)} -> ${formatLocation(event.target)}`;
+    item.append(type, summary, meta);
+    fragment.appendChild(item);
+  }
+  if (activeEvents.length > 3) {
+    const more = document.createElement("span");
+    more.className = "event-more";
+    more.textContent = `+${activeEvents.length - 3} concurrent operations`;
+    fragment.appendChild(more);
+  }
+  elements.eventPanel.replaceChildren(fragment);
+}
+
+function renderDagSummary(dagState) {
+  const summary = summarizeDag(dagState);
+  const completedRatio = summary.total > 0 ? summary.completed / summary.total : 0;
+  const wrapper = document.createElement("div");
+  wrapper.className = "dag-summary-card";
+
+  const topLine = document.createElement("div");
+  topLine.className = "dag-summary-top";
+  const progressText = document.createElement("strong");
+  progressText.textContent = `${summary.completed}/${summary.total} completed`;
+  const edgeText = document.createElement("span");
+  edgeText.textContent = `${summary.edges} dependencies`;
+  topLine.append(progressText, edgeText);
+
+  const progress = document.createElement("div");
+  progress.className = "dag-progress";
+  const progressFill = document.createElement("span");
+  progressFill.style.width = `${Math.round(completedRatio * 100)}%`;
+  progress.appendChild(progressFill);
+
+  const chips = document.createElement("div");
+  chips.className = "dag-state-chips";
+  for (const [label, value] of [
+    ["Active", summary.active],
+    ["Ready", summary.ready],
+    ["Blocked", summary.blocked],
+  ]) {
+    const chip = document.createElement("span");
+    chip.textContent = `${label} ${value}`;
+    chips.appendChild(chip);
+  }
+
+  wrapper.append(topLine, progress, chips);
+  elements.dagSummaryPanel.replaceChildren(wrapper);
 }
 
 function renderInitialLayout(state) {

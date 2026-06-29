@@ -3,6 +3,7 @@ from pathlib import Path
 
 from machine import Junction, Trap
 from schedule import Schedule
+from simulation import SCHEDULER_POLICIES, effective_scheduler_flags
 
 
 def location_key(kind, idx):
@@ -36,6 +37,12 @@ def validate_trace(trace):
     busy_until = {}
     pending_transfers = []
     errors = []
+    known_locations = _validate_topology(trace.get("topology", {}), errors)
+    _validate_initial_particles(trace.get("particles", []), trace.get("topology", {}), known_locations, errors)
+    trap_segment_orientation = _trap_segment_orientation(trace.get("topology", {}))
+    expected_events = trace.get("metrics", {}).get("event_count")
+    if expected_events is not None and expected_events != len(trace["events"]):
+        errors.append(f"metrics event_count {expected_events} does not match {len(trace['events'])} events")
 
     def apply_completed_transfers(time):
         remaining = []
@@ -50,6 +57,11 @@ def validate_trace(trace):
         apply_completed_transfers(event["start"])
         target = event["target"]
         source = event["source"]
+        if source not in known_locations:
+            errors.append(f"event {event['id']} unknown source {source}")
+        if target not in known_locations:
+            errors.append(f"event {event['id']} unknown target {target}")
+        _validate_event_endpoint(event, trap_segment_orientation, errors)
         if event["end"] < event["start"]:
             errors.append(f"event {event['id']} ends before it starts")
         for ion in event["ions"]:
@@ -69,26 +81,130 @@ def validate_trace(trace):
         "valid": len(errors) == 0,
         "errors": errors,
         "final_locations": {str(key): value for key, value in sorted(locations.items())},
-        "event_count_match": trace.get("metrics", {}).get("event_count") == len(trace["events"]),
+        "event_count_match": expected_events == len(trace["events"]),
     }
+
+
+def _validate_topology(topology, errors):
+    known_locations = set()
+    trap_ids = set()
+    junction_ids = set()
+    segment_ids = set()
+
+    for trap in topology.get("traps", []):
+        trap_id = trap.get("id")
+        if trap_id in trap_ids:
+            errors.append(f"duplicate trap id {trap_id}")
+        trap_ids.add(trap_id)
+        known_locations.add(location_key("trap", trap_id))
+
+    for junction in topology.get("junctions", []):
+        junction_id = junction.get("id")
+        if junction_id in junction_ids:
+            errors.append(f"duplicate junction id {junction_id}")
+        junction_ids.add(junction_id)
+        known_locations.add(location_key("junction", junction_id))
+
+    for segment in topology.get("segments", []):
+        segment_id = segment.get("id")
+        if segment_id in segment_ids:
+            errors.append(f"duplicate segment id {segment_id}")
+        segment_ids.add(segment_id)
+        for endpoint_key in ("from", "to"):
+            endpoint = segment.get(endpoint_key)
+            if endpoint not in known_locations:
+                errors.append(f"segment {segment_id} unknown {endpoint_key} {endpoint}")
+        known_locations.add(location_key("segment", segment_id))
+
+    return known_locations
+
+
+def _validate_initial_particles(particles, topology, known_locations, errors):
+    particle_ids = set()
+    trap_capacity = {
+        location_key("trap", trap.get("id")): trap.get("capacity")
+        for trap in topology.get("traps", [])
+        if trap.get("capacity") is not None
+    }
+    occupancy = {}
+
+    for particle in particles:
+        particle_id = particle.get("id")
+        if particle_id in particle_ids:
+            errors.append(f"duplicate particle id {particle_id}")
+        particle_ids.add(particle_id)
+        location = particle.get("initial_location")
+        if location not in known_locations:
+            errors.append(f"particle {particle_id} unknown initial_location {location}")
+        if location in trap_capacity:
+            occupancy[location] = occupancy.get(location, 0) + 1
+
+    for location, count in sorted(occupancy.items()):
+        capacity = trap_capacity[location]
+        if count > capacity:
+            errors.append(f"{location} initial occupancy {count} exceeds capacity {capacity}")
+
+
+def _trap_segment_orientation(topology):
+    orientation = {}
+    for trap in topology.get("traps", []):
+        trap_location = location_key("trap", trap.get("id"))
+        for segment_id, side in (trap.get("orientation") or {}).items():
+            orientation[(trap_location, location_key("segment", int(segment_id)))] = side
+    return orientation
+
+
+def _validate_event_endpoint(event, trap_segment_orientation, errors):
+    event_type = event.get("type")
+    if event_type == "split":
+        trap_location = event.get("source")
+        segment_location = event.get("target")
+    elif event_type == "merge":
+        trap_location = event.get("target")
+        segment_location = event.get("source")
+    else:
+        return
+
+    expected = trap_segment_orientation.get((trap_location, segment_location))
+    if expected is None:
+        return
+    actual = (event.get("metadata") or {}).get("endpoint")
+    if actual != expected:
+        errors.append(
+            f"event {event.get('id')} endpoint {actual} does not match "
+            f"{trap_location} {segment_location} orientation {expected}"
+        )
 
 
 def _run_config(result):
     config = result.config
+    serial_trap_ops, serial_comm, serial_all = effective_scheduler_flags(config)
     return {
         "program": config.program,
         "machine": config.machine,
         "ions_per_region": config.ions,
         "mapper": config.mapper,
         "reorder": config.reorder,
-        "serial_trap_ops": config.serial_trap_ops,
-        "serial_comm": config.serial_comm,
-        "serial_all": config.serial_all,
+        "scheduler_policy": config.scheduler_policy or _scheduler_policy_name(serial_trap_ops, serial_comm, serial_all),
+        "serial_trap_ops": serial_trap_ops,
+        "serial_comm": serial_comm,
+        "serial_all": serial_all,
         "gate_type": config.gate_type,
         "swap_type": config.swap_type,
         "single_qubit_gate_time": config.single_qubit_gate_time,
         "single_qubit_gate_fidelity": config.single_qubit_gate_fidelity,
     }
+
+
+def _scheduler_policy_name(serial_trap_ops, serial_comm, serial_all):
+    for policy, values in SCHEDULER_POLICIES.items():
+        if (
+            values["serial_trap_ops"] == serial_trap_ops
+            and values["serial_comm"] == serial_comm
+            and values["serial_all"] == serial_all
+        ):
+            return policy
+    return "Custom"
 
 
 def _topology(machine, machine_name):

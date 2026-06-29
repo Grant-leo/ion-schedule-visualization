@@ -3,27 +3,47 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Ion Schedule Visualizer</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <title>QCCD Schedule Visual Debugger</title>
+    <link rel="stylesheet" href="./styles.css?v=20260629-demo7" />
   </head>
   <body>
     <div class="app-shell">
       <header class="header-bar">
-        <h1>Ion Schedule Visualizer</h1>
-        <div id="validationPanel" class="status-pill">Loading</div>
+        <div class="brand-lockup">
+          <span class="product-kicker">QCCDSim Workbench</span>
+          <h1>QCCD Schedule Visual Debugger</h1>
+          <p>Trace-level inspection for trapped-ion scheduling under trap/channel constraints.</p>
+        </div>
+        <div class="header-meta">
+          <span class="scope-pill">Ion-trap QCCD only</span>
+          <div id="validationPanel" class="status-pill is-loading">Loading trace</div>
+        </div>
       </header>
       <aside class="left-control-panel">
-        <label for="traceSelect">Trace</label>
-        <select id="traceSelect"></select>
-        <label for="programSelect">Circuit</label>
-        <select id="programSelect"></select>
-        <label for="architectureSelect">Architecture</label>
-        <select id="architectureSelect"></select>
-        <label for="capacitySelect">Capacity</label>
-        <select id="capacitySelect"></select>
-        <label for="mapperSelect">Mapper</label>
-        <select id="mapperSelect"></select>
-        <button id="loadConfigButton" type="button">Generate Schedule</button>
+        <section class="control-section">
+          <span class="panel-eyebrow">Demo scenario</span>
+          <h2>QFT on a 3x3 QCCD grid</h2>
+          <p>Replay QCCDSim trace events as ion shuttling, laser gates, and DAG progress.</p>
+          <label for="traceSelect">Verified trace</label>
+          <select id="traceSelect"></select>
+        </section>
+        <details class="advanced-config">
+          <summary>Experiment configuration</summary>
+          <label for="programSelect">Circuit</label>
+          <select id="programSelect"></select>
+          <div id="benchmarkMetaPanel" class="benchmark-meta"></div>
+          <label for="architectureSelect">Architecture</label>
+          <select id="architectureSelect"></select>
+          <label for="capacitySelect">Trap capacity</label>
+          <select id="capacitySelect"></select>
+          <label for="mapperSelect">Mapper</label>
+          <select id="mapperSelect"></select>
+          <label for="orderingSelect">Initial ordering</label>
+          <select id="orderingSelect"></select>
+          <label for="schedulerSelect">Scheduler policy</label>
+          <select id="schedulerSelect"></select>
+          <button id="loadConfigButton" class="primary-action" type="button">Generate Schedule</button>
+        </details>
         <label for="speedSelect">Speed</label>
         <select id="speedSelect">
           <option value="0.25">0.25x</option>
@@ -33,30 +53,55 @@
           <option value="5">5x</option>
           <option value="10">10x</option>
         </select>
-        <button id="playPauseButton" type="button">Play</button>
-        <button id="restartButton" type="button">Restart</button>
-        <button id="stepButton" type="button">Step</button>
+        <div class="playback-grid">
+          <button id="playPauseButton" class="primary-action" type="button">Play</button>
+          <button id="stepButton" type="button">Step</button>
+          <button id="restartButton" type="button">Restart</button>
+        </div>
+        <div class="scope-note">
+          <strong>Scope</strong>
+          <span>Schedule inspection only. No noise, calibration, or pulse-control validation.</span>
+        </div>
       </aside>
       <main class="visualization-viewport">
         <canvas id="vizCanvas" width="1280" height="720"></canvas>
+        <div class="stage-overlay top-left">
+          <span class="panel-eyebrow">Hardware layer</span>
+          <strong>Trap and channel replay</strong>
+          <div id="runConfigPanel" class="run-config-panel"></div>
+          <div class="legend-row">
+            <span><i class="legend-swatch trap"></i>Trap</span>
+            <span><i class="legend-swatch junction"></i>Junction</span>
+            <span><i class="legend-swatch shuttle"></i>Shuttling</span>
+            <span><i class="legend-swatch gate"></i>Laser gate</span>
+          </div>
+        </div>
         <div class="floating-overlay-layer" id="performancePanel">FPS: --</div>
       </main>
       <aside class="right-inspector-panel">
-        <section>
-          <h2>Metrics</h2>
-          <div id="metricsPanel"></div>
-        </section>
-        <section>
-          <h2>Dependency DAG</h2>
+        <section class="inspector-section dag-page">
+          <div class="section-heading">
+            <div>
+              <span class="panel-eyebrow">Circuit layer</span>
+              <h2>Dependency DAG</h2>
+            </div>
+          </div>
+          <div id="dagSummaryPanel" class="dag-summary"></div>
           <div id="dagPanel"></div>
         </section>
-        <section>
+        <section class="inspector-section">
+          <span class="panel-eyebrow">Timeline focus</span>
+          <h2>Current Operation</h2>
+          <div id="eventPanel" class="event-card"></div>
+        </section>
+        <section class="inspector-section hero-metrics">
+          <span class="panel-eyebrow">Schedule metrics</span>
+          <div id="metricsPanel"></div>
+        </section>
+        <section class="inspector-section">
+          <span class="panel-eyebrow">Initial ion chains</span>
           <h2>Initial Layout</h2>
           <div id="initialLayoutPanel"></div>
-        </section>
-        <section>
-          <h2>Current Event</h2>
-          <pre id="eventPanel"></pre>
         </section>
       </aside>
       <footer class="bottom-timeline">
@@ -64,6 +109,6 @@
         <span id="timeReadout">0 / 0</span>
       </footer>
     </div>
-    <script type="module" src="./app.js"></script>
+    <script type="module" src="./app.js?v=20260629-demo7"></script>
   </body>
 </html>

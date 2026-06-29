@@ -9,9 +9,23 @@ const FALLBACK_COLORS = {
   "--color-junction": "#d5a84f",
   "--color-gate": "#98c379",
   "--color-move": "#61afef",
+  "--color-warning": "#e6ba60",
 };
 
 const MOTION_TYPES = new Set(["split", "move", "merge"]);
+
+export const RENDER_SIZES = Object.freeze({
+  ionRadius: 6,
+  activeIonRadius: 7,
+  segmentWidth: 18,
+  activeSegmentWidth: 24,
+  segmentOuterWidth: 24,
+  activeSegmentOuterWidth: 30,
+  motionPathWidth: 22,
+  trapHeight: 26,
+  trapPortGap: 14,
+  trapPortRadius: 5,
+});
 
 export function createRenderer(canvas) {
   const context = canvas.getContext("2d", { alpha: false });
@@ -33,6 +47,7 @@ export function createRenderer(canvas) {
       drawBackground(context, canvas);
       drawSegments(context, trace, layout, state);
       drawTraps(context, trace, layout);
+      drawTrapPorts(context, trace, layout);
       drawJunctions(context, trace, layout);
       drawActiveEvents(context, layout, state);
       drawIons(context, trace, layout, state);
@@ -67,7 +82,29 @@ export function trapSlotPoint(trapPoint, slotIndex, capacity) {
 }
 
 export function trapConnectionPoint(trap, trapPoint, segmentLocation) {
-  return trapSlotPoint(trapPoint, endpointSlotIndex(trap, segmentLocation), trap.capacity);
+  const side = trapEndpointSide(trap, segmentLocation);
+  return trapPortPoints(trapPoint)[side];
+}
+
+export function trapPortPoints(trapPoint) {
+  const offset = trapPoint.width / 2 + RENDER_SIZES.trapPortGap;
+  return {
+    L: { x: trapPoint.x - offset, y: trapPoint.y },
+    R: { x: trapPoint.x + offset, y: trapPoint.y },
+  };
+}
+
+export function trapConnectedPortSides(trap) {
+  return new Set(
+    Object.values(trap.orientation || {}).filter((side) => side === "L" || side === "R"),
+  );
+}
+
+export function segmentDrawPoints(layout, segment) {
+  const endpoints = layout.segmentEndpoints?.get(`segment:${segment.id}`);
+  if (endpoints?.route) return endpoints.route;
+  if (endpoints?.start && endpoints?.end) return [endpoints.start, endpoints.end];
+  return [resolveLocationPoint(layout, segment.from), resolveLocationPoint(layout, segment.to)].filter(Boolean);
 }
 
 export function pointAlongPolyline(points, progress) {
@@ -102,20 +139,46 @@ export function motionPathPoints(layout, event) {
 
   if (event.source?.startsWith("segment:") && event.target?.startsWith("segment:")) {
     const shared = sharedSegmentEndpoint(layout, event.source, event.target);
-    return compactPath([start, shared, end]);
+    if (shared) {
+      return compactPath([
+        ...segmentCenterToEndpointPath(layout, event.source, shared),
+        ...segmentEndpointToCenterPath(layout, event.target, shared).slice(1),
+      ]);
+    }
+    return compactPath([start, end]);
   }
 
   if (event.source?.startsWith("trap:") && event.target?.startsWith("segment:")) {
-    const anchor = segmentEndpointNearLocation(layout, event.target, event.source) || nearestSegmentEndpoint(layout, event.target, start);
-    return compactPath([start, anchor, end]);
+    const swapPath = splitInternalSwapPoints(layout, event);
+    const exitPath = segmentEndpointToCenterPath(layout, event.target, event.source);
+    return compactPath([...(swapPath.length ? swapPath : [start]), ...exitPath]);
   }
 
   if (event.source?.startsWith("segment:") && event.target?.startsWith("trap:")) {
-    const anchor = segmentEndpointNearLocation(layout, event.source, event.target) || nearestSegmentEndpoint(layout, event.source, end);
-    return compactPath([start, anchor, end]);
+    return compactPath([...segmentCenterToEndpointPath(layout, event.source, event.target), end]);
   }
 
   return compactPath([start, end]);
+}
+
+export function splitInternalSwapPoints(layout, event) {
+  const swapHops = Number(event.metadata?.swap_hops || 0);
+  const swapCount = Number(event.metadata?.swap_count || 0);
+  if (event.type !== "split" || swapCount <= 0 || swapHops <= 0 || !event.source?.startsWith("trap:")) {
+    return [];
+  }
+  const trap = (layout.traceTrapsFallback || []).find((item) => `trap:${item.id}` === event.source);
+  const trapPoint = layout.traps.get(event.source);
+  if (!trap || !trapPoint) return [];
+  const endpointSlot = endpointSlotIndex(trap, event.target);
+  const startSlot =
+    event.metadata?.endpoint === "R"
+      ? Math.max(0, endpointSlot - swapHops)
+      : Math.min(trap.capacity - 1, endpointSlot + swapHops);
+  return [
+    trapSlotPoint(trapPoint, startSlot, trap.capacity),
+    trapSlotPoint(trapPoint, endpointSlot, trap.capacity),
+  ];
 }
 
 export function ionRenderPoint(basePoint, location, activeMotion, offsetIndex) {
@@ -182,8 +245,9 @@ function computeLayout(canvas, trace) {
     const end = resolveSegmentNodePoint(traps, junctions, trace.topology.traps, segment.to, segment.id);
     if (!start || !end) continue;
     const key = `segment:${segment.id}`;
-    segments.set(key, interpolatePoint(start, end, 0.5));
-    segmentEndpoints.set(key, { start, end });
+    const route = segmentRoutePoints(start, end, segment.from, segment.to);
+    segments.set(key, pointAlongPolyline(route, 0.5));
+    segmentEndpoints.set(key, { start, end, from: segment.from, to: segment.to, route });
   }
 
   return { traps, junctions, segments, segmentEndpoints, traceTrapsFallback: trace.topology.traps };
@@ -208,6 +272,11 @@ function resolveSegmentNodePoint(traps, junctions, traceTraps, location, segment
   return resolveNodePoint(traps, junctions, location);
 }
 
+function trapEndpointSide(trap, segmentLocation) {
+  const segmentId = segmentLocation.split(":")[1];
+  return trap.orientation?.[segmentId] === "R" ? "R" : "L";
+}
+
 function resolveLocationPoint(layout, location) {
   return layout.traps.get(location) || layout.junctions.get(location) || layout.segments.get(location) || null;
 }
@@ -223,19 +292,20 @@ function drawSegments(context, trace, layout, state) {
   );
 
   for (const segment of trace.topology.segments) {
-    const start = resolveLocationPoint(layout, segment.from);
-    const end = resolveLocationPoint(layout, segment.to);
-    if (!start || !end) continue;
+    const points = segmentDrawPoints(layout, segment);
+    if (points.length < 2) continue;
     const segmentKey = `segment:${segment.id}`;
     const isActive = activeMotion.has(segmentKey);
 
-    context.strokeStyle = isActive ? cssColor("--color-move") : cssColor("--color-segment");
-    context.lineWidth = isActive ? 5 : 3;
+    context.strokeStyle = "rgba(5, 8, 12, 0.72)";
+    context.lineWidth = isActive ? RENDER_SIZES.activeSegmentOuterWidth : RENDER_SIZES.segmentOuterWidth;
     context.lineCap = "round";
-    context.beginPath();
-    context.moveTo(start.x, start.y);
-    context.lineTo(end.x, end.y);
-    context.stroke();
+    context.lineJoin = "round";
+    strokePolyline(context, points);
+
+    context.strokeStyle = isActive ? cssColor("--color-move") : cssColor("--color-segment");
+    context.lineWidth = isActive ? RENDER_SIZES.activeSegmentWidth : RENDER_SIZES.segmentWidth;
+    strokePolyline(context, points);
   }
 }
 
@@ -249,7 +319,7 @@ function drawTraps(context, trace, layout) {
 
 function drawTrapChain(context, trap, point) {
   const width = point.width;
-  const height = 26;
+  const height = RENDER_SIZES.trapHeight;
   context.fillStyle = "rgba(70, 119, 200, 0.22)";
   context.strokeStyle = cssColor("--color-trap");
   context.lineWidth = 1.5;
@@ -267,6 +337,34 @@ function drawTrapChain(context, trap, point) {
   }
 
   drawLabel(context, `T${trap.id}`, point.x, point.y + 24, cssColor("--color-muted"));
+}
+
+function drawTrapPorts(context, trace, layout) {
+  for (const trap of trace.topology.traps) {
+    const point = layout.traps.get(`trap:${trap.id}`);
+    if (!point) continue;
+    const ports = trapPortPoints(point);
+    const connected = trapConnectedPortSides(trap);
+    for (const side of ["L", "R"]) {
+      drawTrapPort(context, ports[side], side, connected.has(side));
+    }
+  }
+}
+
+function drawTrapPort(context, point, side, connected) {
+  context.fillStyle = connected ? cssColor("--color-segment") : "rgba(115, 127, 145, 0.18)";
+  context.strokeStyle = connected ? cssColor("--color-trap") : "rgba(115, 127, 145, 0.36)";
+  context.lineWidth = connected ? 1.5 : 1;
+  context.beginPath();
+  context.arc(point.x, point.y, RENDER_SIZES.trapPortRadius, 0, Math.PI * 2);
+  context.fill();
+  context.stroke();
+
+  context.fillStyle = connected ? cssColor("--color-text") : "rgba(168, 179, 195, 0.48)";
+  context.font = "9px Segoe UI, system-ui, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(side, point.x, point.y);
 }
 
 function drawJunctions(context, trace, layout) {
@@ -287,6 +385,7 @@ function drawActiveEvents(context, layout, state) {
       const point = pointAlongPolyline(path, eventProgress(event, state.time));
       if (!point) continue;
       drawMotionPath(context, path);
+      drawSwapCue(context, layout, event);
       context.strokeStyle = cssColor("--color-move");
       context.lineWidth = 2;
       context.beginPath();
@@ -299,6 +398,26 @@ function drawActiveEvents(context, layout, state) {
     if (!point) continue;
     drawGateLaser(context, layout, state, event);
   }
+}
+
+function drawSwapCue(context, layout, event) {
+  const path = splitInternalSwapPoints(layout, event);
+  if (path.length < 2) return;
+  context.strokeStyle = "rgba(230, 186, 96, 0.88)";
+  context.lineWidth = 3;
+  context.setLineDash([4, 5]);
+  context.lineCap = "round";
+  strokePolyline(context, path);
+  context.setLineDash([]);
+  const midpoint = pointAlongPolyline(path, 0.5);
+  if (!midpoint) return;
+  context.fillStyle = "rgba(9, 11, 15, 0.9)";
+  context.strokeStyle = cssColor("--color-warning");
+  context.lineWidth = 1;
+  roundedRect(context, midpoint.x - 18, midpoint.y - 24, 36, 16, 5);
+  context.fill();
+  context.stroke();
+  drawLabel(context, "SWAP", midpoint.x, midpoint.y - 16, cssColor("--color-warning"));
 }
 
 function drawIons(context, trace, layout, state) {
@@ -324,7 +443,13 @@ function drawIons(context, trace, layout, state) {
     context.strokeStyle = "rgba(16, 18, 22, 0.95)";
     context.lineWidth = 2;
     context.beginPath();
-    context.arc(point.x, point.y, activeMotion ? 7 : 6, 0, Math.PI * 2);
+    context.arc(
+      point.x,
+      point.y,
+      activeMotion ? RENDER_SIZES.activeIonRadius : RENDER_SIZES.ionRadius,
+      0,
+      Math.PI * 2,
+    );
     context.fill();
     context.stroke();
 
@@ -387,15 +512,87 @@ function trapForLocation(trace, location) {
 function drawMotionPath(context, path) {
   if (!path || path.length < 2) return;
   context.strokeStyle = "rgba(97, 175, 239, 0.42)";
-  context.lineWidth = 2;
+  context.lineWidth = RENDER_SIZES.motionPathWidth;
   context.setLineDash([8, 8]);
+  context.lineCap = "round";
+  strokePolyline(context, path);
+  context.setLineDash([]);
+}
+
+function segmentRoutePoints(start, end, fromLocation, toLocation) {
+  if (sameAxis(start, end)) return [start, end];
+  if (fromLocation?.startsWith("trap:") && toLocation?.startsWith("trap:")) {
+    const midY = (start.y + end.y) / 2;
+    return compactPath([start, { x: start.x, y: midY }, { x: end.x, y: midY }, end]);
+  }
+  if (fromLocation?.startsWith("trap:")) {
+    return compactPath([start, { x: start.x, y: end.y }, end]);
+  }
+  if (toLocation?.startsWith("trap:")) {
+    return compactPath([start, { x: end.x, y: start.y }, end]);
+  }
+  return compactPath([start, { x: start.x, y: end.y }, end]);
+}
+
+function segmentEndpointToCenterPath(layout, segmentLocation, endpointLocationOrPoint) {
+  const endpoints = layout.segmentEndpoints?.get(segmentLocation);
+  const endpoint = typeof endpointLocationOrPoint === "string"
+    ? segmentEndpointForLocation(layout, segmentLocation, endpointLocationOrPoint)
+    : endpointLocationOrPoint;
+  const route = routeFromEndpoint(endpoints, endpoint);
+  if (!route.length) {
+    return [endpoint, resolveLocationPoint(layout, segmentLocation)].filter(Boolean);
+  }
+  return subpathAlongPolyline(route, 0.5);
+}
+
+function segmentCenterToEndpointPath(layout, segmentLocation, endpointLocationOrPoint) {
+  return [...segmentEndpointToCenterPath(layout, segmentLocation, endpointLocationOrPoint)].reverse();
+}
+
+function routeFromEndpoint(endpoints, endpoint) {
+  if (!endpoints || !endpoint) return [];
+  const route = endpoints.route || [endpoints.start, endpoints.end].filter(Boolean);
+  if (!route.length) return [];
+  if (samePoint(endpoint, route[0])) return route;
+  if (samePoint(endpoint, route[route.length - 1])) return [...route].reverse();
+  return [endpoint, ...route];
+}
+
+function subpathAlongPolyline(points, progress) {
+  if (!points || points.length <= 1) return points || [];
+  const lengths = [];
+  let total = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const length = distance(points[index - 1], points[index]);
+    lengths.push(length);
+    total += length;
+  }
+  if (total === 0) return [points[0]];
+
+  let remaining = total * clamp(progress, 0, 1);
+  const path = [points[0]];
+  for (let index = 0; index < lengths.length; index += 1) {
+    const length = lengths[index];
+    if (remaining <= length) {
+      const localProgress = length === 0 ? 1 : remaining / length;
+      path.push(interpolatePoint(points[index], points[index + 1], localProgress));
+      return compactPath(path);
+    }
+    path.push(points[index + 1]);
+    remaining -= length;
+  }
+  return compactPath(path);
+}
+
+function strokePolyline(context, points) {
+  if (!points || points.length < 2) return;
   context.beginPath();
-  context.moveTo(path[0].x, path[0].y);
-  for (const point of path.slice(1)) {
+  context.moveTo(points[0].x, points[0].y);
+  for (const point of points.slice(1)) {
     context.lineTo(point.x, point.y);
   }
   context.stroke();
-  context.setLineDash([]);
 }
 
 function sharedSegmentEndpoint(layout, sourceSegment, targetSegment) {
@@ -411,9 +608,19 @@ function sharedSegmentEndpoint(layout, sourceSegment, targetSegment) {
 }
 
 function segmentEndpointNearLocation(layout, segmentLocation, nodeLocation) {
+  const exact = segmentEndpointForLocation(layout, segmentLocation, nodeLocation);
+  if (exact) return exact;
   const node = resolveLocationPoint(layout, nodeLocation);
   if (!node) return null;
   return nearestSegmentEndpoint(layout, segmentLocation, node);
+}
+
+function segmentEndpointForLocation(layout, segmentLocation, nodeLocation) {
+  const endpoints = layout.segmentEndpoints?.get(segmentLocation);
+  if (!endpoints) return null;
+  if (endpoints.from === nodeLocation) return endpoints.start;
+  if (endpoints.to === nodeLocation) return endpoints.end;
+  return null;
 }
 
 function nearestSegmentEndpoint(layout, segmentLocation, point) {
@@ -435,6 +642,10 @@ function compactPath(points) {
 
 function samePoint(left, right) {
   return Boolean(left && right && Math.abs(left.x - right.x) < 0.001 && Math.abs(left.y - right.y) < 0.001);
+}
+
+function sameAxis(left, right) {
+  return Boolean(left && right && (Math.abs(left.x - right.x) < 0.001 || Math.abs(left.y - right.y) < 0.001));
 }
 
 function distance(left, right) {
