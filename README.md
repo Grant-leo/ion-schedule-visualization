@@ -6,7 +6,15 @@ QCCD Schedule Visualizer is an interactive debugger for trapped-ion QCCD schedul
 
 The prototype focuses on ion-trap QCCD hardware. It does not model noise, calibration drift, or pulse-level control. Its purpose is schedule verification and explanation: it makes the process behind a QCCDSim schedule visible enough to find repeated shuttling, blocked dependencies, routing bottlenecks, and suspicious chain operations.
 
+## Interface Preview
+
+H6 ring-like QCCD replay:
+
 ![QCCD Schedule Visualizer main interface showing an H6 trapped-ion architecture replay, synchronized circuit strip, laser gates, and dependency DAG](docs/assets/qccd-visualizer-main.png)
+
+G9 grid QCCD replay:
+
+![QCCD Schedule Visualizer main interface showing a G9 grid QCCD architecture replay, synchronized circuit strip, laser gates, and dependency DAG](docs/assets/qccd-visualizer-grid.png)
 
 ## At A Glance
 
