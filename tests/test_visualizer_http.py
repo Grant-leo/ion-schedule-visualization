@@ -67,6 +67,9 @@ def test_visualizer_html_uses_cache_busted_core_assets():
     assert 'id="parallelSchedulerButton"' in html
     assert 'id="serialSchedulerButton"' in html
     assert 'id="headlineMetricsPanel"' in html
+    assert 'scope-pill' not in html
+    assert 'status-pill' not in html
+    assert 'id="timeReadout">0 / 0 gates' in html
     assert 'id="benchmarkMetaPanel"' in html
     assert 'id="runConfigPanel"' in html
     assert 'id="configErrorPanel"' in html

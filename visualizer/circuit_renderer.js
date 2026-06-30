@@ -13,10 +13,10 @@ export function layoutCircuit(dagState = {}, options = {}) {
   );
   const qubits = Array.from({ length: maxQubit + 1 }, (_, index) => index);
   const rowGap = qubits.length > 32 ? 24 : qubits.length > 16 ? 26 : 30;
-  const columnWidth = gates.length > 120 ? 32 : 42;
-  const left = 46;
-  const top = 24;
-  const width = Math.max(Number(config.maxWidth || 0), left + gates.length * columnWidth + 42);
+  const columnWidth = gates.length > 120 ? 36 : 52;
+  const left = 84;
+  const top = 34;
+  const width = Math.max(Number(config.maxWidth || 0), left + gates.length * columnWidth + 52);
   const height = Math.max(72, top * 2 + (qubits.length - 1) * rowGap);
   const yByQubit = new Map(qubits.map((qubit, index) => [qubit, top + index * rowGap]));
   const gateLayout = gates.map((gate, index) => {
@@ -65,8 +65,8 @@ export function renderCircuitSvg(container, dagState = {}, options = {}) {
 }
 
 function circuitSvgMarkup(layout) {
-  const wireStart = layout.left - 18;
-  const wireEnd = layout.width - 18;
+  const wireStart = layout.left - 24;
+  const wireEnd = layout.width - 24;
   const focusGate = activeFocusGate(layout);
   const wires = layout.qubits
     .map((qubit) => {

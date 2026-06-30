@@ -606,7 +606,8 @@ function draw(options = {}) {
   const state = replay.stateAt(currentTime);
   renderer.draw(state);
   elements.timeline.value = String(Math.floor(state.time));
-  elements.timeReadout.textContent = `${Math.floor(state.time)} / ${replay.finishTime}`;
+  const dagProgress = summarizeDag(state.dagState);
+  elements.timeReadout.textContent = `${dagProgress.completed} / ${dagProgress.total} gates`;
 
   const metricInput = buildMetricInput(trace.metrics, state.metrics, state.dagState);
   const now = performance.now();

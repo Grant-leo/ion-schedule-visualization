@@ -31,8 +31,26 @@ test("layoutCircuit keeps dense circuits readable by preserving gate spacing", (
 
   const layout = layoutCircuit({ nodes, edges: [] }, { qubitCount: 48, maxWidth: 360 });
 
-  assert.ok(layout.columnWidth >= 32);
+  assert.ok(layout.columnWidth >= 36);
   assert.ok(layout.rowGap >= 24);
+});
+
+test("layoutCircuit keeps the opening gates clear of labels and focus badges", () => {
+  const dagState = {
+    nodes: new Map([
+      [0, { id: 0, gate_name: "h", qubits: [0], state: "active" }],
+      [1, { id: 1, gate_name: "h", qubits: [1], state: "ready" }],
+      [2, { id: 2, gate_name: "cx", qubits: [0, 1], state: "blocked" }],
+    ]),
+    edges: [],
+  };
+
+  const layout = layoutCircuit(dagState, { qubitCount: 2, maxWidth: 360 });
+
+  assert.ok(layout.left >= 80);
+  assert.ok(layout.top >= 32);
+  assert.ok(layout.columnWidth >= 52);
+  assert.ok(layout.gates[0].x - 13 > layout.left - 24);
 });
 
 test("renderCircuitSvg updates node state classes without omitting DAG gates", () => {

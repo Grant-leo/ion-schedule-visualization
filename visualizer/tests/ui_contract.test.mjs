@@ -11,7 +11,17 @@ test("desktop demo layout prioritizes the main canvas while keeping the DAG side
   assert.doesNotMatch(cssSource, /@media\s*\(max-width:\s*1360px\)/);
   assert.match(cssSource, /grid-template-columns:\s*clamp\(228px,\s*16vw,\s*260px\)\s+minmax\(640px,\s*1fr\)\s+clamp\(350px,\s*24vw,\s*420px\)/);
   assert.match(cssSource, /grid-template-rows:\s*78px\s+minmax\(0,\s*1fr\)\s+48px/);
+  assert.match(cssSource, /\.header-bar\s*{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*clamp\(228px,\s*16vw,\s*260px\)\s+minmax\(640px,\s*1fr\)/);
+  assert.doesNotMatch(indexSource, /scope-pill/);
+  assert.doesNotMatch(indexSource, /status-pill/);
   assert.match(cssSource, /\.visualization-viewport\s*{[\s\S]*grid-template-rows:\s*96px\s+minmax\(0,\s*1fr\)/);
+});
+
+test("bottom timeline reports gate progress instead of raw cycle time", () => {
+  assert.match(indexSource, /id="timeReadout">0 \/ 0 gates</);
+  assert.match(appSource, /const\s+dagProgress\s*=\s*summarizeDag\(state\.dagState\)/);
+  assert.match(appSource, /elements\.timeReadout\.textContent\s*=\s*`\$\{dagProgress\.completed\} \/ \$\{dagProgress\.total\} gates`/);
+  assert.doesNotMatch(appSource, /timeReadout\.textContent\s*=\s*`\$\{Math\.floor\(state\.time\)\}/);
 });
 
 test("trace generation ignores stale responses and disables duplicate submissions", () => {
