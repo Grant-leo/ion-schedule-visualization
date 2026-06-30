@@ -1,4 +1,4 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260630-swap-circuit1";
+import { createRenderer } from "./canvas_renderer.js?v=20260630-constant-speed1";
 import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-circuit-subscript1";
 import { renderDagSvg } from "./dag_renderer.js?v=20260630-swap-circuit1";
 import { createReplay, validateTrace } from "./replay.js?v=20260630-swap-circuit1";
@@ -13,8 +13,6 @@ import {
 
 const LIVE_PANEL_INTERVAL_MS = 160;
 const PERFORMANCE_PANEL_INTERVAL_MS = 250;
-const MIN_MOTION_DISPLAY_CYCLES = 80;
-const MOTION_EVENT_TYPES = new Set(["split", "move", "merge"]);
 
 const elements = {
   controlPanel: document.getElementById("controlPanel"),
@@ -609,8 +607,7 @@ function loop(now) {
   lastFrame = now;
 
   if (playing && replay) {
-    const motionScale = playbackMotionScale(replay.stateAt(currentTime));
-    currentTime = Math.min(replay.finishTime, currentTime + delta * Number(elements.speedSelect.value) * motionScale);
+    currentTime = Math.min(replay.finishTime, currentTime + delta * Number(elements.speedSelect.value));
     if (currentTime >= replay.finishTime) {
       playing = false;
       elements.playPauseButton.textContent = "Play";
@@ -620,15 +617,6 @@ function loop(now) {
 
   recordFrame(delta, now);
   requestAnimationFrame(loop);
-}
-
-function playbackMotionScale(state) {
-  const motionDurations = (state.activeEvents || [])
-    .filter((event) => MOTION_EVENT_TYPES.has(event.type))
-    .map((event) => Math.max(1, event.end - event.start));
-  if (!motionDurations.length) return 1;
-  const shortest = Math.min(...motionDurations);
-  return Math.min(1, Math.max(0.18, shortest / MIN_MOTION_DISPLAY_CYCLES));
 }
 
 function draw(options = {}) {

@@ -142,25 +142,56 @@ export function pointAlongPolyline(points, progress) {
   if (!points || points.length === 0) return null;
   if (points.length === 1) return points[0];
 
-  const lengths = [];
-  let total = 0;
-  for (let index = 1; index < points.length; index += 1) {
-    const length = distance(points[index - 1], points[index]);
-    lengths.push(length);
-    total += length;
-  }
+  const total = polylineLength(points);
   if (total === 0) return points[points.length - 1];
 
   let target = total * clamp(progress, 0, 1);
-  for (let index = 0; index < lengths.length; index += 1) {
-    const length = lengths[index];
-    if (target <= length) {
-      const localProgress = length === 0 ? 1 : target / length;
-      return interpolatePoint(points[index], points[index + 1], localProgress);
+  for (let index = 1; index < points.length; index += 1) {
+    const segmentLength = distance(points[index - 1], points[index]);
+    if (target <= segmentLength) {
+      const localProgress = segmentLength === 0 ? 1 : target / segmentLength;
+      return interpolatePoint(points[index - 1], points[index], localProgress);
     }
-    target -= length;
+    target -= segmentLength;
   }
   return points[points.length - 1];
+}
+
+export function polylineLength(points) {
+  if (!points || points.length <= 1) return 0;
+  let total = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    total += distance(points[index - 1], points[index]);
+  }
+  return total;
+}
+
+export function motionTravelProgress(event, time, path, speedPxPerCycle = 0) {
+  const length = polylineLength(path);
+  const speed = Number(speedPxPerCycle);
+  if (!Number.isFinite(speed) || speed <= 0 || length <= 0) {
+    return eventProgress(event, time);
+  }
+  const elapsed = Math.max(0, Number(time) - Number(event.start || 0));
+  return clamp((elapsed * speed) / length, 0, 1);
+}
+
+function motionTravelDistance(event, time, speedPxPerCycle = 0) {
+  const speed = Number(speedPxPerCycle);
+  if (!Number.isFinite(speed) || speed <= 0) return null;
+  return Math.max(0, Number(time) - Number(event.start || 0)) * speed;
+}
+
+function traceMotionSpeed(layout, trace) {
+  let speed = 0;
+  for (const event of trace.events || []) {
+    if (!MOTION_TYPES.has(event.type)) continue;
+    const path = motionPathPoints(layout, event, null);
+    const length = polylineLength(path);
+    const duration = Math.max(1, Number(event.end || 0) - Number(event.start || 0));
+    if (length > 0) speed = Math.max(speed, length / duration);
+  }
+  return speed;
 }
 
 export function motionPathPoints(layout, event, state = null) {
@@ -224,13 +255,17 @@ export function activeSplitSwapPoint(layout, event, state = {}, ionId) {
   if (!info) return null;
   const ion = Number(ionId);
   if (ion !== info.firstIon && ion !== info.secondIon) return null;
-  const progress = eventProgress(event, state.time ?? event.start);
-  const swapProgress = clamp(progress / SPLIT_SWAP_PHASE_FRACTION, 0, 1);
   const firstPoint = trapSlotPoint(info.trapPoint, info.firstSlot, info.trap.capacity);
   const secondPoint = trapSlotPoint(info.trapPoint, info.secondSlot, info.trap.capacity);
+  const swapLength = distance(firstPoint, secondPoint);
+  const traveled = motionTravelDistance(event, state.time ?? event.start, layout.motionSpeedPxPerCycle);
+  const swapProgress =
+    traveled === null || swapLength <= 0
+      ? clamp(eventProgress(event, state.time ?? event.start) / SPLIT_SWAP_PHASE_FRACTION, 0, 1)
+      : clamp(traveled / swapLength, 0, 1);
 
   if (ion === info.firstIon) {
-    if (progress >= SPLIT_SWAP_PHASE_FRACTION) return null;
+    if (swapProgress >= 1) return null;
     return interpolatePoint(firstPoint, secondPoint, swapProgress);
   }
   return interpolatePoint(secondPoint, firstPoint, swapProgress);
@@ -369,7 +404,9 @@ function computeLayout(viewport, trace) {
     segmentEndpoints.set(key, { start, end, from: segment.from, to: segment.to, route });
   }
 
-  return { traps, junctions, segments, segmentEndpoints, traceTrapsFallback: trace.topology.traps };
+  const layout = { traps, junctions, segments, segmentEndpoints, traceTrapsFallback: trace.topology.traps };
+  layout.motionSpeedPxPerCycle = traceMotionSpeed(layout, trace);
+  return layout;
 }
 
 export function alignJunctionsToTrapPorts(trace, traps, junctions) {
@@ -775,7 +812,7 @@ export function activeJunctionActivity(trace, layout, state = {}) {
     const path = motionPathPoints(layout, event, state);
     const junctions = eventJunctionLocations(trace, layout, event, path);
     if (!junctions.length) continue;
-    const point = pointAlongPolyline(path, eventProgress(event, state.time));
+    const point = motionPoint(layout, event, state.time, state);
     if (!point) continue;
     for (const location of junctions) {
       const junctionPoint = layout.junctions?.get(location) || sharedSegmentEndpoint(layout, event.source, event.target);
@@ -893,7 +930,7 @@ function drawActiveEvents(context, layout, state) {
   for (const event of state.activeEvents) {
     if (MOTION_TYPES.has(event.type)) {
       const path = motionPathPoints(layout, event, state);
-      const point = pointAlongPolyline(path, eventProgress(event, state.time));
+      const point = motionPoint(layout, event, state.time, state);
       if (!point) continue;
       drawMotionPath(context, path);
       drawSwapCue(context, layout, event, state);
@@ -967,13 +1004,8 @@ function drawIons(context, trace, layout, state) {
 }
 
 function motionPoint(layout, event, time, state = null) {
-  if (isSplitSwapEvent(event)) {
-    const swapPoint = activeSplitSwapPoint(layout, event, { ...state, time }, event.ions?.[0]);
-    if (swapPoint) return swapPoint;
-    return pointAlongPolyline(splitExitPathPoints(layout, event, state), splitPostSwapProgress(event, time));
-  }
-  const path = motionPathPoints(layout, event, state);
-  return pointAlongPolyline(path, eventProgress(event, time));
+  const path = isSplitSwapEvent(event) ? splitPrimaryMotionPathPoints(layout, event, state) : motionPathPoints(layout, event, state);
+  return pointAlongPolyline(path, motionTravelProgress(event, time, path, layout.motionSpeedPxPerCycle));
 }
 
 function activeSplitSwapOverride(layout, state, ionId) {
@@ -988,6 +1020,15 @@ function isSplitSwapEvent(event) {
   return event?.type === "split" && Number(event.metadata?.swap_count || 0) > 0 && (event.metadata?.swap_ions || []).length === 2;
 }
 
+function splitPrimaryMotionPathPoints(layout, event, state = null) {
+  const swapInfo = splitSwapInfo(layout, event, state || {});
+  if (!swapInfo) return motionPathPoints(layout, event, state);
+  const firstPoint = trapSlotPoint(swapInfo.trapPoint, swapInfo.firstSlot, swapInfo.trap.capacity);
+  const secondPoint = trapSlotPoint(swapInfo.trapPoint, swapInfo.secondSlot, swapInfo.trap.capacity);
+  const exitPath = splitExitPathPoints(layout, event, state);
+  return compactPath([firstPoint, secondPoint, ...(samePoint(secondPoint, exitPath[0]) ? exitPath.slice(1) : exitPath)]);
+}
+
 function splitExitPathPoints(layout, event, state = null) {
   const swapInfo = splitSwapInfo(layout, event, state || {});
   const endpointSlot = swapInfo ? endpointSlotIndex(swapInfo.trap, event.target) : null;
@@ -1000,11 +1041,6 @@ function splitExitPathPoints(layout, event, state = null) {
   if (!exitPath.length) return [endpoint];
   const path = slotPath.length ? slotPath : [endpoint];
   return compactPath([...path, ...(samePoint(endpoint, exitPath[0]) ? exitPath.slice(1) : exitPath)]);
-}
-
-function splitPostSwapProgress(event, time) {
-  const progress = eventProgress(event, time);
-  return clamp((progress - SPLIT_SWAP_PHASE_FRACTION) / (1 - SPLIT_SWAP_PHASE_FRACTION), 0, 1);
 }
 
 function particlePoint(layout, trace, state, particle, location) {

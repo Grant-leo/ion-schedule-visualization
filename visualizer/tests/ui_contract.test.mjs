@@ -189,8 +189,11 @@ test("window resize and circuit panel dimensions invalidate the circuit render c
   assert.match(appSource, /const circuitKey\s*=\s*`\$\{dagKey\}\|\$\{trace\?\.particles\?\.length \?\? 0\}\|\$\{circuitSizeKey\}`/);
 });
 
-test("playback applies a minimum visual duration to very short shuttling events", () => {
-  assert.match(appSource, /MIN_MOTION_DISPLAY_CYCLES/);
-  assert.match(appSource, /playbackMotionScale\(replay\.stateAt\(currentTime\)\)/);
-  assert.match(appSource, /function playbackMotionScale\(state\)/);
+test("playback speed is a uniform multiplier without active-motion-dependent rescaling", () => {
+  assert.doesNotMatch(appSource, /playbackMotionScale/);
+  assert.doesNotMatch(appSource, /MIN_MOTION_DISPLAY_CYCLES/);
+  assert.match(
+    appSource,
+    /currentTime\s*=\s*Math\.min\(replay\.finishTime,\s*currentTime\s*\+\s*delta\s*\*\s*Number\(elements\.speedSelect\.value\)\)/,
+  );
 });
