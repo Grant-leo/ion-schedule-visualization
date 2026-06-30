@@ -346,7 +346,7 @@ function computeLayout(viewport, trace) {
   const junctions = new Map();
   const segments = new Map();
   const segmentEndpoints = new Map();
-  const rawLayout = trace.topology.layout || {};
+  const rawLayout = normalizeTraceLayoutForRendering(trace);
   const rawPoints = Object.values(rawLayout);
   const minX = Math.min(...rawPoints.map((point) => point.x), 0);
   const maxX = Math.max(...rawPoints.map((point) => point.x), 1);
@@ -402,6 +402,140 @@ function computeLayout(viewport, trace) {
   const layout = { traps, junctions, segments, segmentEndpoints, traceTrapsFallback: trace.topology.traps };
   layout.motionSpeedPxPerCycle = traceMotionSpeed(layout, trace);
   return layout;
+}
+
+export function normalizeTraceLayoutForRendering(trace) {
+  const rawLayout = trace?.topology?.layout || {};
+  if (trace?.run?.machine !== "G9" || !g9TraceLayoutNeedsExteriorRepair(trace, rawLayout)) {
+    return rawLayout;
+  }
+  return repairG9ExteriorTrapLayout(trace, rawLayout);
+}
+
+function g9TraceLayoutNeedsExteriorRepair(trace, rawLayout) {
+  for (const segment of trace?.topology?.segments || []) {
+    const trapLocation = segment.from?.startsWith("trap:")
+      ? segment.from
+      : segment.to?.startsWith("trap:")
+        ? segment.to
+        : null;
+    const junctionLocation = segment.from?.startsWith("junction:")
+      ? segment.from
+      : segment.to?.startsWith("junction:")
+        ? segment.to
+        : null;
+    if (!trapLocation || !junctionLocation) continue;
+    const trapPoint = rawLayout[trapLocation];
+    const junctionPoint = rawLayout[junctionLocation];
+    if (sameRawLayoutPoint(trapPoint, junctionPoint)) return true;
+  }
+  return false;
+}
+
+function repairG9ExteriorTrapLayout(trace, rawLayout) {
+  const repaired = {};
+  for (const [location, point] of Object.entries(rawLayout)) {
+    repaired[location] = { ...point };
+  }
+
+  const junctionPoints = new Map();
+  for (const junction of trace.topology?.junctions || []) {
+    const location = `junction:${junction.id}`;
+    const point = repaired[location] || { x: junction.id % 3, y: Math.floor(junction.id / 3) };
+    repaired[location] = point;
+    junctionPoints.set(location, point);
+  }
+
+  const trapsByJunction = new Map();
+  for (const trap of [...(trace.topology?.traps || [])].sort((left, right) => left.id - right.id)) {
+    const trapLocation = `trap:${trap.id}`;
+    const junctionLocation = firstConnectedJunctionLocation(trace, trapLocation);
+    if (!junctionLocation) continue;
+    const traps = trapsByJunction.get(junctionLocation) || [];
+    traps.push(trap);
+    trapsByJunction.set(junctionLocation, traps);
+  }
+
+  for (const [junctionLocation, traps] of trapsByJunction) {
+    const base = junctionPoints.get(junctionLocation);
+    if (!base) continue;
+    const freePorts = g9FreeGridPorts(trace, junctionLocation, junctionPoints);
+    for (const [index, trap] of traps.entries()) {
+      const direction = freePorts[index % freePorts.length];
+      const spacing = 0.72 + 0.16 * Math.floor(index / freePorts.length);
+      repaired[`trap:${trap.id}`] = {
+        x: base.x + direction.x * spacing,
+        y: base.y + direction.y * spacing,
+      };
+    }
+  }
+
+  return repaired;
+}
+
+function firstConnectedJunctionLocation(trace, trapLocation) {
+  for (const segment of trace?.topology?.segments || []) {
+    if (segment.from === trapLocation && segment.to?.startsWith("junction:")) return segment.to;
+    if (segment.to === trapLocation && segment.from?.startsWith("junction:")) return segment.from;
+  }
+  return null;
+}
+
+function g9FreeGridPorts(trace, junctionLocation, junctionPoints) {
+  const base = junctionPoints.get(junctionLocation);
+  const bounds = layoutPointBounds([...junctionPoints.values()]);
+  const used = new Set();
+  for (const segment of trace?.topology?.segments || []) {
+    const otherLocation = segment.from === junctionLocation
+      ? segment.to
+      : segment.to === junctionLocation
+        ? segment.from
+        : null;
+    if (!otherLocation?.startsWith("junction:")) continue;
+    const direction = gridDirection(base, junctionPoints.get(otherLocation));
+    if (direction) used.add(directionKey(direction));
+  }
+
+  const preferences = [];
+  if (base.y === bounds.minY) preferences.push({ x: 0, y: -1 });
+  if (base.x === bounds.maxX) preferences.push({ x: 1, y: 0 });
+  if (base.y === bounds.maxY) preferences.push({ x: 0, y: 1 });
+  if (base.x === bounds.minX) preferences.push({ x: -1, y: 0 });
+  preferences.push({ x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 });
+
+  const freePorts = [];
+  for (const direction of preferences) {
+    const key = directionKey(direction);
+    if (used.has(key) || freePorts.some((port) => directionKey(port) === key)) continue;
+    freePorts.push(direction);
+  }
+  return freePorts.length ? freePorts : [{ x: 0, y: -1 }];
+}
+
+function layoutPointBounds(points) {
+  return {
+    minX: Math.min(...points.map((point) => point.x)),
+    maxX: Math.max(...points.map((point) => point.x)),
+    minY: Math.min(...points.map((point) => point.y)),
+    maxY: Math.max(...points.map((point) => point.y)),
+  };
+}
+
+function gridDirection(from, to) {
+  if (!from || !to) return null;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return null;
+  if (Math.abs(dx) >= Math.abs(dy)) return { x: Math.sign(dx) || 1, y: 0 };
+  return { x: 0, y: Math.sign(dy) || 1 };
+}
+
+function directionKey(direction) {
+  return `${direction.x},${direction.y}`;
+}
+
+function sameRawLayoutPoint(left, right) {
+  return Boolean(left && right && Math.abs(left.x - right.x) < 0.001 && Math.abs(left.y - right.y) < 0.001);
 }
 
 export function alignJunctionsToTrapPorts(trace, traps, junctions) {

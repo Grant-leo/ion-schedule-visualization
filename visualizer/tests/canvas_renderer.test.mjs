@@ -18,6 +18,7 @@ import {
   junctionRenderSpec,
   motionTravelProgress,
   motionPathPoints,
+  normalizeTraceLayoutForRendering,
   pointAlongPolyline,
   resetCssColorCache,
   resizeCanvas,
@@ -245,6 +246,38 @@ test("alignTrapPortsToFixedJunctions shifts G9 edge traps so channels enter chai
   const port = trapConnectionPoint(trap, trapPoint, "segment:0");
   assert.deepEqual(port, { x: 100, y: 40 });
   assert.deepEqual(junctions.get("junction:0"), { x: 100, y: 120 });
+});
+
+test("normalizeTraceLayoutForRendering moves stale G9 trap coordinates outside the junction grid", () => {
+  const trace = {
+    run: { machine: "G9" },
+    topology: {
+      traps: [
+        { id: 0, capacity: 2, orientation: { 0: "L" } },
+        { id: 3, capacity: 2, orientation: { 3: "L" } },
+      ],
+      segments: [
+        { id: 0, from: "trap:0", to: "junction:0" },
+        { id: 1, from: "junction:0", to: "junction:1" },
+        { id: 2, from: "junction:1", to: "junction:2" },
+        { id: 3, from: "trap:3", to: "junction:2" },
+      ],
+      junctions: [{ id: 0 }, { id: 1 }, { id: 2 }],
+      layout: {
+        "trap:0": { x: 0, y: 0 },
+        "trap:3": { x: 2, y: 0 },
+        "junction:0": { x: 0, y: 0 },
+        "junction:1": { x: 1, y: 0 },
+        "junction:2": { x: 2, y: 0 },
+      },
+    },
+  };
+
+  const layout = normalizeTraceLayoutForRendering(trace);
+
+  assert.deepEqual(layout["junction:0"], { x: 0, y: 0 });
+  assert.ok(layout["trap:0"].y < -0.6);
+  assert.ok(Math.abs(layout["trap:3"].x - 2) + Math.abs(layout["trap:3"].y) >= 0.7);
 });
 
 test("segmentDrawPoints uses orthogonal channel routes from trap ports", () => {

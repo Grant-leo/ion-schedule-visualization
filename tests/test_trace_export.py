@@ -147,6 +147,21 @@ def test_g9_trace_layout_keeps_traps_outside_junction_grid():
             assert distance >= 0.7
 
 
+def test_curated_g9_visualizer_trace_keeps_traps_outside_junction_grid():
+    trace = json.loads((ROOT / "visualizer" / "traces" / "qft_n4_g9_greedy.json").read_text(encoding="utf-8"))
+    layout = trace["topology"]["layout"]
+
+    for segment in trace["topology"]["segments"]:
+        endpoints = {segment["from"], segment["to"]}
+        trap = next((item for item in endpoints if item.startswith("trap:")), None)
+        junction = next((item for item in endpoints if item.startswith("junction:")), None)
+        if not trap or not junction:
+            continue
+        assert layout[trap] != layout[junction]
+        distance = abs(layout[trap]["x"] - layout[junction]["x"]) + abs(layout[trap]["y"] - layout[junction]["y"])
+        assert distance >= 0.7
+
+
 def test_validate_trace_rejects_gate_when_ions_are_not_colocated():
     bad_trace = {
         "schema_version": "1.0",
