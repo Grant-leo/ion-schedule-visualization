@@ -67,7 +67,7 @@ export function renderCircuitSvg(container, dagState = {}, options = {}) {
 function circuitSvgMarkup(layout) {
   const wireStart = layout.left - 24;
   const wireEnd = layout.width - 24;
-  const focusGate = activeFocusGate(layout);
+  const focusGates = activeFocusGates(layout);
   const wires = layout.qubits
     .map((qubit) => {
       const y = layout.yByQubit.get(qubit);
@@ -77,11 +77,15 @@ function circuitSvgMarkup(layout) {
       ].join("");
     })
     .join("");
-  const focus = focusGate ? focusMarkup(layout, focusGate) : "";
+  const focus = [
+    focusGates.map((gate) => focusBandMarkup(layout, gate)).join(""),
+    focusLabelMarkup(layout, focusGates),
+  ].join("");
   const gates = layout.gates.map((gate) => gateMarkup(gate)).join("");
-  const activeGateAttr = focusGate ? ` data-active-gate="${escapeAttr(focusGate.id)}"` : "";
+  const activeGateAttr = focusGates.length ? ` data-active-gate="${escapeAttr(focusGates[0].id)}"` : "";
+  const activeGatesAttr = focusGates.length > 1 ? ` data-active-gates="${escapeAttr(focusGates.map((gate) => gate.id).join(" "))}"` : "";
   return [
-    `<svg class="circuit-svg" data-node-count="${layout.gates.length}"${activeGateAttr} viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" role="img" aria-label="TikZ-style quantum circuit">`,
+    `<svg class="circuit-svg" data-node-count="${layout.gates.length}"${activeGateAttr}${activeGatesAttr} viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" role="img" aria-label="TikZ-style quantum circuit">`,
     focus,
     wires,
     gates,
@@ -94,17 +98,27 @@ function qubitLabelMarkup(qubit, y) {
   return `<text class="circuit-qubit-label" x="8" y="${y}">q<tspan class="circuit-qubit-subscript" baseline-shift="sub" font-size="70%">${index}</tspan></text>`;
 }
 
-function activeFocusGate(layout) {
-  return layout.gates.find((gate) => gate.state === "active") || layout.gates.find((gate) => gate.state === "ready") || null;
+function activeFocusGates(layout) {
+  const active = layout.gates.filter((gate) => gate.state === "active");
+  if (active.length) return active;
+  const ready = layout.gates.find((gate) => gate.state === "ready");
+  return ready ? [ready] : [];
 }
 
-function focusMarkup(layout, gate) {
+function focusBandMarkup(layout, gate) {
   const bandWidth = Math.max(18, layout.columnWidth * 0.72);
-  const label = `${gateLabel(gate)} ${gate.qubits.map((qubit) => `q${qubit}`).join(",")}`;
-  const labelX = Math.min(Math.max(gate.x, layout.left + 44), layout.width - 58);
+  return `<rect class="circuit-focus-band" x="${gate.x - bandWidth / 2}" y="6" width="${bandWidth}" height="${Math.max(18, layout.height - 12)}" rx="5" />`;
+}
+
+function focusLabelMarkup(layout, gates) {
+  if (!gates.length) return "";
+  const label = gates.length === 1
+    ? `${gateLabel(gates[0])} ${gates[0].qubits.map((qubit) => `q${qubit}`).join(",")}`
+    : `${gates.length} active gates`;
+  const focusX = gates.length === 1 ? gates[0].x : average(gates.map((gate) => gate.x));
+  const labelX = Math.min(Math.max(focusX, layout.left + 44), layout.width - 58);
   const labelWidth = Math.max(54, Math.min(108, label.length * 7 + 18));
   return [
-    `<rect class="circuit-focus-band" x="${gate.x - bandWidth / 2}" y="6" width="${bandWidth}" height="${Math.max(18, layout.height - 12)}" rx="5" />`,
     `<g class="circuit-active-label" aria-hidden="true">`,
     `<rect x="${labelX - labelWidth / 2}" y="5" width="${labelWidth}" height="17" rx="4" />`,
     `<text x="${labelX}" y="17">${escapeText(label)}</text>`,
@@ -174,4 +188,8 @@ function escapeText(value) {
 
 function escapeAttr(value) {
   return escapeText(String(value)).replace(/"/g, "&quot;");
+}
+
+function average(values) {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 }

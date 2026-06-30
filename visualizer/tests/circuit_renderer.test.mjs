@@ -98,6 +98,26 @@ test("renderCircuitSvg marks the active gate with a visible focus band and label
   assert.match(svg, />CX q0,q2</);
 });
 
+test("renderCircuitSvg marks every parallel active gate with a focus band", () => {
+  const container = fakeContainer();
+  const dagState = {
+    nodes: new Map([
+      [0, { id: 0, gate_name: "h", qubits: [0], state: "active" }],
+      [1, { id: 1, gate_name: "rz", qubits: [1], state: "active" }],
+      [2, { id: 2, gate_name: "cx", qubits: [0, 1], state: "blocked" }],
+    ]),
+    edges: [],
+  };
+
+  renderCircuitSvg(container, dagState, { qubitCount: 2, maxWidth: 360 });
+
+  const svg = String(container.children[0] || "");
+  assert.equal((svg.match(/class="circuit-focus-band"/g) || []).length, 2);
+  assert.equal((svg.match(/class="circuit-active-label"/g) || []).length, 1);
+  assert.match(svg, /data-active-gates="0 1"/);
+  assert.match(svg, />2 active gates</);
+});
+
 test("renderCircuitSvg scrolls the circuit strip toward the active gate", () => {
   const container = fakeDomContainer();
   const nodes = new Map();
