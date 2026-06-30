@@ -15,6 +15,7 @@ const FALLBACK_COLORS = {
 
 const MOTION_TYPES = new Set(["split", "move", "merge"]);
 const cssColorCache = new Map();
+const SPLIT_SWAP_PHASE_FRACTION = 0.34;
 
 export const RENDER_SIZES = Object.freeze({
   ionRadius: 8,
@@ -208,10 +209,7 @@ export function splitInternalSwapPoints(layout, event, state = null) {
       : Math.min(trap.capacity - 1, endpointSlot + swapHops)
   );
   if (startSlot === endpointSlot) return [];
-  return [
-    trapSlotPoint(trapPoint, startSlot, trap.capacity),
-    trapSlotPoint(trapPoint, endpointSlot, trap.capacity),
-  ];
+  return slotWalkPoints(trapPoint, trap.capacity, startSlot, endpointSlot);
 }
 
 function liveTrapChainSlot(event, state) {
@@ -219,6 +217,55 @@ function liveTrapChainSlot(event, state) {
   if (!chain || !(event.ions || []).length) return null;
   const index = chain.indexOf(event.ions[0]);
   return index >= 0 ? index : null;
+}
+
+export function activeSplitSwapPoint(layout, event, state = {}, ionId) {
+  const info = splitSwapInfo(layout, event, state);
+  if (!info) return null;
+  const ion = Number(ionId);
+  if (ion !== info.firstIon && ion !== info.secondIon) return null;
+  const progress = eventProgress(event, state.time ?? event.start);
+  const swapProgress = clamp(progress / SPLIT_SWAP_PHASE_FRACTION, 0, 1);
+  const firstPoint = trapSlotPoint(info.trapPoint, info.firstSlot, info.trap.capacity);
+  const secondPoint = trapSlotPoint(info.trapPoint, info.secondSlot, info.trap.capacity);
+
+  if (ion === info.firstIon) {
+    if (progress >= SPLIT_SWAP_PHASE_FRACTION) return null;
+    return interpolatePoint(firstPoint, secondPoint, swapProgress);
+  }
+  return interpolatePoint(secondPoint, firstPoint, swapProgress);
+}
+
+function splitSwapInfo(layout, event, state = {}) {
+  const swapIons = (event.metadata?.swap_ions || []).map((ion) => Number(ion));
+  if (
+    event.type !== "split" ||
+    Number(event.metadata?.swap_count || 0) <= 0 ||
+    swapIons.length !== 2 ||
+    !event.source?.startsWith("trap:")
+  ) {
+    return null;
+  }
+  const trap = (layout.traceTrapsFallback || []).find((item) => `trap:${item.id}` === event.source);
+  const trapPoint = layout.traps.get(event.source);
+  const chain = state?.motionTrapChains?.get(event.source) || state?.trapChains?.get(event.source);
+  if (!trap || !trapPoint || !chain) return null;
+  const [firstIon, secondIon] = swapIons;
+  const firstSlot = chain.indexOf(firstIon);
+  const secondSlot = chain.indexOf(secondIon);
+  if (firstSlot < 0 || secondSlot < 0 || firstSlot === secondSlot) return null;
+  return { trap, trapPoint, firstIon, secondIon, firstSlot, secondSlot };
+}
+
+function slotWalkPoints(trapPoint, capacity, startSlot, endSlot) {
+  if (startSlot === endSlot) return [trapSlotPoint(trapPoint, clamp(startSlot, 0, capacity - 1), capacity)];
+  const direction = endSlot > startSlot ? 1 : -1;
+  const points = [];
+  for (let slot = startSlot; ; slot += direction) {
+    points.push(trapSlotPoint(trapPoint, clamp(slot, 0, capacity - 1), capacity));
+    if (slot === endSlot) break;
+  }
+  return points;
 }
 
 export function ionRenderPoint(basePoint, location, activeMotion, offsetIndex) {
@@ -725,16 +772,18 @@ export function activeJunctionActivity(trace, layout, state = {}) {
   const activity = new Map();
   for (const event of state.activeEvents || []) {
     if (!MOTION_TYPES.has(event.type)) continue;
-    const junctions = eventJunctionLocations(trace, layout, event);
-    if (!junctions.length) continue;
     const path = motionPathPoints(layout, event, state);
+    const junctions = eventJunctionLocations(trace, layout, event, path);
+    if (!junctions.length) continue;
     const point = pointAlongPolyline(path, eventProgress(event, state.time));
     if (!point) continue;
     for (const location of junctions) {
       const junctionPoint = layout.junctions?.get(location) || sharedSegmentEndpoint(layout, event.source, event.target);
       if (!junctionPoint) continue;
       const radius = Math.max(RENDER_SIZES.segmentWidth * 2.2, 42);
-      const intensity = clamp(1 - distance(point, junctionPoint) / radius, 0, 1);
+      const pathDistance = distanceToPolyline(junctionPoint, path);
+      const pathGlow = pathDistance <= RENDER_SIZES.segmentWidth * 0.75 ? 0.34 : 0;
+      const intensity = Math.max(pathGlow, clamp(1 - distance(point, junctionPoint) / radius, 0, 1));
       if (intensity <= 0) continue;
       activity.set(location, Math.max(activity.get(location) || 0, intensity));
     }
@@ -742,16 +791,21 @@ export function activeJunctionActivity(trace, layout, state = {}) {
   return activity;
 }
 
-function eventJunctionLocations(trace, layout, event) {
-  if (event.type !== "move" || !event.source?.startsWith("segment:") || !event.target?.startsWith("segment:")) {
-    return [];
+function eventJunctionLocations(trace, layout, event, path = []) {
+  const locations = new Set();
+  if (event.type === "move" && event.source?.startsWith("segment:") && event.target?.startsWith("segment:")) {
+    const source = trace.topology.segments?.find((segment) => `segment:${segment.id}` === event.source);
+    const target = trace.topology.segments?.find((segment) => `segment:${segment.id}` === event.target);
+    const sourceEndpoints = new Set([source?.from, source?.to].filter(Boolean));
+    const targetEndpoints = new Set([target?.from, target?.to].filter(Boolean));
+    for (const endpoint of sourceEndpoints) {
+      if (endpoint?.startsWith("junction:") && targetEndpoints.has(endpoint)) locations.add(endpoint);
+    }
   }
-  const source = trace.topology.segments?.find((segment) => `segment:${segment.id}` === event.source);
-  const target = trace.topology.segments?.find((segment) => `segment:${segment.id}` === event.target);
-  const sourceEndpoints = new Set([source?.from, source?.to].filter(Boolean));
-  const targetEndpoints = new Set([target?.from, target?.to].filter(Boolean));
-  const locations = [...sourceEndpoints].filter((endpoint) => endpoint?.startsWith("junction:") && targetEndpoints.has(endpoint));
-  if (locations.length) return locations;
+  for (const [location, point] of layout.junctions || []) {
+    if (distanceToPolyline(point, path) <= RENDER_SIZES.segmentWidth * 0.75) locations.add(location);
+  }
+  if (locations.size) return [...locations];
   const shared = sharedSegmentEndpoint(layout, event.source, event.target);
   if (!shared) return [];
   for (const [location, point] of layout.junctions || []) {
@@ -888,13 +942,14 @@ function drawIons(context, trace, layout, state) {
   const showLabels = trace.particles.length <= 64;
 
   for (const particle of trace.particles) {
+    const swapOverride = activeSplitSwapOverride(layout, state, particle.id);
     const activeMotion = state.activeEvents.find(
       (event) => MOTION_TYPES.has(event.type) && event.ions.includes(particle.id),
     );
     const location = state.locations.get(particle.id) || particle.initial_location;
-    const basePoint = activeMotion
+    const basePoint = swapOverride?.point || (activeMotion
       ? motionPoint(layout, activeMotion, state.time, state)
-      : particlePoint(layout, trace, state, particle, location);
+      : particlePoint(layout, trace, state, particle, location));
 
     if (!basePoint) continue;
     const offsetKey = activeMotion ? `active:${activeMotion.id}` : location;
@@ -902,22 +957,8 @@ function drawIons(context, trace, layout, state) {
     offsets.set(offsetKey, offsetIndex + 1);
     const point = ionRenderPoint(basePoint, location, activeMotion, offsetIndex);
 
-    context.save();
     const radius = activeMotion ? RENDER_SIZES.activeIonRadius : RENDER_SIZES.ionRadius;
-    const gradient = context.createRadialGradient(point.x - radius * 0.35, point.y - radius * 0.45, 1, point.x, point.y, radius);
-    gradient.addColorStop(0, "#ffffff");
-    gradient.addColorStop(0.18, ionColor(particle.id));
-    gradient.addColorStop(1, shadeColor(ionColor(particle.id), -24));
-    context.shadowColor = activeMotion ? cssColor("--color-move") : "rgba(0, 0, 0, 0.45)";
-    context.shadowBlur = activeMotion ? 16 : 5;
-    context.fillStyle = gradient;
-    context.strokeStyle = "rgba(16, 18, 22, 0.95)";
-    context.lineWidth = 2;
-    context.beginPath();
-    context.arc(point.x, point.y, radius, 0, Math.PI * 2);
-    context.fill();
-    context.stroke();
-    context.restore();
+    drawIonBody(context, particle.id, point, radius, Boolean(activeMotion || swapOverride));
 
     if (showLabels) {
       drawIonLabel(context, particle.id, point, radius);
@@ -926,8 +967,44 @@ function drawIons(context, trace, layout, state) {
 }
 
 function motionPoint(layout, event, time, state = null) {
+  if (isSplitSwapEvent(event)) {
+    const swapPoint = activeSplitSwapPoint(layout, event, { ...state, time }, event.ions?.[0]);
+    if (swapPoint) return swapPoint;
+    return pointAlongPolyline(splitExitPathPoints(layout, event, state), splitPostSwapProgress(event, time));
+  }
   const path = motionPathPoints(layout, event, state);
   return pointAlongPolyline(path, eventProgress(event, time));
+}
+
+function activeSplitSwapOverride(layout, state, ionId) {
+  for (const event of state.activeEvents || []) {
+    const point = activeSplitSwapPoint(layout, event, state, ionId);
+    if (point) return { event, point };
+  }
+  return null;
+}
+
+function isSplitSwapEvent(event) {
+  return event?.type === "split" && Number(event.metadata?.swap_count || 0) > 0 && (event.metadata?.swap_ions || []).length === 2;
+}
+
+function splitExitPathPoints(layout, event, state = null) {
+  const swapInfo = splitSwapInfo(layout, event, state || {});
+  const endpointSlot = swapInfo ? endpointSlotIndex(swapInfo.trap, event.target) : null;
+  const slotPath = swapInfo
+    ? slotWalkPoints(swapInfo.trapPoint, swapInfo.trap.capacity, swapInfo.secondSlot, endpointSlot)
+    : [];
+  const endpoint = slotPath.at(-1) || eventEndpointPoint(layout, event, event.source) || splitInternalSwapPoints(layout, event).at(-1);
+  const exitPath = segmentEndpointToCenterPath(layout, event.target, event.source);
+  if (!endpoint) return exitPath;
+  if (!exitPath.length) return [endpoint];
+  const path = slotPath.length ? slotPath : [endpoint];
+  return compactPath([...path, ...(samePoint(endpoint, exitPath[0]) ? exitPath.slice(1) : exitPath)]);
+}
+
+function splitPostSwapProgress(event, time) {
+  const progress = eventProgress(event, time);
+  return clamp((progress - SPLIT_SWAP_PHASE_FRACTION) / (1 - SPLIT_SWAP_PHASE_FRACTION), 0, 1);
 }
 
 function particlePoint(layout, trace, state, particle, location) {
@@ -1217,6 +1294,25 @@ function distance(left, right) {
   return Math.hypot(left.x - right.x, left.y - right.y);
 }
 
+function distanceToPolyline(point, path) {
+  if (!point || !path?.length) return Number.POSITIVE_INFINITY;
+  if (path.length === 1) return distance(point, path[0]);
+  let minDistance = Number.POSITIVE_INFINITY;
+  for (let index = 1; index < path.length; index += 1) {
+    minDistance = Math.min(minDistance, pointToSegmentDistance(point, path[index - 1], path[index]));
+  }
+  return minDistance;
+}
+
+function pointToSegmentDistance(point, start, end) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared === 0) return distance(point, start);
+  const projection = clamp(((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared, 0, 1);
+  return distance(point, { x: start.x + dx * projection, y: start.y + dy * projection });
+}
+
 function offsetPoint(point, index) {
   if (index === 0) return point;
   const angle = index * 2.399963;
@@ -1250,6 +1346,59 @@ function drawLabel(context, text, x, y, color) {
   context.restore();
 }
 
+function drawIonBody(context, id, point, radius, active = false) {
+  const color = ionColor(id);
+  const lightColor = shadeColor(color, 30);
+  const darkColor = shadeColor(color, -38);
+  const haloRadius = active ? radius * 2.8 : radius * 2.05;
+
+  context.save();
+  context.globalCompositeOperation = "screen";
+  const halo = context.createRadialGradient(point.x, point.y, radius * 0.2, point.x, point.y, haloRadius);
+  halo.addColorStop(0, active ? "rgba(255, 255, 255, 0.32)" : "rgba(255, 255, 255, 0.14)");
+  halo.addColorStop(0.36, hexToRgba(color, active ? 0.34 : 0.2));
+  halo.addColorStop(1, "rgba(0, 0, 0, 0)");
+  context.fillStyle = halo;
+  context.beginPath();
+  context.arc(point.x, point.y, haloRadius, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+
+  context.save();
+  context.shadowColor = active ? cssColor("--color-move") : "rgba(0, 0, 0, 0.48)";
+  context.shadowBlur = active ? 18 : 7;
+  const shell = context.createRadialGradient(
+    point.x - radius * 0.28,
+    point.y - radius * 0.36,
+    radius * 0.12,
+    point.x,
+    point.y,
+    radius,
+  );
+  shell.addColorStop(0, "rgba(255, 255, 255, 0.92)");
+  shell.addColorStop(0.24, lightColor);
+  shell.addColorStop(0.68, color);
+  shell.addColorStop(1, darkColor);
+  context.fillStyle = shell;
+  context.beginPath();
+  context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+  context.fill();
+
+  context.shadowBlur = 0;
+  context.strokeStyle = active ? "rgba(214, 246, 255, 0.88)" : "rgba(244, 248, 255, 0.34)";
+  context.lineWidth = active ? 1.6 : 1.15;
+  context.beginPath();
+  context.arc(point.x, point.y, radius - 0.45, 0, Math.PI * 2);
+  context.stroke();
+
+  context.globalAlpha = active ? 0.86 : 0.62;
+  context.fillStyle = "rgba(255, 255, 255, 0.82)";
+  context.beginPath();
+  context.arc(point.x - radius * 0.3, point.y - radius * 0.36, Math.max(1.1, radius * 0.16), 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
 function drawIonLabel(context, id, point, radius) {
   const spec = ionLabelSpec(id, radius);
   context.save();
@@ -1276,6 +1425,14 @@ function shadeColor(hex, percent) {
   const green = clamp(((value >> 8) & 0xff) + amount, 0, 255);
   const blue = clamp((value & 0xff) + amount, 0, 255);
   return `#${(0x1000000 + red * 0x10000 + green * 0x100 + blue).toString(16).slice(1)}`;
+}
+
+function hexToRgba(hex, alpha) {
+  const value = Number.parseInt(hex.replace("#", ""), 16);
+  const red = (value >> 16) & 0xff;
+  const green = (value >> 8) & 0xff;
+  const blue = value & 0xff;
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 export function resetCssColorCache() {

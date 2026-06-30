@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 const cssSource = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+const canvasSource = readFileSync(new URL("../canvas_renderer.js", import.meta.url), "utf8");
 const indexSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 
 test("desktop demo layout prioritizes the main canvas while keeping the DAG side panel visible", () => {
@@ -74,6 +75,20 @@ test("scheduler mode buttons cover every exposed demo scheduling mode", () => {
   assert.match(appSource, /updateSchedulerModeButtons/);
 });
 
+test("scheduler mode regeneration preserves the control panel scroll position", () => {
+  assert.match(appSource, /async function loadSelectedConfig\(\{\s*preserveControlScroll\s*=\s*true\s*\}\s*=\s*\{\}\)/);
+  assert.match(appSource, /const controlScrollTop\s*=\s*preserveControlScroll\s*\?\s*elements\.controlPanel\.scrollTop\s*:\s*null/);
+  assert.match(appSource, /loadTraceData\(nextTrace,\s*\{\s*resetControlPanelScroll:\s*!preserveControlScroll\s*\}\)/);
+  assert.match(appSource, /elements\.controlPanel\.scrollTop\s*=\s*controlScrollTop/);
+});
+
+test("active laser gates are visually stronger in the DAG and circuit strip", () => {
+  assert.match(cssSource, /\.dag-svg-node\.active\s+rect\s*{[\s\S]*stroke-width:\s*3/);
+  assert.match(cssSource, /\.dag-svg-node\.active\s+rect\s*{[\s\S]*filter:\s*drop-shadow/);
+  assert.match(cssSource, /\.circuit-gate\.active\s+rect,[\s\S]*\.circuit-gate\.active\s+\.circuit-target,[\s\S]*\.circuit-gate\.active\s+\.circuit-control\s*{[\s\S]*stroke-width:\s*2/);
+  assert.match(cssSource, /\.circuit-gate\.active\s+text\s*{[\s\S]*fill:\s*#ffffff/);
+});
+
 test("verified trace and generated experiment are explicit mutually exclusive replay sources", () => {
   assert.match(indexSource, /class="source-mode-toggle"/);
   assert.match(indexSource, /data-source-mode="trace"/);
@@ -90,6 +105,22 @@ test("main hardware viewport contains a synchronized TikZ-style circuit strip ab
   assert.match(appSource, /renderCircuitSvg\(elements\.circuitPanel,\s*state\.dagState/);
   assert.match(cssSource, /\.circuit-strip/);
   assert.match(cssSource, /\.circuit-svg/);
+});
+
+test("circuit strip exposes an expanded synchronized circuit view", () => {
+  assert.match(indexSource, /id="circuitExpandButton"/);
+  assert.match(indexSource, /id="circuitDialog"/);
+  assert.match(indexSource, /id="circuitDialogPanel"/);
+  assert.match(appSource, /function openCircuitDialog\(\)/);
+  assert.match(appSource, /renderCircuitSvg\(elements\.circuitDialogPanel,\s*state\.dagState/);
+  assert.match(cssSource, /\.circuit-dialog\[hidden\]/);
+  assert.match(cssSource, /\.circuit-dialog-panel/);
+});
+
+test("ion rendering uses a luminous shell instead of a flat billiard-ball treatment", () => {
+  assert.match(canvasSource, /function drawIonBody/);
+  assert.match(canvasSource, /createRadialGradient/);
+  assert.match(canvasSource, /globalCompositeOperation\s*=\s*"screen"/);
 });
 
 test("right inspector is dedicated to the full-height dependency DAG", () => {

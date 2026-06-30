@@ -1,7 +1,7 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260630-source-circuit1";
-import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-source-circuit1";
-import { renderDagSvg } from "./dag_renderer.js?v=20260630-source-circuit1";
-import { createReplay, validateTrace } from "./replay.js?v=20260630-source-circuit1";
+import { createRenderer } from "./canvas_renderer.js?v=20260630-swap-circuit1";
+import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-swap-circuit1";
+import { renderDagSvg } from "./dag_renderer.js?v=20260630-swap-circuit1";
+import { createReplay, validateTrace } from "./replay.js?v=20260630-swap-circuit1";
 import {
   createHeadlineMetricCards,
   createMetricCards,
@@ -9,7 +9,7 @@ import {
   describeEvent,
   formatLocation,
   summarizeDag,
-} from "./ui_model.js?v=20260630-source-circuit1";
+} from "./ui_model.js?v=20260630-swap-circuit1";
 
 const LIVE_PANEL_INTERVAL_MS = 160;
 const PERFORMANCE_PANEL_INTERVAL_MS = 250;
@@ -38,6 +38,10 @@ const elements = {
   timeline: document.getElementById("timeline"),
   canvas: document.getElementById("vizCanvas"),
   circuitPanel: document.getElementById("circuitPanel"),
+  circuitExpandButton: document.getElementById("circuitExpandButton"),
+  circuitDialog: document.getElementById("circuitDialog"),
+  circuitDialogPanel: document.getElementById("circuitDialogPanel"),
+  circuitCloseButton: document.getElementById("circuitCloseButton"),
   headlineMetricsPanel: document.getElementById("headlineMetricsPanel"),
   metricsPanel: document.getElementById("metricsPanel"),
   initialLayoutPanel: document.getElementById("initialLayoutPanel"),
@@ -103,6 +107,7 @@ let sourceMode = "experiment";
 let lastLivePanelRender = 0;
 let lastPerformancePanelRender = 0;
 let lastCircuitKey = "";
+let lastExpandedCircuitKey = "";
 
 init().catch((error) => {
   setStatus("Load failed", "invalid");
@@ -121,7 +126,7 @@ async function init() {
 
   if (apiAvailable) {
     applyDefaultConfig(apiOptions.defaults);
-    await loadSelectedConfig();
+    await loadSelectedConfig({ preserveControlScroll: false });
   } else if (manifestEntries.length > 0) {
     await loadTrace(manifestEntries[0].path);
   } else {
@@ -190,7 +195,7 @@ function wireControls() {
     setSourceMode("trace");
     loadTrace(elements.traceSelect.value);
   });
-  elements.loadConfigButton.addEventListener("click", loadSelectedConfig);
+  elements.loadConfigButton.addEventListener("click", () => loadSelectedConfig());
   for (const button of elements.sourceModeButtons) {
     button.addEventListener("click", async () => {
       const mode = button.dataset.sourceMode;
@@ -229,6 +234,14 @@ function wireControls() {
       await loadSelectedConfig();
     });
   }
+  elements.circuitExpandButton.addEventListener("click", openCircuitDialog);
+  elements.circuitCloseButton.addEventListener("click", closeCircuitDialog);
+  elements.circuitDialog.addEventListener("click", (event) => {
+    if (event.target === elements.circuitDialog) closeCircuitDialog();
+  });
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !elements.circuitDialog.hidden) closeCircuitDialog();
+  });
   elements.playPauseButton.addEventListener("click", togglePlayback);
   elements.restartButton.addEventListener("click", restart);
   elements.stepButton.addEventListener("click", stepToNextEvent);
@@ -240,6 +253,7 @@ function wireControls() {
   window.addEventListener("resize", () => {
     lastDagKey = "";
     lastCircuitKey = "";
+    lastExpandedCircuitKey = "";
     draw({ forcePanels: true });
   });
 }
@@ -265,7 +279,7 @@ function beginLoadRequest() {
   return { requestId: loadRequestId, signal: activeLoadController.signal };
 }
 
-function loadTraceData(nextTrace) {
+function loadTraceData(nextTrace, { resetControlPanelScroll = true } = {}) {
   const frontendValidation = validateTrace(nextTrace);
   const backendValidation = nextTrace.validation || { valid: true, errors: [] };
   const validationErrors = [...(frontendValidation.errors || []), ...(backendValidation.errors || [])];
@@ -300,12 +314,15 @@ function loadTraceData(nextTrace) {
 
   setStatus("Schedule verified", "valid");
   draw({ forcePanels: true });
-  elements.controlPanel.scrollTop = 0;
+  if (resetControlPanelScroll) {
+    elements.controlPanel.scrollTop = 0;
+  }
   return true;
 }
 
-async function loadSelectedConfig() {
+async function loadSelectedConfig({ preserveControlScroll = true } = {}) {
   setSourceMode("experiment");
+  const controlScrollTop = preserveControlScroll ? elements.controlPanel.scrollTop : null;
   const { requestId, signal } = beginLoadRequest();
   const program = elements.programSelect.value;
   const machine = elements.architectureSelect.value;
@@ -337,7 +354,8 @@ async function loadSelectedConfig() {
       });
       const nextTrace = await fetchJson(`api/trace?${params.toString()}`, { signal });
       if (requestId !== loadRequestId) return;
-      if (!loadTraceData(nextTrace)) return;
+      if (!loadTraceData(nextTrace, { resetControlPanelScroll: !preserveControlScroll })) return;
+      if (controlScrollTop !== null) elements.controlPanel.scrollTop = controlScrollTop;
       return;
     }
 
@@ -358,7 +376,8 @@ async function loadSelectedConfig() {
     elements.traceSelect.value = match.path;
     const nextTrace = await fetchJson(match.path, { signal });
     if (requestId !== loadRequestId) return;
-    loadTraceData(nextTrace);
+    loadTraceData(nextTrace, { resetControlPanelScroll: !preserveControlScroll });
+    if (controlScrollTop !== null) elements.controlPanel.scrollTop = controlScrollTop;
   } catch (error) {
     if (isAbortError(error) || requestId !== loadRequestId) return;
     setStatus("Generation failed", "invalid");
@@ -642,12 +661,40 @@ function draw(options = {}) {
     renderCircuitSvg(elements.circuitPanel, state.dagState, { qubitCount: trace.particles.length });
     lastCircuitKey = circuitKey;
   }
+  if (!elements.circuitDialog.hidden) {
+    renderExpandedCircuit(state, dagKey);
+  }
 
   const eventKey = activeEventKey(state.activeEvents);
   if (eventKey !== lastEventKey) {
     renderCurrentEvent(state);
     lastEventKey = eventKey;
   }
+}
+
+function openCircuitDialog() {
+  if (!replay || !trace) return;
+  elements.circuitDialog.hidden = false;
+  lastExpandedCircuitKey = "";
+  draw({ forcePanels: true });
+  elements.circuitCloseButton.focus();
+}
+
+function closeCircuitDialog() {
+  elements.circuitDialog.hidden = true;
+  lastExpandedCircuitKey = "";
+  elements.circuitExpandButton.focus();
+}
+
+function renderExpandedCircuit(state, dagKey) {
+  const expandedSizeKey = `${elements.circuitDialogPanel.clientWidth}x${elements.circuitDialogPanel.clientHeight}`;
+  const expandedKey = `${dagKey}|${trace?.particles?.length ?? 0}|${expandedSizeKey}`;
+  if (expandedKey === lastExpandedCircuitKey) return;
+  renderCircuitSvg(elements.circuitDialogPanel, state.dagState, {
+    qubitCount: trace.particles.length,
+    maxWidth: Math.max(1280, elements.circuitDialogPanel.clientWidth || 0),
+  });
+  lastExpandedCircuitKey = expandedKey;
 }
 
 function buildMetricInput(metrics, replayMetrics, dagState) {
@@ -873,6 +920,7 @@ function resetInspectorRenderCache() {
   lastInitialLayoutKey = "";
   lastDagKey = "";
   lastCircuitKey = "";
+  lastExpandedCircuitKey = "";
   lastEventKey = "";
   lastLivePanelRender = 0;
   lastPerformancePanelRender = 0;

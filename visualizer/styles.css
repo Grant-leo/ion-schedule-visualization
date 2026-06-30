@@ -657,6 +657,23 @@ select {
   scrollbar-width: thin;
 }
 
+.circuit-expand-button {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 3;
+  min-height: 28px;
+  padding: 0 10px;
+  border-color: rgba(100, 210, 255, 0.34);
+  background:
+    linear-gradient(180deg, rgba(100, 210, 255, 0.16), rgba(100, 210, 255, 0.045)),
+    rgba(15, 18, 22, 0.84);
+  color: #eaf9ff;
+  font-size: 11px;
+  font-weight: 760;
+  backdrop-filter: blur(16px);
+}
+
 .circuit-strip::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -688,9 +705,10 @@ select {
 }
 
 .circuit-focus-band {
-  fill: rgba(158, 227, 125, 0.1);
-  stroke: rgba(158, 227, 125, 0.42);
-  stroke-width: 1;
+  fill: rgba(158, 227, 125, 0.16);
+  stroke: rgba(219, 255, 205, 0.78);
+  stroke-width: 1.6;
+  filter: drop-shadow(0 0 10px rgba(158, 227, 125, 0.58));
 }
 
 .circuit-active-label rect {
@@ -732,7 +750,13 @@ select {
 .circuit-gate.active .circuit-target,
 .circuit-gate.active .circuit-control {
   stroke: var(--color-gate);
-  filter: drop-shadow(0 0 7px rgba(158, 227, 125, 0.62));
+  stroke-width: 2.6;
+  filter: drop-shadow(0 0 10px rgba(158, 227, 125, 0.9)) drop-shadow(0 0 22px rgba(158, 227, 125, 0.42));
+}
+
+.circuit-gate.active text {
+  fill: #ffffff;
+  font-weight: 860;
 }
 
 .circuit-gate.ready rect {
@@ -992,14 +1016,20 @@ select {
 }
 
 .dag-svg-node.active rect {
-  fill: rgba(158, 227, 125, 0.15);
-  stroke: var(--color-gate);
-  stroke-width: 2.2;
+  fill: rgba(158, 227, 125, 0.26);
+  stroke: #dfffd7;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 10px rgba(158, 227, 125, 0.95)) drop-shadow(0 0 24px rgba(158, 227, 125, 0.44));
+}
+
+.dag-svg-node.active text {
+  fill: #ffffff;
+  font-weight: 820;
 }
 
 .dag-svg-node.compact.active rect {
-  fill: rgba(158, 227, 125, 0.28);
-  stroke-width: 1.7;
+  fill: rgba(158, 227, 125, 0.3);
+  stroke-width: 2.2;
 }
 
 .dag-svg-node.ready rect {
@@ -1196,6 +1226,64 @@ select {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.circuit-dialog[hidden] {
+  display: none;
+}
+
+.circuit-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(18px);
+}
+
+.circuit-dialog-panel {
+  width: min(1380px, 96vw);
+  height: min(780px, 90vh);
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius-2);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.018)),
+    rgba(8, 9, 11, 0.98);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.52), var(--shadow-control);
+}
+
+.circuit-dialog-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.circuit-dialog-toolbar button {
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.circuit-dialog-body {
+  min-width: 0;
+  overflow: auto;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(255, 255, 255, 0.024) 1px, transparent 1px),
+    rgba(5, 6, 8, 0.98);
+  background-size: 54px 54px;
 }
 
 @media (prefers-reduced-motion: reduce) {

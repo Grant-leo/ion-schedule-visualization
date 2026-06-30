@@ -8,6 +8,7 @@ import {
   eventProgress,
   gateLaserTargets,
   activeJunctionActivity,
+  activeSplitSwapPoint,
   interpolatePoint,
   ionLabelSpec,
   ionRenderPoint,
@@ -346,6 +347,7 @@ test("splitInternalSwapPoints reconstructs the chain-internal swap path before s
     }),
     [
       { x: 100, y: 40 },
+      { x: 116, y: 40 },
       { x: 132, y: 40 },
     ],
   );
@@ -372,9 +374,38 @@ test("splitInternalSwapPoints starts from the ion's live trap-chain slot", () =>
     ),
     [
       trapSlotPoint({ x: 100, y: 40, width: 80 }, 2, 5),
+      trapSlotPoint({ x: 100, y: 40, width: 80 }, 3, 5),
       trapSlotPoint({ x: 100, y: 40, width: 80 }, 4, 5),
     ],
   );
+});
+
+test("activeSplitSwapPoint exchanges the displayed labels for the reported swap ions", () => {
+  const layout = {
+    traps: new Map([["trap:0", { x: 100, y: 40, width: 80 }]]),
+    traceTrapsFallback: [{ id: 0, capacity: 5, orientation: { 7: "R" } }],
+  };
+  const event = {
+    id: 4,
+    type: "split",
+    ions: [1],
+    start: 0,
+    end: 100,
+    source: "trap:0",
+    target: "segment:7",
+    metadata: { endpoint: "R", swap_count: 1, swap_hops: 2, swap_ions: [1, 2] },
+  };
+  const state = {
+    time: 17,
+    motionTrapChains: new Map([["trap:0", [1, 0, 2]]]),
+    trapChains: new Map([["trap:0", [1, 0, 2]]]),
+  };
+
+  assert.deepEqual(activeSplitSwapPoint(layout, event, state, 1), { x: 84, y: 40 });
+  assert.deepEqual(activeSplitSwapPoint(layout, event, state, 2), { x: 84, y: 40 });
+  state.time = 60;
+  assert.equal(activeSplitSwapPoint(layout, event, state, 1), null);
+  assert.deepEqual(activeSplitSwapPoint(layout, event, state, 2), { x: 68, y: 40 });
 });
 
 test("ionRenderPoint keeps trap-chain ions exactly on their slots", () => {
@@ -563,6 +594,37 @@ test("activeJunctionActivity highlights the shared junction while an ion is cros
   });
 
   assert.ok(activity.get("junction:0") > 0.9);
+});
+
+test("activeJunctionActivity keeps a junction lit while the active path passes through it", () => {
+  const trace = {
+    topology: {
+      junctions: [{ id: 0, degree: 3 }],
+      segments: [
+        { id: 0, from: "trap:0", to: "junction:0" },
+        { id: 1, from: "junction:0", to: "trap:1" },
+      ],
+    },
+  };
+  const layout = {
+    traps: new Map(),
+    junctions: new Map([["junction:0", { x: 100, y: 0 }]]),
+    segments: new Map([
+      ["segment:0", { x: 50, y: 0 }],
+      ["segment:1", { x: 150, y: 0 }],
+    ]),
+    segmentEndpoints: new Map([
+      ["segment:0", { from: "trap:0", to: "junction:0", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } }],
+      ["segment:1", { from: "junction:0", to: "trap:1", start: { x: 100, y: 0 }, end: { x: 200, y: 0 } }],
+    ]),
+  };
+
+  const activity = activeJunctionActivity(trace, layout, {
+    time: 1,
+    activeEvents: [{ id: 1, type: "move", start: 0, end: 10, ions: [0], source: "segment:0", target: "segment:1" }],
+  });
+
+  assert.ok(activity.get("junction:0") > 0.25);
 });
 
 test("pointAlongPolyline interpolates by physical path length", () => {
