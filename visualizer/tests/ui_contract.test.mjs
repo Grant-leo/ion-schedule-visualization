@@ -6,10 +6,12 @@ const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 const cssSource = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 const indexSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 
-test("desktop demo layout keeps the DAG side panel visible at common 1280px widths", () => {
+test("desktop demo layout prioritizes the main canvas while keeping the DAG side panel visible", () => {
   assert.match(cssSource, /@media\s*\(max-width:\s*1240px\)/);
   assert.doesNotMatch(cssSource, /@media\s*\(max-width:\s*1360px\)/);
-  assert.match(cssSource, /grid-template-columns:\s*clamp\(248px,\s*18vw,\s*288px\)\s+minmax\(560px,\s*1fr\)\s+clamp\(380px,\s*28vw,\s*460px\)/);
+  assert.match(cssSource, /grid-template-columns:\s*clamp\(228px,\s*16vw,\s*260px\)\s+minmax\(640px,\s*1fr\)\s+clamp\(350px,\s*24vw,\s*420px\)/);
+  assert.match(cssSource, /grid-template-rows:\s*78px\s+minmax\(0,\s*1fr\)\s+48px/);
+  assert.match(cssSource, /\.visualization-viewport\s*{[\s\S]*grid-template-rows:\s*96px\s+minmax\(0,\s*1fr\)/);
 });
 
 test("trace generation ignores stale responses and disables duplicate submissions", () => {

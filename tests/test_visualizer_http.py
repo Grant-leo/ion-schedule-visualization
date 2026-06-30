@@ -91,7 +91,8 @@ def test_visualizer_desktop_dag_inspector_keeps_dag_large_without_hiding_timelin
     assert "grid-template-rows: minmax(0, 1fr);" in css
     assert "overflow: hidden;\n  display: grid;" in css
     assert "height: 100%;" in css
-    assert "grid-template-rows: 136px minmax(0, 1fr);" in css
+    assert "grid-template-rows: 78px minmax(0, 1fr) 48px;" in css
+    assert "grid-template-rows: 96px minmax(0, 1fr);" in css
     assert "grid-template-areas:\n      \"header\"\n      \"viewport\"\n      \"timeline\"\n      \"left\"\n      \"right\";" in css
 
 
