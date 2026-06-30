@@ -16,7 +16,9 @@ import {
   alignTrapPortsToFixedJunctions,
   junctionDirections,
   junctionRenderSpec,
+  motionTravelProgress,
   motionPathPoints,
+  normalizeTraceLayoutForRendering,
   pointAlongPolyline,
   resetCssColorCache,
   resizeCanvas,
@@ -79,8 +81,6 @@ test("hardware shuttle channels render wider than moving ions", () => {
   assert.ok(RENDER_SIZES.motionPathWidth > movingIonDiameter);
   assert.ok(RENDER_SIZES.junctionRadius >= RENDER_SIZES.segmentWidth / 2);
   assert.ok(RENDER_SIZES.junctionRadius <= RENDER_SIZES.segmentWidth / 2);
-  assert.ok(RENDER_SIZES.couplerWidth >= RENDER_SIZES.segmentWidth);
-  assert.ok(RENDER_SIZES.couplerWidth <= RENDER_SIZES.segmentWidth);
 });
 
 test("eventProgress clamps time inside event duration", () => {
@@ -89,6 +89,42 @@ test("eventProgress clamps time inside event duration", () => {
   assert.equal(eventProgress(event, 5), 0);
   assert.equal(eventProgress(event, 15), 0.5);
   assert.equal(eventProgress(event, 30), 1);
+});
+
+test("motionTravelProgress keeps visual ion speed constant across different path lengths", () => {
+  const event = { start: 0, end: 100 };
+  const shortPath = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+  ];
+  const longPath = [
+    { x: 0, y: 0 },
+    { x: 300, y: 0 },
+  ];
+  const speedPxPerCycle = 10;
+
+  const shortPoint = pointAlongPolyline(shortPath, motionTravelProgress(event, 5, shortPath, speedPxPerCycle));
+  const longPoint = pointAlongPolyline(longPath, motionTravelProgress(event, 5, longPath, speedPxPerCycle));
+
+  assert.deepEqual(shortPoint, { x: 50, y: 0 });
+  assert.deepEqual(longPoint, { x: 50, y: 0 });
+});
+
+test("motionTravelProgress scales uniformly under playback speed multipliers", () => {
+  const event = { start: 0, end: 100 };
+  const path = [
+    { x: 0, y: 0 },
+    { x: 300, y: 0 },
+  ];
+  const speedPxPerCycle = 4;
+  const elapsedMs = 20;
+
+  const distances = [0.25, 1, 5].map((speedMultiplier) => {
+    const point = pointAlongPolyline(path, motionTravelProgress(event, elapsedMs * speedMultiplier, path, speedPxPerCycle));
+    return point.x;
+  });
+
+  assert.deepEqual(distances, [20, 80, 300]);
 });
 
 test("interpolatePoint returns the in-flight particle position", () => {
@@ -210,6 +246,142 @@ test("alignTrapPortsToFixedJunctions shifts G9 edge traps so channels enter chai
   const port = trapConnectionPoint(trap, trapPoint, "segment:0");
   assert.deepEqual(port, { x: 100, y: 40 });
   assert.deepEqual(junctions.get("junction:0"), { x: 100, y: 120 });
+});
+
+test("alignJunctionsToTrapPorts preserves H6 ring junction positions", () => {
+  const trace = {
+    run: { machine: "H6" },
+    topology: {
+      traps: [
+        { id: 0, capacity: 2, orientation: { 0: "R" } },
+        { id: 1, capacity: 2, orientation: { 7: "L" } },
+      ],
+      segments: [
+        { id: 0, from: "trap:0", to: "junction:0" },
+        { id: 7, from: "trap:1", to: "junction:0" },
+      ],
+      junctions: [{ id: 0, degree: 2, junction_type: "J2" }],
+    },
+  };
+  const traps = new Map([
+    ["trap:0", { x: 200, y: 100, width: 80 }],
+    ["trap:1", { x: 150, y: 186, width: 80 }],
+  ]);
+  const junctions = new Map([["junction:0", { x: 186.6, y: 150 }]]);
+
+  alignJunctionsToTrapPorts(trace, traps, junctions);
+
+  assert.deepEqual(junctions.get("junction:0"), { x: 186.6, y: 150 });
+});
+
+test("normalizeTraceLayoutForRendering moves stale G9 trap coordinates outside the junction grid", () => {
+  const trace = {
+    run: { machine: "G9" },
+    topology: {
+      traps: [
+        { id: 0, capacity: 2, orientation: { 0: "L" } },
+        { id: 3, capacity: 2, orientation: { 3: "L" } },
+      ],
+      segments: [
+        { id: 0, from: "trap:0", to: "junction:0" },
+        { id: 1, from: "junction:0", to: "junction:1" },
+        { id: 2, from: "junction:1", to: "junction:2" },
+        { id: 3, from: "trap:3", to: "junction:2" },
+      ],
+      junctions: [{ id: 0 }, { id: 1 }, { id: 2 }],
+      layout: {
+        "trap:0": { x: 0, y: 0 },
+        "trap:3": { x: 2, y: 0 },
+        "junction:0": { x: 0, y: 0 },
+        "junction:1": { x: 1, y: 0 },
+        "junction:2": { x: 2, y: 0 },
+      },
+    },
+  };
+
+  const layout = normalizeTraceLayoutForRendering(trace);
+
+  assert.deepEqual(layout["junction:0"], { x: 0, y: 0 });
+  assert.ok(layout["trap:0"].y < -0.6);
+  assert.ok(Math.abs(layout["trap:3"].x - 2) + Math.abs(layout["trap:3"].y) >= 0.7);
+});
+
+test("normalizeTraceLayoutForRendering keeps L6 J2 junctions on the trap chain axis", () => {
+  const trace = {
+    run: { machine: "L6" },
+    topology: {
+      traps: [
+        { id: 0, capacity: 2, orientation: { 0: "R" } },
+        { id: 1, capacity: 2, orientation: { 1: "L" } },
+      ],
+      segments: [
+        { id: 0, from: "trap:0", to: "junction:0" },
+        { id: 1, from: "trap:1", to: "junction:0" },
+      ],
+      junctions: [{ id: 0, degree: 2, junction_type: "J2" }],
+      layout: {
+        "trap:0": { x: 0, y: 1 },
+        "trap:1": { x: 1, y: 1 },
+        "junction:0": { x: 0.5, y: 0 },
+      },
+    },
+  };
+
+  const layout = normalizeTraceLayoutForRendering(trace);
+
+  assert.deepEqual(layout["junction:0"], { x: 0.5, y: 1 });
+});
+
+test("normalizeTraceLayoutForRendering moves stale H6 junctions onto the trap ring", () => {
+  const trace = {
+    run: { machine: "H6" },
+    topology: {
+      traps: Array.from({ length: 6 }, (_, id) => ({
+        id,
+        capacity: 2,
+        orientation: { [id]: "R", [id + 6]: "L" },
+      })),
+      segments: [
+        { id: 0, from: "trap:0", to: "junction:0" },
+        { id: 1, from: "trap:1", to: "junction:1" },
+        { id: 2, from: "trap:2", to: "junction:2" },
+        { id: 3, from: "trap:3", to: "junction:3" },
+        { id: 4, from: "trap:4", to: "junction:4" },
+        { id: 5, from: "trap:5", to: "junction:5" },
+        { id: 6, from: "trap:0", to: "junction:5" },
+        { id: 7, from: "trap:1", to: "junction:0" },
+        { id: 8, from: "trap:2", to: "junction:1" },
+        { id: 9, from: "trap:3", to: "junction:2" },
+        { id: 10, from: "trap:4", to: "junction:3" },
+        { id: 11, from: "trap:5", to: "junction:4" },
+      ],
+      junctions: Array.from({ length: 6 }, (_, id) => ({ id, degree: 2, junction_type: "J2" })),
+      layout: {
+        "trap:0": { x: 2, y: 1 },
+        "trap:1": { x: 1.5, y: 1.866 },
+        "trap:2": { x: 0.5, y: 1.866 },
+        "trap:3": { x: 0, y: 1 },
+        "trap:4": { x: 0.5, y: 0.134 },
+        "trap:5": { x: 1.5, y: 0.134 },
+        "junction:0": { x: 1.4763, y: 1.275 },
+        "junction:1": { x: 1, y: 1.55 },
+        "junction:2": { x: 0.5237, y: 1.275 },
+        "junction:3": { x: 0.5237, y: 0.725 },
+        "junction:4": { x: 1, y: 0.45 },
+        "junction:5": { x: 1.4763, y: 0.725 },
+      },
+    },
+  };
+
+  const layout = normalizeTraceLayoutForRendering(trace);
+  const center = { x: 1, y: 1 };
+  const radius = (point) => Math.hypot(point.x - center.x, point.y - center.y);
+
+  assert.ok(radius(layout["junction:0"]) > 0.9);
+  assert.ok(radius(layout["junction:1"]) > 0.9);
+  assert.ok(radius(layout["junction:4"]) > 0.9);
+  assert.ok(Math.abs(layout["junction:0"].x - 1.866) < 0.01);
+  assert.ok(Math.abs(layout["junction:0"].y - 1.5) < 0.01);
 });
 
 test("segmentDrawPoints uses orthogonal channel routes from trap ports", () => {
@@ -624,7 +796,7 @@ test("activeJunctionActivity keeps a junction lit while the active path passes t
     activeEvents: [{ id: 1, type: "move", start: 0, end: 10, ions: [0], source: "segment:0", target: "segment:1" }],
   });
 
-  assert.ok(activity.get("junction:0") > 0.25);
+  assert.ok(activity.get("junction:0") >= 0.9);
 });
 
 test("pointAlongPolyline interpolates by physical path length", () => {

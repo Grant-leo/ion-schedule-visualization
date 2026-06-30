@@ -147,6 +147,72 @@ def test_g9_trace_layout_keeps_traps_outside_junction_grid():
             assert distance >= 0.7
 
 
+def test_curated_g9_visualizer_trace_keeps_traps_outside_junction_grid():
+    trace = json.loads((ROOT / "visualizer" / "traces" / "qft_n4_g9_greedy.json").read_text(encoding="utf-8"))
+    layout = trace["topology"]["layout"]
+
+    for segment in trace["topology"]["segments"]:
+        endpoints = {segment["from"], segment["to"]}
+        trap = next((item for item in endpoints if item.startswith("trap:")), None)
+        junction = next((item for item in endpoints if item.startswith("junction:")), None)
+        if not trap or not junction:
+            continue
+        assert layout[trap] != layout[junction]
+        distance = abs(layout[trap]["x"] - layout[junction]["x"]) + abs(layout[trap]["y"] - layout[junction]["y"])
+        assert distance >= 0.7
+
+
+def test_curated_l6_visualizer_traces_keep_j2_on_trap_chain_axis():
+    for trace_path in (ROOT / "visualizer" / "traces").glob("*_l6_*.json"):
+        trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        if trace["run"]["machine"] != "L6":
+            continue
+        layout = trace["topology"]["layout"]
+        junctions = {f"junction:{junction['id']}": junction for junction in trace["topology"]["junctions"]}
+        for segment in trace["topology"]["segments"]:
+            endpoints = {segment["from"], segment["to"]}
+            trap = next((item for item in endpoints if item.startswith("trap:")), None)
+            junction = next((item for item in endpoints if item.startswith("junction:")), None)
+            if not trap or not junction:
+                continue
+            assert junctions[junction]["junction_type"] == "J2"
+            assert layout[junction]["y"] == layout[trap]["y"], trace_path.name
+
+
+def test_h6_layout_places_j2_junctions_on_the_trap_ring():
+    result = run_simulation(
+        SimulationConfig(
+            program=str(ROOT / "programs" / "benchmarks" / "qasmbench" / "small" / "qft_n4.qasm"),
+            machine="H6",
+            ions=2,
+            mapper="Greedy",
+            reorder="Naive",
+            serial_trap_ops=1,
+            serial_comm=0,
+            serial_all=0,
+            gate_type="FM",
+            swap_type="GateSwap",
+            single_qubit_gate_time=7,
+            single_qubit_gate_fidelity=0.999,
+        )
+    )
+
+    trace = export_trace(result)
+    layout = trace["topology"]["layout"]
+    trap_points = [layout[f"trap:{trap['id']}"] for trap in trace["topology"]["traps"]]
+    center_x = sum(point["x"] for point in trap_points) / len(trap_points)
+    center_y = sum(point["y"] for point in trap_points) / len(trap_points)
+    average_trap_radius = sum(
+        ((point["x"] - center_x) ** 2 + (point["y"] - center_y) ** 2) ** 0.5 for point in trap_points
+    ) / len(trap_points)
+
+    assert {junction["junction_type"] for junction in trace["topology"]["junctions"]} == {"J2"}
+    for junction in trace["topology"]["junctions"]:
+        point = layout[f"junction:{junction['id']}"]
+        radius = ((point["x"] - center_x) ** 2 + (point["y"] - center_y) ** 2) ** 0.5
+        assert radius >= average_trap_radius * 0.9
+
+
 def test_validate_trace_rejects_gate_when_ions_are_not_colocated():
     bad_trace = {
         "schema_version": "1.0",

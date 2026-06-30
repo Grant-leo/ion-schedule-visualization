@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>QCCD Schedule Visual Debugger</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070809'/%3E%3Cpath d='M7 16h18M16 7v18' stroke='%2364d2ff' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23ffd166'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css?v=20260630-swap-circuit1" />
+    <link rel="stylesheet" href="./styles.css?v=20260630-circuit-tools1" />
   </head>
   <body>
     <div class="app-shell">
@@ -21,80 +21,92 @@
         </div>
       </header>
       <aside id="controlPanel" class="left-control-panel">
-        <section class="control-section">
-          <span class="panel-eyebrow">Demo scenario</span>
-          <h2 id="scenarioTitle">QCCD schedule replay</h2>
-          <p id="scenarioDescription">Replay QCCDSim trace events as ion shuttling, laser gates, and DAG progress.</p>
-          <span class="field-label">Replay source</span>
-          <div class="source-mode-toggle" role="group" aria-label="Replay source">
-            <button id="experimentSourceButton" type="button" data-source-mode="experiment" aria-pressed="true">
-              <strong>Experiment</strong>
-              <span>from config</span>
-            </button>
-            <button id="traceSourceButton" type="button" data-source-mode="trace" aria-pressed="false">
-              <strong>Verified trace</strong>
-              <span>curated JSON</span>
-            </button>
-          </div>
-          <label for="traceSelect">Verified trace</label>
-          <select id="traceSelect"></select>
-        </section>
-        <label for="speedSelect">Speed</label>
-        <select id="speedSelect">
-          <option value="0.25">0.25x</option>
-          <option value="0.5">0.5x</option>
-          <option value="1" selected>1x</option>
-          <option value="2">2x</option>
-          <option value="5">5x</option>
-          <option value="10">10x</option>
-        </select>
-        <div class="playback-grid">
-          <button id="playPauseButton" class="primary-action" type="button">Play</button>
-          <button id="stepButton" type="button">Step</button>
-          <button id="restartButton" type="button">Restart</button>
+        <div class="left-fixed-region">
+          <section class="control-section">
+            <span class="panel-eyebrow">Demo scenario</span>
+            <h2 id="scenarioTitle">QCCD schedule replay</h2>
+            <p id="scenarioDescription">Replay QCCDSim trace events as ion shuttling, laser gates, and DAG progress.</p>
+            <span class="field-label">Replay source</span>
+            <div class="source-mode-toggle" role="group" aria-label="Replay source">
+              <button id="experimentSourceButton" type="button" data-source-mode="experiment" aria-pressed="true">
+                <strong>Experiment</strong>
+                <span>from config</span>
+              </button>
+              <button id="traceSourceButton" type="button" data-source-mode="trace" aria-pressed="false">
+                <strong>Verified trace</strong>
+                <span>curated JSON</span>
+              </button>
+            </div>
+            <label for="traceSelect">Verified trace</label>
+            <select id="traceSelect"></select>
+          </section>
+          <section class="control-section playback-section">
+            <label for="speedSelect">Speed</label>
+            <select id="speedSelect">
+              <option value="0.25">0.25x</option>
+              <option value="0.5">0.5x</option>
+              <option value="1" selected>1x</option>
+              <option value="2">2x</option>
+              <option value="5">5x</option>
+              <option value="10">10x</option>
+            </select>
+            <div class="playback-grid">
+              <button id="playPauseButton" class="primary-action" type="button">Play</button>
+              <button id="stepButton" type="button">Step</button>
+              <button id="restartButton" type="button">Restart</button>
+            </div>
+          </section>
         </div>
-        <details class="advanced-config" open>
-          <summary>Experiment configuration</summary>
-          <label for="programSelect">Circuit</label>
-          <select id="programSelect"></select>
-          <div id="benchmarkMetaPanel" class="benchmark-meta"></div>
-          <label for="architectureSelect">Architecture</label>
-          <select id="architectureSelect"></select>
-          <label for="capacitySelect">Trap capacity</label>
-          <select id="capacitySelect"></select>
-          <label for="mapperSelect">Mapper</label>
-          <select id="mapperSelect"></select>
-          <label for="orderingSelect">Initial ordering</label>
-          <select id="orderingSelect"></select>
-          <span class="field-label">Scheduling mode</span>
-          <div class="scheduler-mode-toggle" role="group" aria-label="Scheduling mode">
-            <button id="parallelSchedulerButton" type="button" data-scheduler-mode="EJF" aria-pressed="true">
-              <strong>Parallel</strong>
-              <span>cross-trap gates</span>
-            </button>
-            <button id="serialCommSchedulerButton" type="button" data-scheduler-mode="EJF-SerialComm" aria-pressed="false">
-              <strong>Shuttle serial</strong>
-              <span>one channel flow</span>
-            </button>
-            <button id="serialSchedulerButton" type="button" data-scheduler-mode="EJF-GlobalSerial" aria-pressed="false">
-              <strong>Global serial</strong>
-              <span>global baseline</span>
-            </button>
+        <div id="controlScrollRegion" class="left-scroll-region">
+          <details class="advanced-config" open>
+            <summary>Experiment configuration</summary>
+            <label for="programSelect">Circuit</label>
+            <select id="programSelect"></select>
+            <div id="benchmarkMetaPanel" class="benchmark-meta"></div>
+            <label for="architectureSelect">Architecture</label>
+            <select id="architectureSelect"></select>
+            <label for="capacitySelect">Trap capacity</label>
+            <select id="capacitySelect"></select>
+            <label for="mapperSelect">Mapper</label>
+            <select id="mapperSelect"></select>
+            <label for="orderingSelect">Initial ordering</label>
+            <select id="orderingSelect"></select>
+            <span class="field-label">Scheduling mode</span>
+            <div class="scheduler-mode-toggle" role="group" aria-label="Scheduling mode">
+              <button id="parallelSchedulerButton" type="button" data-scheduler-mode="EJF" aria-pressed="true">
+                <strong>Parallel</strong>
+                <span>cross-trap gates</span>
+              </button>
+              <button id="serialCommSchedulerButton" type="button" data-scheduler-mode="EJF-SerialComm" aria-pressed="false">
+                <strong>Shuttle serial</strong>
+                <span>one channel flow</span>
+              </button>
+              <button id="serialSchedulerButton" type="button" data-scheduler-mode="EJF-GlobalSerial" aria-pressed="false">
+                <strong>Global serial</strong>
+                <span>global baseline</span>
+              </button>
+            </div>
+            <label for="schedulerSelect">Scheduler detail</label>
+            <select id="schedulerSelect"></select>
+            <div id="configErrorPanel" class="config-error" aria-live="polite"></div>
+            <button id="loadConfigButton" class="primary-action" type="button">Generate Schedule</button>
+          </details>
+          <div class="scope-note">
+            <strong>Scope</strong>
+            <span>Schedule inspection only. No noise, calibration, or pulse-control validation.</span>
           </div>
-          <label for="schedulerSelect">Scheduler detail</label>
-          <select id="schedulerSelect"></select>
-          <div id="configErrorPanel" class="config-error" aria-live="polite"></div>
-          <button id="loadConfigButton" class="primary-action" type="button">Generate Schedule</button>
-        </details>
-        <div class="scope-note">
-          <strong>Scope</strong>
-          <span>Schedule inspection only. No noise, calibration, or pulse-control validation.</span>
         </div>
       </aside>
       <main class="visualization-viewport">
         <p id="vizSummary" class="sr-only">Animated QCCD hardware schedule with ion chains, shuttling channels, junctions, and laser gates.</p>
-        <div id="circuitPanel" class="circuit-strip" aria-label="TikZ-style circuit synchronized with the hardware replay"></div>
-        <button id="circuitExpandButton" class="circuit-expand-button" type="button" aria-label="Expand circuit view">Expand</button>
+        <div class="circuit-shell">
+          <div id="circuitPanel" class="circuit-strip" aria-label="TikZ-style circuit synchronized with the hardware replay"></div>
+          <div class="circuit-tool-rail">
+            <button id="circuitExpandButton" class="circuit-expand-button" type="button" aria-label="Expand circuit view" title="Expand circuit view">
+              <span class="circuit-expand-icon" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
         <canvas id="vizCanvas" width="1280" height="720" role="img" aria-describedby="vizSummary"></canvas>
         <div class="stage-overlay top-left">
           <span class="panel-eyebrow">Hardware layer</span>
@@ -138,6 +150,6 @@
         <div id="circuitDialogPanel" class="circuit-dialog-body" aria-label="Expanded TikZ-style circuit synchronized with playback"></div>
       </section>
     </div>
-    <script type="module" src="./app.js?v=20260630-swap-circuit1"></script>
+    <script type="module" src="./app.js?v=20260630-circuit-parallel2"></script>
   </body>
 </html>

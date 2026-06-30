@@ -1,5 +1,5 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260630-swap-circuit1";
-import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-swap-circuit1";
+import { createRenderer } from "./canvas_renderer.js?v=20260630-h6-ring1";
+import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-circuit-parallel2";
 import { renderDagSvg } from "./dag_renderer.js?v=20260630-swap-circuit1";
 import { createReplay, validateTrace } from "./replay.js?v=20260630-swap-circuit1";
 import {
@@ -13,11 +13,10 @@ import {
 
 const LIVE_PANEL_INTERVAL_MS = 160;
 const PERFORMANCE_PANEL_INTERVAL_MS = 250;
-const MIN_MOTION_DISPLAY_CYCLES = 80;
-const MOTION_EVENT_TYPES = new Set(["split", "move", "merge"]);
 
 const elements = {
   controlPanel: document.getElementById("controlPanel"),
+  controlScrollRegion: document.getElementById("controlScrollRegion"),
   traceSelect: document.getElementById("traceSelect"),
   sourceModeButtons: [...document.querySelectorAll("[data-source-mode]")],
   scenarioTitle: document.getElementById("scenarioTitle"),
@@ -279,6 +278,17 @@ function beginLoadRequest() {
   return { requestId: loadRequestId, signal: activeLoadController.signal };
 }
 
+function getControlScrollTop() {
+  const scroller = elements.controlScrollRegion || elements.controlPanel;
+  return scroller ? scroller.scrollTop : 0;
+}
+
+function restoreControlScrollTop(scrollTop) {
+  if (scrollTop === null || scrollTop === undefined) return;
+  const scroller = elements.controlScrollRegion || elements.controlPanel;
+  if (scroller) scroller.scrollTop = scrollTop;
+}
+
 function loadTraceData(nextTrace, { resetControlPanelScroll = true } = {}) {
   const frontendValidation = validateTrace(nextTrace);
   const backendValidation = nextTrace.validation || { valid: true, errors: [] };
@@ -315,14 +325,14 @@ function loadTraceData(nextTrace, { resetControlPanelScroll = true } = {}) {
   setStatus("Schedule verified", "valid");
   draw({ forcePanels: true });
   if (resetControlPanelScroll) {
-    elements.controlPanel.scrollTop = 0;
+    restoreControlScrollTop(0);
   }
   return true;
 }
 
 async function loadSelectedConfig({ preserveControlScroll = true } = {}) {
   setSourceMode("experiment");
-  const controlScrollTop = preserveControlScroll ? elements.controlPanel.scrollTop : null;
+  const controlScrollTop = preserveControlScroll ? getControlScrollTop() : null;
   const { requestId, signal } = beginLoadRequest();
   const program = elements.programSelect.value;
   const machine = elements.architectureSelect.value;
@@ -355,7 +365,7 @@ async function loadSelectedConfig({ preserveControlScroll = true } = {}) {
       const nextTrace = await fetchJson(`api/trace?${params.toString()}`, { signal });
       if (requestId !== loadRequestId) return;
       if (!loadTraceData(nextTrace, { resetControlPanelScroll: !preserveControlScroll })) return;
-      if (controlScrollTop !== null) elements.controlPanel.scrollTop = controlScrollTop;
+      restoreControlScrollTop(controlScrollTop);
       return;
     }
 
@@ -377,7 +387,7 @@ async function loadSelectedConfig({ preserveControlScroll = true } = {}) {
     const nextTrace = await fetchJson(match.path, { signal });
     if (requestId !== loadRequestId) return;
     loadTraceData(nextTrace, { resetControlPanelScroll: !preserveControlScroll });
-    if (controlScrollTop !== null) elements.controlPanel.scrollTop = controlScrollTop;
+    restoreControlScrollTop(controlScrollTop);
   } catch (error) {
     if (isAbortError(error) || requestId !== loadRequestId) return;
     setStatus("Generation failed", "invalid");
@@ -597,8 +607,7 @@ function loop(now) {
   lastFrame = now;
 
   if (playing && replay) {
-    const motionScale = playbackMotionScale(replay.stateAt(currentTime));
-    currentTime = Math.min(replay.finishTime, currentTime + delta * Number(elements.speedSelect.value) * motionScale);
+    currentTime = Math.min(replay.finishTime, currentTime + delta * Number(elements.speedSelect.value));
     if (currentTime >= replay.finishTime) {
       playing = false;
       elements.playPauseButton.textContent = "Play";
@@ -608,15 +617,6 @@ function loop(now) {
 
   recordFrame(delta, now);
   requestAnimationFrame(loop);
-}
-
-function playbackMotionScale(state) {
-  const motionDurations = (state.activeEvents || [])
-    .filter((event) => MOTION_EVENT_TYPES.has(event.type))
-    .map((event) => Math.max(1, event.end - event.start));
-  if (!motionDurations.length) return 1;
-  const shortest = Math.min(...motionDurations);
-  return Math.min(1, Math.max(0.18, shortest / MIN_MOTION_DISPLAY_CYCLES));
 }
 
 function draw(options = {}) {

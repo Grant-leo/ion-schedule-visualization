@@ -549,7 +549,7 @@ def _linear_layout(machine):
     for trap in machine.traps:
         layout[location_key("trap", trap.id)] = {"x": trap.id, "y": 1.0}
     for junction in machine.junctions:
-        layout[location_key("junction", junction.id)] = {"x": junction.id + 0.5, "y": 0.0}
+        layout[location_key("junction", junction.id)] = {"x": junction.id + 0.5, "y": 1.0}
     return layout
 
 
@@ -659,7 +659,7 @@ def _circle_layout(machine):
         layout[location_key("trap", trap.id)] = {"x": 1.0 + math.cos(angle), "y": 1.0 + math.sin(angle)}
     for junction in machine.junctions:
         angle = (2 * math.pi * (junction.id + 0.5)) / junction_count
-        layout[location_key("junction", junction.id)] = {"x": 1.0 + 0.55 * math.cos(angle), "y": 1.0 + 0.55 * math.sin(angle)}
+        layout[location_key("junction", junction.id)] = {"x": 1.0 + math.cos(angle), "y": 1.0 + math.sin(angle)}
     return layout
 
 

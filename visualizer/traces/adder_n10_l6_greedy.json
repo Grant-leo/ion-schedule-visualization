@@ -7,9 +7,10 @@
     "ions_per_region": 3,
     "mapper": "Greedy",
     "reorder": "Naive",
-    "serial_trap_ops": 1,
-    "serial_comm": 0,
-    "serial_all": 0,
+    "scheduler_policy": "EJF",
+    "serial_trap_ops": true,
+    "serial_comm": false,
+    "serial_all": false,
     "gate_type": "FM",
     "swap_type": "GateSwap",
     "single_qubit_gate_time": 7,
@@ -170,19 +171,34 @@
     ],
     "junctions": [
       {
-        "id": 0
+        "id": 0,
+        "degree": 2,
+        "junction_type": "J2",
+        "cross_time": 5
       },
       {
-        "id": 1
+        "id": 1,
+        "degree": 2,
+        "junction_type": "J2",
+        "cross_time": 5
       },
       {
-        "id": 2
+        "id": 2,
+        "degree": 2,
+        "junction_type": "J2",
+        "cross_time": 5
       },
       {
-        "id": 3
+        "id": 3,
+        "degree": 2,
+        "junction_type": "J2",
+        "cross_time": 5
       },
       {
-        "id": 4
+        "id": 4,
+        "degree": 2,
+        "junction_type": "J2",
+        "cross_time": 5
       }
     ],
     "layout": {
@@ -212,23 +228,23 @@
       },
       "junction:0": {
         "x": 0.5,
-        "y": 0.0
+        "y": 1.0
       },
       "junction:1": {
         "x": 1.5,
-        "y": 0.0
+        "y": 1.0
       },
       "junction:2": {
         "x": 2.5,
-        "y": 0.0
+        "y": 1.0
       },
       "junction:3": {
         "x": 3.5,
-        "y": 0.0
+        "y": 1.0
       },
       "junction:4": {
         "x": 4.5,
-        "y": 0.0
+        "y": 1.0
       }
     }
   },
@@ -7946,7 +7962,13 @@
     },
     "one_qubit_gates": 77,
     "two_qubit_gates": 65,
-    "shuttling_time": 14900
+    "shuttling_time": 14900,
+    "swap_count": 27,
+    "swap_hops": 53,
+    "ion_hops": 0,
+    "max_parallel_gates": 3,
+    "cross_trap_parallel_gates": 8,
+    "same_trap_gate_overlaps": 0
   },
   "validation": {
     "valid": true,

@@ -68,6 +68,21 @@ test("primary playback controls appear before advanced experiment configuration"
   assert.ok(indexSource.indexOf('for="speedSelect"') < indexSource.indexOf('class="advanced-config"'));
 });
 
+test("left control shell stays fixed while experiment configuration scrolls internally", () => {
+  assert.match(indexSource, /class="left-fixed-region"/);
+  assert.match(indexSource, /id="controlScrollRegion"\s+class="left-scroll-region"/);
+  assert.match(cssSource, /\.left-control-panel\s*{[\s\S]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)[\s\S]*overflow:\s*hidden/);
+  assert.match(cssSource, /\.left-scroll-region\s*{[\s\S]*overflow:\s*auto/);
+});
+
+test("hardware canvas omits decorative trap endpoint overlays", () => {
+  assert.doesNotMatch(canvasSource, /drawChannelTerminals\(context/);
+  assert.doesNotMatch(canvasSource, /drawTrapPorts\(context/);
+  assert.doesNotMatch(canvasSource, /function drawChannelTerminals/);
+  assert.doesNotMatch(canvasSource, /function drawTrapPorts/);
+  assert.doesNotMatch(canvasSource, /trapPortRadius|couplerWidth|couplerLength/);
+});
+
 test("scheduler mode buttons cover every exposed demo scheduling mode", () => {
   assert.match(indexSource, /data-scheduler-mode="EJF"/);
   assert.match(indexSource, /data-scheduler-mode="EJF-SerialComm"/);
@@ -77,9 +92,10 @@ test("scheduler mode buttons cover every exposed demo scheduling mode", () => {
 
 test("scheduler mode regeneration preserves the control panel scroll position", () => {
   assert.match(appSource, /async function loadSelectedConfig\(\{\s*preserveControlScroll\s*=\s*true\s*\}\s*=\s*\{\}\)/);
-  assert.match(appSource, /const controlScrollTop\s*=\s*preserveControlScroll\s*\?\s*elements\.controlPanel\.scrollTop\s*:\s*null/);
+  assert.match(appSource, /controlScrollRegion:\s*document\.getElementById\("controlScrollRegion"\)/);
+  assert.match(appSource, /const controlScrollTop\s*=\s*preserveControlScroll\s*\?\s*getControlScrollTop\(\)\s*:\s*null/);
   assert.match(appSource, /loadTraceData\(nextTrace,\s*\{\s*resetControlPanelScroll:\s*!preserveControlScroll\s*\}\)/);
-  assert.match(appSource, /elements\.controlPanel\.scrollTop\s*=\s*controlScrollTop/);
+  assert.match(appSource, /restoreControlScrollTop\(controlScrollTop\)/);
 });
 
 test("active laser gates are visually stronger in the DAG and circuit strip", () => {
@@ -108,11 +124,18 @@ test("main hardware viewport contains a synchronized TikZ-style circuit strip ab
 });
 
 test("circuit strip exposes an expanded synchronized circuit view", () => {
+  const expandButtonCss = cssSource.match(/\.circuit-expand-button\s*{[^}]*}/)?.[0] || "";
+  assert.match(indexSource, /class="circuit-shell"/);
+  assert.ok(indexSource.indexOf('id="circuitPanel"') < indexSource.indexOf('id="circuitExpandButton"'));
   assert.match(indexSource, /id="circuitExpandButton"/);
   assert.match(indexSource, /id="circuitDialog"/);
   assert.match(indexSource, /id="circuitDialogPanel"/);
   assert.match(appSource, /function openCircuitDialog\(\)/);
   assert.match(appSource, /renderCircuitSvg\(elements\.circuitDialogPanel,\s*state\.dagState/);
+  assert.match(cssSource, /\.circuit-shell\s*{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+48px/);
+  assert.doesNotMatch(expandButtonCss, /position:\s*absolute/);
+  assert.match(cssSource, /\.circuit-expand-icon::before/);
+  assert.match(cssSource, /\.circuit-expand-icon::after/);
   assert.match(cssSource, /\.circuit-dialog\[hidden\]/);
   assert.match(cssSource, /\.circuit-dialog-panel/);
 });
@@ -181,8 +204,11 @@ test("window resize and circuit panel dimensions invalidate the circuit render c
   assert.match(appSource, /const circuitKey\s*=\s*`\$\{dagKey\}\|\$\{trace\?\.particles\?\.length \?\? 0\}\|\$\{circuitSizeKey\}`/);
 });
 
-test("playback applies a minimum visual duration to very short shuttling events", () => {
-  assert.match(appSource, /MIN_MOTION_DISPLAY_CYCLES/);
-  assert.match(appSource, /playbackMotionScale\(replay\.stateAt\(currentTime\)\)/);
-  assert.match(appSource, /function playbackMotionScale\(state\)/);
+test("playback speed is a uniform multiplier without active-motion-dependent rescaling", () => {
+  assert.doesNotMatch(appSource, /playbackMotionScale/);
+  assert.doesNotMatch(appSource, /MIN_MOTION_DISPLAY_CYCLES/);
+  assert.match(
+    appSource,
+    /currentTime\s*=\s*Math\.min\(replay\.finishTime,\s*currentTime\s*\+\s*delta\s*\*\s*Number\(elements\.speedSelect\.value\)\)/,
+  );
 });

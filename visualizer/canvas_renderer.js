@@ -26,10 +26,6 @@ export const RENDER_SIZES = Object.freeze({
   activeSegmentOuterWidth: 36,
   motionPathWidth: 28,
   trapHeight: 28,
-  trapPortGap: 14,
-  trapPortRadius: 5,
-  couplerWidth: 20,
-  couplerLength: 16,
   junctionRadius: 10,
 });
 
@@ -54,11 +50,10 @@ export function createRenderer(canvas) {
       context.clearRect(0, 0, viewport.width, viewport.height);
       drawBackground(context, viewport);
       drawSegments(context, trace, layout, state);
-      drawChannelTerminals(context, trace, layout, state);
       drawTraps(context, trace, layout);
-      drawTrapPorts(context, trace, layout);
       drawJunctions(context, trace, layout, state);
       drawActiveEvents(context, layout, state);
+      drawActiveJunctionOverlays(context, trace, layout, state);
       drawIons(context, trace, layout, state);
     },
   };
@@ -142,25 +137,56 @@ export function pointAlongPolyline(points, progress) {
   if (!points || points.length === 0) return null;
   if (points.length === 1) return points[0];
 
-  const lengths = [];
-  let total = 0;
-  for (let index = 1; index < points.length; index += 1) {
-    const length = distance(points[index - 1], points[index]);
-    lengths.push(length);
-    total += length;
-  }
+  const total = polylineLength(points);
   if (total === 0) return points[points.length - 1];
 
   let target = total * clamp(progress, 0, 1);
-  for (let index = 0; index < lengths.length; index += 1) {
-    const length = lengths[index];
-    if (target <= length) {
-      const localProgress = length === 0 ? 1 : target / length;
-      return interpolatePoint(points[index], points[index + 1], localProgress);
+  for (let index = 1; index < points.length; index += 1) {
+    const segmentLength = distance(points[index - 1], points[index]);
+    if (target <= segmentLength) {
+      const localProgress = segmentLength === 0 ? 1 : target / segmentLength;
+      return interpolatePoint(points[index - 1], points[index], localProgress);
     }
-    target -= length;
+    target -= segmentLength;
   }
   return points[points.length - 1];
+}
+
+export function polylineLength(points) {
+  if (!points || points.length <= 1) return 0;
+  let total = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    total += distance(points[index - 1], points[index]);
+  }
+  return total;
+}
+
+export function motionTravelProgress(event, time, path, speedPxPerCycle = 0) {
+  const length = polylineLength(path);
+  const speed = Number(speedPxPerCycle);
+  if (!Number.isFinite(speed) || speed <= 0 || length <= 0) {
+    return eventProgress(event, time);
+  }
+  const elapsed = Math.max(0, Number(time) - Number(event.start || 0));
+  return clamp((elapsed * speed) / length, 0, 1);
+}
+
+function motionTravelDistance(event, time, speedPxPerCycle = 0) {
+  const speed = Number(speedPxPerCycle);
+  if (!Number.isFinite(speed) || speed <= 0) return null;
+  return Math.max(0, Number(time) - Number(event.start || 0)) * speed;
+}
+
+function traceMotionSpeed(layout, trace) {
+  let speed = 0;
+  for (const event of trace.events || []) {
+    if (!MOTION_TYPES.has(event.type)) continue;
+    const path = motionPathPoints(layout, event, null);
+    const length = polylineLength(path);
+    const duration = Math.max(1, Number(event.end || 0) - Number(event.start || 0));
+    if (length > 0) speed = Math.max(speed, length / duration);
+  }
+  return speed;
 }
 
 export function motionPathPoints(layout, event, state = null) {
@@ -224,13 +250,17 @@ export function activeSplitSwapPoint(layout, event, state = {}, ionId) {
   if (!info) return null;
   const ion = Number(ionId);
   if (ion !== info.firstIon && ion !== info.secondIon) return null;
-  const progress = eventProgress(event, state.time ?? event.start);
-  const swapProgress = clamp(progress / SPLIT_SWAP_PHASE_FRACTION, 0, 1);
   const firstPoint = trapSlotPoint(info.trapPoint, info.firstSlot, info.trap.capacity);
   const secondPoint = trapSlotPoint(info.trapPoint, info.secondSlot, info.trap.capacity);
+  const swapLength = distance(firstPoint, secondPoint);
+  const traveled = motionTravelDistance(event, state.time ?? event.start, layout.motionSpeedPxPerCycle);
+  const swapProgress =
+    traveled === null || swapLength <= 0
+      ? clamp(eventProgress(event, state.time ?? event.start) / SPLIT_SWAP_PHASE_FRACTION, 0, 1)
+      : clamp(traveled / swapLength, 0, 1);
 
   if (ion === info.firstIon) {
-    if (progress >= SPLIT_SWAP_PHASE_FRACTION) return null;
+    if (swapProgress >= 1) return null;
     return interpolatePoint(firstPoint, secondPoint, swapProgress);
   }
   return interpolatePoint(secondPoint, firstPoint, swapProgress);
@@ -316,7 +346,7 @@ function computeLayout(viewport, trace) {
   const junctions = new Map();
   const segments = new Map();
   const segmentEndpoints = new Map();
-  const rawLayout = trace.topology.layout || {};
+  const rawLayout = normalizeTraceLayoutForRendering(trace);
   const rawPoints = Object.values(rawLayout);
   const minX = Math.min(...rawPoints.map((point) => point.x), 0);
   const maxX = Math.max(...rawPoints.map((point) => point.x), 1);
@@ -369,11 +399,250 @@ function computeLayout(viewport, trace) {
     segmentEndpoints.set(key, { start, end, from: segment.from, to: segment.to, route });
   }
 
-  return { traps, junctions, segments, segmentEndpoints, traceTrapsFallback: trace.topology.traps };
+  const layout = { traps, junctions, segments, segmentEndpoints, traceTrapsFallback: trace.topology.traps };
+  layout.motionSpeedPxPerCycle = traceMotionSpeed(layout, trace);
+  return layout;
+}
+
+export function normalizeTraceLayoutForRendering(trace) {
+  const rawLayout = trace?.topology?.layout || {};
+  if (trace?.run?.machine === "H6") {
+    return repairH6JunctionLayout(trace, rawLayout);
+  }
+  if (trace?.run?.machine === "L6") {
+    return repairLinearJunctionLayout(trace, rawLayout);
+  }
+  if (trace?.run?.machine !== "G9" || !g9TraceLayoutNeedsExteriorRepair(trace, rawLayout)) {
+    return rawLayout;
+  }
+  return repairG9ExteriorTrapLayout(trace, rawLayout);
+}
+
+function repairLinearJunctionLayout(trace, rawLayout) {
+  const repaired = {};
+  for (const [location, point] of Object.entries(rawLayout)) {
+    repaired[location] = { ...point };
+  }
+
+  for (const junction of trace?.topology?.junctions || []) {
+    const junctionLocation = `junction:${junction.id}`;
+    const connectedTrapYs = [];
+    for (const segment of trace?.topology?.segments || []) {
+      const trapLocation = segment.from?.startsWith("trap:")
+        ? segment.from
+        : segment.to?.startsWith("trap:")
+          ? segment.to
+          : null;
+      if (!trapLocation || (segment.from !== junctionLocation && segment.to !== junctionLocation)) continue;
+      const trapPoint = repaired[trapLocation];
+      if (trapPoint) connectedTrapYs.push(trapPoint.y);
+    }
+    if (!connectedTrapYs.length || !repaired[junctionLocation]) continue;
+    repaired[junctionLocation] = {
+      ...repaired[junctionLocation],
+      y: average(connectedTrapYs),
+    };
+  }
+
+  return repaired;
+}
+
+function repairH6JunctionLayout(trace, rawLayout) {
+  const repaired = {};
+  for (const [location, point] of Object.entries(rawLayout)) {
+    repaired[location] = { ...point };
+  }
+
+  const trapPoints = [];
+  for (const trap of trace?.topology?.traps || []) {
+    const point = repaired[`trap:${trap.id}`];
+    if (point) trapPoints.push(point);
+  }
+  if (!trapPoints.length) return repaired;
+
+  const center = {
+    x: average(trapPoints.map((point) => point.x)),
+    y: average(trapPoints.map((point) => point.y)),
+  };
+  const trapRadius = average(trapPoints.map((point) => distance(point, center))) || 1;
+  const minimumRingRadius = trapRadius * 0.9;
+
+  for (const junction of trace?.topology?.junctions || []) {
+    const junctionLocation = `junction:${junction.id}`;
+    const current = repaired[junctionLocation];
+    if (!current) continue;
+    const connectedTrapPoints = connectedTrapLocations(trace, junctionLocation)
+      .map((location) => repaired[location])
+      .filter(Boolean);
+    const direction = h6JunctionDirection(center, connectedTrapPoints, current);
+    if (!direction || distance(current, center) >= minimumRingRadius) continue;
+    repaired[junctionLocation] = {
+      ...current,
+      x: center.x + direction.x * trapRadius,
+      y: center.y + direction.y * trapRadius,
+    };
+  }
+
+  return repaired;
+}
+
+function connectedTrapLocations(trace, junctionLocation) {
+  const locations = [];
+  for (const segment of trace?.topology?.segments || []) {
+    if (segment.from === junctionLocation && segment.to?.startsWith("trap:")) locations.push(segment.to);
+    if (segment.to === junctionLocation && segment.from?.startsWith("trap:")) locations.push(segment.from);
+  }
+  return locations;
+}
+
+function h6JunctionDirection(center, connectedTrapPoints, fallbackPoint) {
+  const vectors = connectedTrapPoints.map((point) => unitVector(center, point)).filter(Boolean);
+  const summed = vectors.reduce((accumulator, vector) => ({
+    x: accumulator.x + vector.x,
+    y: accumulator.y + vector.y,
+  }), { x: 0, y: 0 });
+  return normalizeVector(summed) || unitVector(center, fallbackPoint);
+}
+
+function unitVector(from, to) {
+  if (!from || !to) return null;
+  return normalizeVector({ x: to.x - from.x, y: to.y - from.y });
+}
+
+function normalizeVector(vector) {
+  const length = Math.hypot(vector.x, vector.y);
+  if (length < 0.001) return null;
+  return { x: vector.x / length, y: vector.y / length };
+}
+
+function g9TraceLayoutNeedsExteriorRepair(trace, rawLayout) {
+  for (const segment of trace?.topology?.segments || []) {
+    const trapLocation = segment.from?.startsWith("trap:")
+      ? segment.from
+      : segment.to?.startsWith("trap:")
+        ? segment.to
+        : null;
+    const junctionLocation = segment.from?.startsWith("junction:")
+      ? segment.from
+      : segment.to?.startsWith("junction:")
+        ? segment.to
+        : null;
+    if (!trapLocation || !junctionLocation) continue;
+    const trapPoint = rawLayout[trapLocation];
+    const junctionPoint = rawLayout[junctionLocation];
+    if (sameRawLayoutPoint(trapPoint, junctionPoint)) return true;
+  }
+  return false;
+}
+
+function repairG9ExteriorTrapLayout(trace, rawLayout) {
+  const repaired = {};
+  for (const [location, point] of Object.entries(rawLayout)) {
+    repaired[location] = { ...point };
+  }
+
+  const junctionPoints = new Map();
+  for (const junction of trace.topology?.junctions || []) {
+    const location = `junction:${junction.id}`;
+    const point = repaired[location] || { x: junction.id % 3, y: Math.floor(junction.id / 3) };
+    repaired[location] = point;
+    junctionPoints.set(location, point);
+  }
+
+  const trapsByJunction = new Map();
+  for (const trap of [...(trace.topology?.traps || [])].sort((left, right) => left.id - right.id)) {
+    const trapLocation = `trap:${trap.id}`;
+    const junctionLocation = firstConnectedJunctionLocation(trace, trapLocation);
+    if (!junctionLocation) continue;
+    const traps = trapsByJunction.get(junctionLocation) || [];
+    traps.push(trap);
+    trapsByJunction.set(junctionLocation, traps);
+  }
+
+  for (const [junctionLocation, traps] of trapsByJunction) {
+    const base = junctionPoints.get(junctionLocation);
+    if (!base) continue;
+    const freePorts = g9FreeGridPorts(trace, junctionLocation, junctionPoints);
+    for (const [index, trap] of traps.entries()) {
+      const direction = freePorts[index % freePorts.length];
+      const spacing = 0.72 + 0.16 * Math.floor(index / freePorts.length);
+      repaired[`trap:${trap.id}`] = {
+        x: base.x + direction.x * spacing,
+        y: base.y + direction.y * spacing,
+      };
+    }
+  }
+
+  return repaired;
+}
+
+function firstConnectedJunctionLocation(trace, trapLocation) {
+  for (const segment of trace?.topology?.segments || []) {
+    if (segment.from === trapLocation && segment.to?.startsWith("junction:")) return segment.to;
+    if (segment.to === trapLocation && segment.from?.startsWith("junction:")) return segment.from;
+  }
+  return null;
+}
+
+function g9FreeGridPorts(trace, junctionLocation, junctionPoints) {
+  const base = junctionPoints.get(junctionLocation);
+  const bounds = layoutPointBounds([...junctionPoints.values()]);
+  const used = new Set();
+  for (const segment of trace?.topology?.segments || []) {
+    const otherLocation = segment.from === junctionLocation
+      ? segment.to
+      : segment.to === junctionLocation
+        ? segment.from
+        : null;
+    if (!otherLocation?.startsWith("junction:")) continue;
+    const direction = gridDirection(base, junctionPoints.get(otherLocation));
+    if (direction) used.add(directionKey(direction));
+  }
+
+  const preferences = [];
+  if (base.y === bounds.minY) preferences.push({ x: 0, y: -1 });
+  if (base.x === bounds.maxX) preferences.push({ x: 1, y: 0 });
+  if (base.y === bounds.maxY) preferences.push({ x: 0, y: 1 });
+  if (base.x === bounds.minX) preferences.push({ x: -1, y: 0 });
+  preferences.push({ x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 });
+
+  const freePorts = [];
+  for (const direction of preferences) {
+    const key = directionKey(direction);
+    if (used.has(key) || freePorts.some((port) => directionKey(port) === key)) continue;
+    freePorts.push(direction);
+  }
+  return freePorts.length ? freePorts : [{ x: 0, y: -1 }];
+}
+
+function layoutPointBounds(points) {
+  return {
+    minX: Math.min(...points.map((point) => point.x)),
+    maxX: Math.max(...points.map((point) => point.x)),
+    minY: Math.min(...points.map((point) => point.y)),
+    maxY: Math.max(...points.map((point) => point.y)),
+  };
+}
+
+function gridDirection(from, to) {
+  if (!from || !to) return null;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return null;
+  if (Math.abs(dx) >= Math.abs(dy)) return { x: Math.sign(dx) || 1, y: 0 };
+  return { x: 0, y: Math.sign(dy) || 1 };
+}
+
+function directionKey(direction) {
+  return `${direction.x},${direction.y}`;
+}
+
+function sameRawLayoutPoint(left, right) {
+  return Boolean(left && right && Math.abs(left.x - right.x) < 0.001 && Math.abs(left.y - right.y) < 0.001);
 }
 
 export function alignJunctionsToTrapPorts(trace, traps, junctions) {
-  if (trace.run?.machine === "G9") return;
+  if (trace.run?.machine === "G9" || trace.run?.machine === "H6") return;
   for (const junction of trace.topology.junctions || []) {
     const junctionLocation = `junction:${junction.id}`;
     const junctionPoint = junctions.get(junctionLocation);
@@ -529,49 +798,6 @@ function drawSegments(context, trace, layout, state) {
   }
 }
 
-function drawChannelTerminals(context, trace, layout, state) {
-  const activeMotion = new Set(
-    state.activeEvents.filter((event) => MOTION_TYPES.has(event.type)).flatMap((event) => [event.source, event.target]),
-  );
-
-  for (const segment of trace.topology.segments) {
-    const key = `segment:${segment.id}`;
-    const endpoints = layout.segmentEndpoints?.get(key);
-    if (!endpoints) continue;
-    const route = endpoints.route || [endpoints.start, endpoints.end].filter(Boolean);
-    const isActive = activeMotion.has(key);
-    drawTerminalForEndpoint(context, route, endpoints.start, endpoints.from, isActive);
-    drawTerminalForEndpoint(context, [...route].reverse(), endpoints.end, endpoints.to, isActive);
-  }
-}
-
-function drawTerminalForEndpoint(context, route, point, location, active) {
-  if (!point) return;
-  if (location?.startsWith("trap:")) {
-    const next = route?.[1] || point;
-    drawTrapCoupler(context, point, next, active);
-  }
-}
-
-function drawTrapCoupler(context, point, nextPoint, active) {
-  const horizontal = Math.abs((nextPoint?.x ?? point.x) - point.x) >= Math.abs((nextPoint?.y ?? point.y) - point.y);
-  const length = RENDER_SIZES.couplerLength;
-  const width = RENDER_SIZES.couplerWidth;
-  const x = point.x - (horizontal ? length / 2 : width / 2);
-  const y = point.y - (horizontal ? width / 2 : length / 2);
-
-  context.save();
-  context.fillStyle = active ? "rgba(100, 210, 255, 0.32)" : "rgba(124, 135, 152, 0.36)";
-  context.strokeStyle = active ? cssColor("--color-move") : "rgba(255, 255, 255, 0.24)";
-  context.lineWidth = active ? 1.8 : 1.2;
-  context.shadowColor = active ? cssColor("--color-move") : "rgba(0, 0, 0, 0.42)";
-  context.shadowBlur = active ? 12 : 4;
-  roundedRect(context, x, y, horizontal ? length : width, horizontal ? width : length, 5);
-  context.fill();
-  context.stroke();
-  context.restore();
-}
-
 function drawTraps(context, trace, layout) {
   for (const trap of trace.topology.traps) {
     const point = layout.traps.get(`trap:${trap.id}`);
@@ -625,66 +851,6 @@ function drawTrapChain(context, trap, point) {
   context.restore();
 }
 
-function drawTrapPorts(context, trace, layout) {
-  for (const trap of trace.topology.traps) {
-    const point = layout.traps.get(`trap:${trap.id}`);
-    if (!point) continue;
-    const ports = trapPortPoints(point, trap.capacity);
-    const connected = trapConnectedPortSides(trap);
-    for (const side of ["L", "R"]) {
-      drawTrapNeck(context, point, ports[side], side, connected.has(side));
-      drawTrapPort(context, ports[side], side, connected.has(side));
-    }
-  }
-}
-
-function drawTrapNeck(context, trapPoint, portPoint, side, connected) {
-  if (!connected) return;
-  const sign = side === "R" ? 1 : -1;
-  const edge = { x: trapPoint.x + sign * trapPoint.width / 2, y: trapPoint.y };
-  context.save();
-  context.strokeStyle = "rgba(0, 0, 0, 0.62)";
-  context.lineWidth = RENDER_SIZES.couplerWidth + 6;
-  context.lineCap = "round";
-  context.beginPath();
-  context.moveTo(edge.x, edge.y);
-  context.lineTo(portPoint.x, portPoint.y);
-  context.stroke();
-  context.strokeStyle = "rgba(124, 135, 152, 0.42)";
-  context.lineWidth = RENDER_SIZES.couplerWidth;
-  context.beginPath();
-  context.moveTo(edge.x, edge.y);
-  context.lineTo(portPoint.x, portPoint.y);
-  context.stroke();
-  context.strokeStyle = "rgba(255, 255, 255, 0.18)";
-  context.lineWidth = 1.1;
-  context.beginPath();
-  context.moveTo(edge.x, edge.y);
-  context.lineTo(portPoint.x, portPoint.y);
-  context.stroke();
-  context.restore();
-}
-
-function drawTrapPort(context, point, side, connected) {
-  context.save();
-  context.fillStyle = connected ? "rgba(14, 18, 24, 0.98)" : "rgba(115, 127, 145, 0.18)";
-  context.strokeStyle = connected ? "rgba(100, 210, 255, 0.54)" : "rgba(115, 127, 145, 0.36)";
-  context.lineWidth = connected ? 1.8 : 1;
-  context.shadowColor = connected ? "rgba(100, 210, 255, 0.24)" : "transparent";
-  context.shadowBlur = connected ? 8 : 0;
-  context.beginPath();
-  context.arc(point.x, point.y, connected ? RENDER_SIZES.trapPortRadius + 1 : RENDER_SIZES.trapPortRadius, 0, Math.PI * 2);
-  context.fill();
-  context.stroke();
-
-  context.shadowBlur = 0;
-  context.fillStyle = connected ? "rgba(100, 210, 255, 0.92)" : "rgba(168, 179, 195, 0.48)";
-  context.beginPath();
-  context.arc(point.x, point.y, 2.2, 0, Math.PI * 2);
-  context.fill();
-  context.restore();
-}
-
 function drawJunctions(context, trace, layout, state) {
   const activity = activeJunctionActivity(trace, layout, state);
   for (const junction of trace.topology.junctions) {
@@ -714,6 +880,23 @@ function drawJunctions(context, trace, layout, state) {
     );
     drawJunctionPatch(context, point, directions, spec.armLength, spec.channelWidth, cssColor("--color-segment"), spec.armLineCap);
     drawJunctionPatch(context, point, directions, spec.armLength, spec.highlightWidth, "rgba(255, 255, 255, 0.2)", spec.armLineCap);
+    drawJunctionMarker(context, point, directions, spec, active);
+    context.restore();
+  }
+}
+
+function drawActiveJunctionOverlays(context, trace, layout, state) {
+  const activity = activeJunctionActivity(trace, layout, state);
+  for (const junction of trace.topology.junctions) {
+    const location = `junction:${junction.id}`;
+    const active = activity.get(location) || 0;
+    if (active <= 0) continue;
+    const point = layout.junctions.get(location);
+    if (!point) continue;
+    const directions = junctionDirections(trace, layout, location, point);
+    const spec = junctionRenderSpec(junction, directions);
+    context.save();
+    drawActiveJunctionGlow(context, point, directions, spec, active);
     drawJunctionMarker(context, point, directions, spec, active);
     context.restore();
   }
@@ -775,14 +958,14 @@ export function activeJunctionActivity(trace, layout, state = {}) {
     const path = motionPathPoints(layout, event, state);
     const junctions = eventJunctionLocations(trace, layout, event, path);
     if (!junctions.length) continue;
-    const point = pointAlongPolyline(path, eventProgress(event, state.time));
+    const point = motionPoint(layout, event, state.time, state);
     if (!point) continue;
     for (const location of junctions) {
       const junctionPoint = layout.junctions?.get(location) || sharedSegmentEndpoint(layout, event.source, event.target);
       if (!junctionPoint) continue;
       const radius = Math.max(RENDER_SIZES.segmentWidth * 2.2, 42);
       const pathDistance = distanceToPolyline(junctionPoint, path);
-      const pathGlow = pathDistance <= RENDER_SIZES.segmentWidth * 0.75 ? 0.34 : 0;
+      const pathGlow = pathDistance <= RENDER_SIZES.segmentWidth * 0.75 ? 0.92 : 0;
       const intensity = Math.max(pathGlow, clamp(1 - distance(point, junctionPoint) / radius, 0, 1));
       if (intensity <= 0) continue;
       activity.set(location, Math.max(activity.get(location) || 0, intensity));
@@ -893,7 +1076,7 @@ function drawActiveEvents(context, layout, state) {
   for (const event of state.activeEvents) {
     if (MOTION_TYPES.has(event.type)) {
       const path = motionPathPoints(layout, event, state);
-      const point = pointAlongPolyline(path, eventProgress(event, state.time));
+      const point = motionPoint(layout, event, state.time, state);
       if (!point) continue;
       drawMotionPath(context, path);
       drawSwapCue(context, layout, event, state);
@@ -967,13 +1150,8 @@ function drawIons(context, trace, layout, state) {
 }
 
 function motionPoint(layout, event, time, state = null) {
-  if (isSplitSwapEvent(event)) {
-    const swapPoint = activeSplitSwapPoint(layout, event, { ...state, time }, event.ions?.[0]);
-    if (swapPoint) return swapPoint;
-    return pointAlongPolyline(splitExitPathPoints(layout, event, state), splitPostSwapProgress(event, time));
-  }
-  const path = motionPathPoints(layout, event, state);
-  return pointAlongPolyline(path, eventProgress(event, time));
+  const path = isSplitSwapEvent(event) ? splitPrimaryMotionPathPoints(layout, event, state) : motionPathPoints(layout, event, state);
+  return pointAlongPolyline(path, motionTravelProgress(event, time, path, layout.motionSpeedPxPerCycle));
 }
 
 function activeSplitSwapOverride(layout, state, ionId) {
@@ -988,6 +1166,15 @@ function isSplitSwapEvent(event) {
   return event?.type === "split" && Number(event.metadata?.swap_count || 0) > 0 && (event.metadata?.swap_ions || []).length === 2;
 }
 
+function splitPrimaryMotionPathPoints(layout, event, state = null) {
+  const swapInfo = splitSwapInfo(layout, event, state || {});
+  if (!swapInfo) return motionPathPoints(layout, event, state);
+  const firstPoint = trapSlotPoint(swapInfo.trapPoint, swapInfo.firstSlot, swapInfo.trap.capacity);
+  const secondPoint = trapSlotPoint(swapInfo.trapPoint, swapInfo.secondSlot, swapInfo.trap.capacity);
+  const exitPath = splitExitPathPoints(layout, event, state);
+  return compactPath([firstPoint, secondPoint, ...(samePoint(secondPoint, exitPath[0]) ? exitPath.slice(1) : exitPath)]);
+}
+
 function splitExitPathPoints(layout, event, state = null) {
   const swapInfo = splitSwapInfo(layout, event, state || {});
   const endpointSlot = swapInfo ? endpointSlotIndex(swapInfo.trap, event.target) : null;
@@ -1000,11 +1187,6 @@ function splitExitPathPoints(layout, event, state = null) {
   if (!exitPath.length) return [endpoint];
   const path = slotPath.length ? slotPath : [endpoint];
   return compactPath([...path, ...(samePoint(endpoint, exitPath[0]) ? exitPath.slice(1) : exitPath)]);
-}
-
-function splitPostSwapProgress(event, time) {
-  const progress = eventProgress(event, time);
-  return clamp((progress - SPLIT_SWAP_PHASE_FRACTION) / (1 - SPLIT_SWAP_PHASE_FRACTION), 0, 1);
 }
 
 function particlePoint(layout, trace, state, particle, location) {

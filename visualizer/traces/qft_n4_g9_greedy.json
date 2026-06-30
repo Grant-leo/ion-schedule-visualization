@@ -7,9 +7,10 @@
     "ions_per_region": 2,
     "mapper": "Greedy",
     "reorder": "Naive",
-    "serial_trap_ops": 1,
-    "serial_comm": 0,
-    "serial_all": 0,
+    "scheduler_policy": "EJF",
+    "serial_trap_ops": true,
+    "serial_comm": false,
+    "serial_all": false,
     "gate_type": "FM",
     "swap_type": "GateSwap",
     "single_qubit_gate_time": 7,
@@ -265,70 +266,61 @@
     ],
     "junctions": [
       {
-        "id": 0
+        "id": 0,
+        "degree": 3,
+        "junction_type": "J3",
+        "cross_time": 100
       },
       {
-        "id": 1
+        "id": 1,
+        "degree": 4,
+        "junction_type": "J4",
+        "cross_time": 120
       },
       {
-        "id": 2
+        "id": 2,
+        "degree": 4,
+        "junction_type": "J4",
+        "cross_time": 120
       },
       {
-        "id": 3
+        "id": 3,
+        "degree": 3,
+        "junction_type": "J3",
+        "cross_time": 100
       },
       {
-        "id": 4
+        "id": 4,
+        "degree": 4,
+        "junction_type": "J4",
+        "cross_time": 120
       },
       {
-        "id": 5
+        "id": 5,
+        "degree": 4,
+        "junction_type": "J4",
+        "cross_time": 120
       },
       {
-        "id": 6
+        "id": 6,
+        "degree": 3,
+        "junction_type": "J3",
+        "cross_time": 100
       },
       {
-        "id": 7
+        "id": 7,
+        "degree": 4,
+        "junction_type": "J4",
+        "cross_time": 120
       },
       {
-        "id": 8
+        "id": 8,
+        "degree": 4,
+        "junction_type": "J4",
+        "cross_time": 120
       }
     ],
     "layout": {
-      "trap:0": {
-        "x": 0,
-        "y": 0
-      },
-      "trap:1": {
-        "x": 1,
-        "y": 0
-      },
-      "trap:2": {
-        "x": 2,
-        "y": 0
-      },
-      "trap:3": {
-        "x": 0,
-        "y": 1
-      },
-      "trap:4": {
-        "x": 1,
-        "y": 1
-      },
-      "trap:5": {
-        "x": 2,
-        "y": 1
-      },
-      "trap:6": {
-        "x": 0,
-        "y": 2
-      },
-      "trap:7": {
-        "x": 1,
-        "y": 2
-      },
-      "trap:8": {
-        "x": 2,
-        "y": 2
-      },
       "junction:0": {
         "x": 0,
         "y": 0
@@ -364,6 +356,42 @@
       "junction:8": {
         "x": 2,
         "y": 2
+      },
+      "trap:0": {
+        "x": 0.0,
+        "y": -0.72
+      },
+      "trap:1": {
+        "x": 1.0,
+        "y": -0.72
+      },
+      "trap:2": {
+        "x": 2.0,
+        "y": -0.72
+      },
+      "trap:3": {
+        "x": 2.7199999999999998,
+        "y": 0.0
+      },
+      "trap:4": {
+        "x": 2.7199999999999998,
+        "y": 1.0
+      },
+      "trap:5": {
+        "x": 2.7199999999999998,
+        "y": 2.0
+      },
+      "trap:6": {
+        "x": 2.0,
+        "y": 2.7199999999999998
+      },
+      "trap:7": {
+        "x": 1.0,
+        "y": 2.7199999999999998
+      },
+      "trap:8": {
+        "x": 0.0,
+        "y": 2.7199999999999998
       }
     }
   },
@@ -1916,7 +1944,13 @@
     },
     "one_qubit_gates": 24,
     "two_qubit_gates": 12,
-    "shuttling_time": 1770
+    "shuttling_time": 1770,
+    "swap_count": 2,
+    "swap_hops": 2,
+    "ion_hops": 0,
+    "max_parallel_gates": 2,
+    "cross_trap_parallel_gates": 6,
+    "same_trap_gate_overlaps": 0
   },
   "validation": {
     "valid": true,
