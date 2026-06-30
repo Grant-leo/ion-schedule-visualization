@@ -290,6 +290,7 @@ function computeLayout(viewport, trace) {
     junctions.set(location, { x, y });
   }
 
+  alignTrapPortsToFixedJunctions(trace, traps, junctions);
   alignJunctionsToTrapPorts(trace, traps, junctions);
 
   for (const segment of trace.topology.segments) {
@@ -332,6 +333,37 @@ export function alignJunctionsToTrapPorts(trace, traps, junctions) {
     }
     if (verticalPortXs.length) junctionPoint.x = average(verticalPortXs);
     if (horizontalPortYs.length) junctionPoint.y = average(horizontalPortYs);
+  }
+}
+
+export function alignTrapPortsToFixedJunctions(trace, traps, junctions) {
+  if (trace.run?.machine !== "G9") return;
+  for (const segment of trace.topology.segments || []) {
+    const trapLocation = segment.from?.startsWith("trap:")
+      ? segment.from
+      : segment.to?.startsWith("trap:")
+        ? segment.to
+        : null;
+    const junctionLocation = segment.from?.startsWith("junction:")
+      ? segment.from
+      : segment.to?.startsWith("junction:")
+        ? segment.to
+        : null;
+    if (!trapLocation || !junctionLocation) continue;
+
+    const trap = trace.topology.traps?.find((item) => `trap:${item.id}` === trapLocation);
+    const trapPoint = traps.get(trapLocation);
+    const junctionPoint = junctions.get(junctionLocation);
+    if (!trap || !trapPoint || !junctionPoint) continue;
+
+    const portPoint = trapConnectionPoint(trap, trapPoint, `segment:${segment.id}`);
+    const dx = Math.abs(trapPoint.x - junctionPoint.x);
+    const dy = Math.abs(trapPoint.y - junctionPoint.y);
+    if (dy >= dx) {
+      trapPoint.x += junctionPoint.x - portPoint.x;
+    } else {
+      trapPoint.y += junctionPoint.y - portPoint.y;
+    }
   }
 }
 
@@ -901,7 +933,7 @@ export function segmentRoutePoints(start, end, fromLocation, toLocation, machine
     const leadDistance = junctionPortLeadDistance();
     const fromLead = fromDirection ? translatePoint(start, fromDirection, leadDistance) : start;
     const toLead = toDirection ? translatePoint(end, toDirection, leadDistance) : end;
-    return compactPath([start, fromLead, ...orthogonalConnectorPoints(fromLead, toLead, fromDirection), toLead, end]);
+    return compactPath([start, fromLead, ...orthogonalConnectorPoints(fromLead, toLead, fromDirection, toDirection), toLead, end]);
   }
   if (sameAxis(start, end)) return [start, end];
   if (fromLocation?.startsWith("trap:") && toLocation?.startsWith("trap:")) {
@@ -972,9 +1004,10 @@ function translatePoint(point, direction, distanceValue) {
   };
 }
 
-function orthogonalConnectorPoints(start, end, fromDirection) {
+function orthogonalConnectorPoints(start, end, fromDirection, toDirection) {
   if (!start || !end || sameAxis(start, end)) return [];
   if (fromDirection && Math.abs(fromDirection.x) > 0) return [{ x: start.x, y: end.y }];
+  if (!fromDirection && toDirection && Math.abs(toDirection.y) > 0) return [{ x: start.x, y: end.y }];
   return [{ x: end.x, y: start.y }];
 }
 

@@ -10,6 +10,7 @@ import {
   ionLabelSpec,
   ionRenderPoint,
   alignJunctionsToTrapPorts,
+  alignTrapPortsToFixedJunctions,
   junctionDirections,
   junctionRenderSpec,
   motionPathPoints,
@@ -179,6 +180,27 @@ test("alignJunctionsToTrapPorts preserves explicit G9 junction grid points", () 
   assert.deepEqual(junctions.get("junction:0"), { x: 100, y: 120 });
 });
 
+test("alignTrapPortsToFixedJunctions shifts G9 edge traps so channels enter chain ends directly", () => {
+  const trace = {
+    run: { machine: "G9" },
+    topology: {
+      traps: [{ id: 0, capacity: 5, orientation: { 0: "L" } }],
+      segments: [{ id: 0, from: "trap:0", to: "junction:0" }],
+      junctions: [{ id: 0, degree: 3 }],
+    },
+  };
+  const traps = new Map([["trap:0", { x: 100, y: 40, width: 80 }]]);
+  const junctions = new Map([["junction:0", { x: 100, y: 120 }]]);
+
+  alignTrapPortsToFixedJunctions(trace, traps, junctions);
+
+  const trap = trace.topology.traps[0];
+  const trapPoint = traps.get("trap:0");
+  const port = trapConnectionPoint(trap, trapPoint, "segment:0");
+  assert.deepEqual(port, { x: 100, y: 40 });
+  assert.deepEqual(junctions.get("junction:0"), { x: 100, y: 120 });
+});
+
 test("segmentDrawPoints uses orthogonal channel routes from trap ports", () => {
   const layout = {
     traps: new Map([["trap:0", { x: 100, y: 40, width: 80 }]]),
@@ -225,7 +247,7 @@ test("segmentRoutePoints enters junctions through topology port directions", () 
   assert.deepEqual(route.at(-1), { x: 100, y: 120 });
 });
 
-test("segmentRoutePoints avoids redundant trap-side detours while preserving chain endpoints", () => {
+test("segmentRoutePoints leaves trap endpoints before aligning to junctions", () => {
   const route = segmentRoutePoints(
     { x: 132, y: 40 },
     { x: 100, y: 120 },
@@ -242,9 +264,30 @@ test("segmentRoutePoints avoids redundant trap-side detours while preserving cha
 
   assert.deepEqual(route, [
     { x: 132, y: 40 },
-    { x: 100, y: 40 },
+    { x: 132, y: 76 },
     { x: 100, y: 76 },
     { x: 100, y: 120 },
+  ]);
+});
+
+test("segmentRoutePoints keeps aligned G9 trap-to-junction channels straight", () => {
+  const route = segmentRoutePoints(
+    { x: 300, y: 120 },
+    { x: 300, y: 240 },
+    "trap:0",
+    "junction:0",
+    "G9",
+    {
+      segmentId: 0,
+      traceTraps: [{ id: 0, capacity: 5, orientation: { 0: "L" } }],
+      traps: new Map([["trap:0", { x: 332, y: 120, width: 80 }]]),
+      junctions: new Map([["junction:0", { x: 300, y: 240 }]]),
+    },
+  );
+
+  assert.deepEqual(route, [
+    { x: 300, y: 120 },
+    { x: 300, y: 240 },
   ]);
 });
 

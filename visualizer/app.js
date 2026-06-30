@@ -1,6 +1,6 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260629-junction17";
-import { renderDagSvg } from "./dag_renderer.js?v=20260629-junction17";
-import { createReplay, validateTrace } from "./replay.js?v=20260629-junction17";
+import { createRenderer } from "./canvas_renderer.js?v=20260629-junction19";
+import { renderDagSvg } from "./dag_renderer.js?v=20260629-junction19";
+import { createReplay, validateTrace } from "./replay.js?v=20260629-junction19";
 import {
   createHeadlineMetricCards,
   createMetricCards,
@@ -8,7 +8,7 @@ import {
   describeEvent,
   formatLocation,
   summarizeDag,
-} from "./ui_model.js?v=20260629-junction17";
+} from "./ui_model.js?v=20260629-junction19";
 
 const LIVE_PANEL_INTERVAL_MS = 160;
 const PERFORMANCE_PANEL_INTERVAL_MS = 250;
