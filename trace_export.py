@@ -48,6 +48,7 @@ def validate_trace(trace):
     topology_adjacency = _topology_adjacency(topology)
     trap_capacity = _trap_capacity(topology)
     occupancy = _validate_initial_particles(trace.get("particles", []), known_locations, trap_capacity, errors)
+    trap_chains = _initial_trap_chains(trace.get("particles", []), topology)
     trap_segment_orientation = _trap_segment_orientation(topology)
     expected_events = trace.get("metrics", {}).get("event_count")
     if expected_events is not None and expected_events != len(trace["events"]):
@@ -56,11 +57,16 @@ def validate_trace(trace):
 
     def apply_completed_transfers(time):
         remaining = []
+        chain_events_applied = set()
         for transfer in pending_transfers:
             if transfer["end"] <= time:
                 locations[transfer["ion"]] = transfer["target"]
                 if transfer["target"] in trap_capacity:
                     _increment_trap_occupancy(occupancy, trap_capacity, transfer["target"], transfer["event"], errors)
+                    event_id = transfer["event"].get("id")
+                    if event_id not in chain_events_applied:
+                        _apply_merge_to_trap_chains(transfer["event"], trap_chains)
+                        chain_events_applied.add(event_id)
             else:
                 remaining.append(transfer)
         pending_transfers[:] = remaining
@@ -77,6 +83,7 @@ def validate_trace(trace):
             errors.append(f"event {event['id']} unknown target {target}")
         _validate_event_topology(event, topology_adjacency, errors)
         _validate_event_endpoint(event, trap_segment_orientation, errors)
+        _validate_split_endpoint_ion(event, trap_chains, errors)
         if event["end"] < event["start"]:
             errors.append(f"event {event['id']} ends before it starts")
         trap_location = _event_trap_resource(event)
@@ -99,6 +106,7 @@ def validate_trace(trace):
                 errors.append(f"ion {ion} not at {source} for {event['type']} {event['id']}; current={current}")
             if event["type"] == "split" and source in trap_capacity:
                 _decrement_trap_occupancy(occupancy, source, event, errors)
+                _remove_ion_from_trap_chain(trap_chains, source, ion)
             if event["type"] != "gate":
                 pending_transfers.append({"end": event["end"], "ion": ion, "target": target, "event": event})
             busy_until[ion] = max(busy_until.get(ion, 0), event["end"])
@@ -190,6 +198,16 @@ def _validate_initial_particles(particles, known_locations, trap_capacity, error
             errors.append(f"{location} initial occupancy {count} exceeds capacity {capacity}")
 
     return occupancy
+
+
+def _initial_trap_chains(particles, topology):
+    chains = {location_key("trap", trap.get("id")): [] for trap in topology.get("traps", [])}
+    for particle in sorted(particles, key=lambda item: (item.get("initial_slot", item.get("id")), item.get("id"))):
+        location = particle.get("initial_location")
+        if not str(location).startswith("trap:"):
+            continue
+        chains.setdefault(location, []).append(particle.get("id"))
+    return chains
 
 
 def _validate_event_topology(event, topology_adjacency, errors):
@@ -362,6 +380,33 @@ def _validate_event_endpoint(event, trap_segment_orientation, errors):
         )
 
 
+def _validate_split_endpoint_ion(event, trap_chains, errors):
+    if event.get("type") != "split" or not str(event.get("source", "")).startswith("trap:"):
+        return
+    metadata = event.get("metadata") or {}
+    endpoint = metadata.get("endpoint")
+    if endpoint not in {"L", "R"}:
+        return
+    chain = trap_chains.get(event.get("source"), [])
+    for ion in event.get("ions", []):
+        try:
+            slot = chain.index(ion)
+        except ValueError:
+            errors.append(f"event {event.get('id')} split ion {ion} is not in {event.get('source')} chain")
+            continue
+        endpoint_slot = 0 if endpoint == "L" else len(chain) - 1
+        needed_hops = abs(slot - endpoint_slot)
+        if needed_hops == 0:
+            continue
+        swap_hops = int(metadata.get("swap_hops") or 0)
+        swap_count = int(metadata.get("swap_count") or 0)
+        if swap_count <= 0 or swap_hops < needed_hops:
+            errors.append(
+                f"event {event.get('id')} split ion {ion} is not at {endpoint} endpoint of {event.get('source')}; "
+                f"slot {slot}, endpoint slot {endpoint_slot}, needs {needed_hops} swap hops but metadata has {swap_hops}"
+            )
+
+
 def _event_trap_resource(event):
     event_type = event.get("type")
     if event_type == "gate" and str(event.get("target", "")).startswith("trap:"):
@@ -400,6 +445,31 @@ def _event_junction_resources(event, topology_adjacency):
     )
 
 
+def _remove_ion_from_trap_chain(trap_chains, location, ion):
+    chain = trap_chains.get(location)
+    if chain is None:
+        return
+    try:
+        chain.remove(ion)
+    except ValueError:
+        pass
+
+
+def _apply_merge_to_trap_chains(event, trap_chains):
+    if event.get("type") != "merge" or not str(event.get("target", "")).startswith("trap:"):
+        return
+    chain = trap_chains.setdefault(event.get("target"), [])
+    for ion in event.get("ions", []):
+        try:
+            chain.remove(ion)
+        except ValueError:
+            pass
+    if (event.get("metadata") or {}).get("endpoint") == "L":
+        chain[0:0] = event.get("ions", [])
+    else:
+        chain.extend(event.get("ions", []))
+
+
 def _run_config(result):
     config = result.config
     serial_trap_ops, serial_comm, serial_all = effective_scheduler_flags(config)
@@ -410,9 +480,9 @@ def _run_config(result):
         "mapper": config.mapper,
         "reorder": config.reorder,
         "scheduler_policy": config.scheduler_policy or _scheduler_policy_name(serial_trap_ops, serial_comm, serial_all),
-        "serial_trap_ops": serial_trap_ops,
-        "serial_comm": serial_comm,
-        "serial_all": serial_all,
+        "serial_trap_ops": bool(serial_trap_ops),
+        "serial_comm": bool(serial_comm),
+        "serial_all": bool(serial_all),
         "gate_type": config.gate_type,
         "swap_type": config.swap_type,
         "single_qubit_gate_time": config.single_qubit_gate_time,

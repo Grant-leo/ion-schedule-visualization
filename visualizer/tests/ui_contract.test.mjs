@@ -55,6 +55,13 @@ test("primary playback controls appear before advanced experiment configuration"
   assert.ok(indexSource.indexOf('for="speedSelect"') < indexSource.indexOf('class="advanced-config"'));
 });
 
+test("scheduler mode buttons cover every exposed demo scheduling mode", () => {
+  assert.match(indexSource, /data-scheduler-mode="EJF"/);
+  assert.match(indexSource, /data-scheduler-mode="EJF-SerialComm"/);
+  assert.match(indexSource, /data-scheduler-mode="EJF-GlobalSerial"/);
+  assert.match(appSource, /updateSchedulerModeButtons/);
+});
+
 test("verified trace and generated experiment are explicit mutually exclusive replay sources", () => {
   assert.match(indexSource, /class="source-mode-toggle"/);
   assert.match(indexSource, /data-source-mode="trace"/);
@@ -97,6 +104,8 @@ test("mobile headline metrics use an internal horizontal rail instead of cramped
 test("infeasible circuit and capacity combinations are caught before generation", () => {
   assert.match(appSource, /machineTrapCounts\s*=\s*new Map/);
   assert.match(appSource, /selectedCapacityFeasibility/);
+  assert.match(appSource, /recommended_l6_min_capacity/);
+  assert.match(appSource, /recommendedCapacity/);
   assert.match(appSource, /Capacity too small/);
   assert.match(appSource, /needs cap \$\{requiredCapacity\}\+ on \$\{machine\}/);
 });
@@ -121,4 +130,16 @@ test("DAG viewport follows active work before ready work during playback", () =>
 
 test("window resize invalidates the DAG render cache for responsive relayout", () => {
   assert.match(appSource, /window\.addEventListener\("resize",\s*\(\)\s*=>\s*{[\s\S]*lastDagKey\s*=\s*""[\s\S]*draw\(\)/);
+});
+
+test("window resize and circuit panel dimensions invalidate the circuit render cache", () => {
+  assert.match(appSource, /lastCircuitKey\s*=\s*""/);
+  assert.match(appSource, /const circuitSizeKey\s*=\s*`\$\{elements\.circuitPanel\.clientWidth\}x\$\{elements\.circuitPanel\.clientHeight\}`/);
+  assert.match(appSource, /const circuitKey\s*=\s*`\$\{dagKey\}\|\$\{trace\?\.particles\?\.length \?\? 0\}\|\$\{circuitSizeKey\}`/);
+});
+
+test("playback applies a minimum visual duration to very short shuttling events", () => {
+  assert.match(appSource, /MIN_MOTION_DISPLAY_CYCLES/);
+  assert.match(appSource, /playbackMotionScale\(replay\.stateAt\(currentTime\)\)/);
+  assert.match(appSource, /function playbackMotionScale\(state\)/);
 });

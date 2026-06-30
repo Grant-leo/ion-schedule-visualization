@@ -12,8 +12,8 @@ export function layoutCircuit(dagState = {}, options = {}) {
     0,
   );
   const qubits = Array.from({ length: maxQubit + 1 }, (_, index) => index);
-  const rowGap = qubits.length > 32 ? 18 : qubits.length > 16 ? 22 : 28;
-  const columnWidth = gates.length > 1200 ? 14 : gates.length > 360 ? 20 : gates.length > 120 ? 28 : 42;
+  const rowGap = qubits.length > 32 ? 24 : qubits.length > 16 ? 26 : 30;
+  const columnWidth = gates.length > 120 ? 32 : 42;
   const left = 46;
   const top = 24;
   const width = Math.max(Number(config.maxWidth || 0), left + gates.length * columnWidth + 42);
@@ -67,6 +67,7 @@ export function renderCircuitSvg(container, dagState = {}, options = {}) {
 function circuitSvgMarkup(layout) {
   const wireStart = layout.left - 18;
   const wireEnd = layout.width - 18;
+  const focusGate = activeFocusGate(layout);
   const wires = layout.qubits
     .map((qubit) => {
       const y = layout.yByQubit.get(qubit);
@@ -76,12 +77,33 @@ function circuitSvgMarkup(layout) {
       ].join("");
     })
     .join("");
+  const focus = focusGate ? focusMarkup(layout, focusGate) : "";
   const gates = layout.gates.map((gate) => gateMarkup(gate)).join("");
+  const activeGateAttr = focusGate ? ` data-active-gate="${escapeAttr(focusGate.id)}"` : "";
   return [
-    `<svg class="circuit-svg" data-node-count="${layout.gates.length}" viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" role="img" aria-label="TikZ-style quantum circuit">`,
+    `<svg class="circuit-svg" data-node-count="${layout.gates.length}"${activeGateAttr} viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" role="img" aria-label="TikZ-style quantum circuit">`,
+    focus,
     wires,
     gates,
     "</svg>",
+  ].join("");
+}
+
+function activeFocusGate(layout) {
+  return layout.gates.find((gate) => gate.state === "active") || layout.gates.find((gate) => gate.state === "ready") || null;
+}
+
+function focusMarkup(layout, gate) {
+  const bandWidth = Math.max(18, layout.columnWidth * 0.72);
+  const label = `${gateLabel(gate)} ${gate.qubits.map((qubit) => `q${qubit}`).join(",")}`;
+  const labelX = Math.min(Math.max(gate.x, layout.left + 44), layout.width - 58);
+  const labelWidth = Math.max(54, Math.min(108, label.length * 7 + 18));
+  return [
+    `<rect class="circuit-focus-band" x="${gate.x - bandWidth / 2}" y="6" width="${bandWidth}" height="${Math.max(18, layout.height - 12)}" rx="5" />`,
+    `<g class="circuit-active-label" aria-hidden="true">`,
+    `<rect x="${labelX - labelWidth / 2}" y="5" width="${labelWidth}" height="17" rx="4" />`,
+    `<text x="${labelX}" y="17">${escapeText(label)}</text>`,
+    "</g>",
   ].join("");
 }
 

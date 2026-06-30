@@ -53,9 +53,9 @@ def test_generate_trace_uses_selected_mapper_ordering_and_scheduler_policy():
     assert trace["run"]["mapper"] == "SABRE"
     assert trace["run"]["reorder"] == "Fidelity"
     assert trace["run"]["scheduler_policy"] == "EJF-SerialComm"
-    assert trace["run"]["serial_comm"] == 1
-    assert trace["run"]["serial_trap_ops"] == 1
-    assert trace["run"]["serial_all"] == 0
+    assert trace["run"]["serial_comm"] is True
+    assert trace["run"]["serial_trap_ops"] is True
+    assert trace["run"]["serial_all"] is False
 
 
 def test_visualizer_rejects_nonphysical_parallel_trap_scheduler_policy():
@@ -67,7 +67,7 @@ def test_scheduler_policy_changes_generated_timeline_when_policy_is_stricter():
     baseline = generate_trace("qft_n4", "G3x3", 2, "Greedy", "Naive", "EJF")
     global_serial = generate_trace("qft_n4", "G3x3", 2, "Greedy", "Naive", "EJF-GlobalSerial")
 
-    assert global_serial["run"]["serial_all"] == 1
+    assert global_serial["run"]["serial_all"] is True
     assert global_serial["metrics"]["finish_time"] > baseline["metrics"]["finish_time"]
 
 
@@ -75,8 +75,8 @@ def test_ejf_serializes_same_trap_gates_but_allows_cross_trap_parallel_gates():
     trace = generate_trace("swap_test_n25", "G3x3", 3, "SABRE", "Naive", "EJF")
 
     assert trace["validation"]["valid"] is True
-    assert trace["run"]["serial_trap_ops"] == 1
-    assert trace["run"]["serial_all"] == 0
+    assert trace["run"]["serial_trap_ops"] is True
+    assert trace["run"]["serial_all"] is False
     assert trace["metrics"]["max_parallel_gates"] > 1
     assert trace["metrics"]["cross_trap_parallel_gates"] > 0
     assert trace["metrics"]["same_trap_gate_overlaps"] == 0
@@ -108,6 +108,21 @@ def test_mapper_selection_changes_initial_chain_layout_for_same_experiment():
 def test_generate_trace_rejects_infeasible_capacity_before_running_scheduler():
     with pytest.raises(ValueError, match="requires 10 logical qubits"):
         generate_trace("adder_n10", "L6", 1, "Greedy")
+
+
+def test_generate_trace_rejects_invalid_output_before_returning_trace():
+    with pytest.raises(ValueError, match="Generated trace failed validation"):
+        generate_trace("hhl_n7", "G3x3", 1, "Greedy", "Naive", "EJF")
+
+
+def test_all_catalog_programs_generate_valid_recommended_l6_traces():
+    from visualizer_server import PROGRAMS
+
+    for program_id, program in PROGRAMS.items():
+        capacity = int(program.get("recommended_l6_min_capacity") or 1)
+        trace = generate_trace(program_id, "L6", capacity, "Greedy", "Naive", "EJF")
+
+        assert trace["validation"]["valid"] is True, (program_id, trace["validation"]["errors"])
 
 
 def _same_trap_gate_overlaps(events):

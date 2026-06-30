@@ -466,7 +466,7 @@ select {
 
 .scheduler-mode-toggle {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: var(--space-2);
 }
 
@@ -617,7 +617,7 @@ select {
   min-height: 0;
   overflow: hidden;
   display: grid;
-  grid-template-rows: 112px minmax(0, 1fr);
+  grid-template-rows: 136px minmax(0, 1fr);
   background: var(--color-canvas);
 }
 
@@ -675,13 +675,34 @@ select {
 }
 
 .circuit-wire {
-  stroke: rgba(245, 245, 247, 0.42);
-  stroke-width: 1.4;
+  stroke: rgba(245, 245, 247, 0.5);
+  stroke-width: 1.55;
 }
 
 .circuit-qubit-label {
-  fill: rgba(245, 245, 247, 0.62);
-  font-size: 10px;
+  fill: rgba(245, 245, 247, 0.7);
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.circuit-focus-band {
+  fill: rgba(158, 227, 125, 0.1);
+  stroke: rgba(158, 227, 125, 0.42);
+  stroke-width: 1;
+}
+
+.circuit-active-label rect {
+  fill: rgba(12, 17, 13, 0.96);
+  stroke: rgba(158, 227, 125, 0.62);
+  stroke-width: 1;
+}
+
+.circuit-active-label text {
+  fill: #dfffd7;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 780;
+  text-anchor: middle;
 }
 
 .circuit-gate {
@@ -709,7 +730,7 @@ select {
 .circuit-gate.active .circuit-target,
 .circuit-gate.active .circuit-control {
   stroke: var(--color-gate);
-  filter: drop-shadow(0 0 5px rgba(158, 227, 125, 0.48));
+  filter: drop-shadow(0 0 7px rgba(158, 227, 125, 0.62));
 }
 
 .circuit-gate.ready rect {

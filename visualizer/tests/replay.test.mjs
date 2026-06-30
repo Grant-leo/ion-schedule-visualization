@@ -48,7 +48,7 @@ const trace = {
       ions: [0],
       source: "trap:0",
       target: "segment:0",
-      metadata: { endpoint: "R" },
+      metadata: { endpoint: "R", swap_count: 1, swap_hops: 1, swap_ions: [0, 1] },
     },
     {
       id: 2,
@@ -369,6 +369,26 @@ test("validateTrace rejects dynamic trap capacity overflow after merge", () => {
   assert.match(validation.errors.join("\n"), /trap:1 occupancy 2 exceeds capacity 1/);
 });
 
+test("validateTrace rejects splitting a non-endpoint ion without internal swaps", () => {
+  const badTrace = structuredClone(trace);
+  badTrace.events[1].metadata = { endpoint: "R" };
+
+  const validation = validateTrace(badTrace);
+
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors.join("\n"), /split ion 0 is not at R endpoint of trap:0/);
+});
+
+test("validateTrace rejects internal split metadata that cannot move the ion to the endpoint", () => {
+  const badTrace = structuredClone(trace);
+  badTrace.events[1].metadata = { endpoint: "R", swap_count: 1, swap_hops: 0, swap_ions: [0, 1] };
+
+  const validation = validateTrace(badTrace);
+
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors.join("\n"), /needs 1 swap hops/);
+});
+
 test("validateTrace rejects two-qubit gates when ions are not colocated", () => {
   const badTrace = {
     ...trace,
@@ -511,6 +531,51 @@ test("replay returns trap chains with active split ions removed from the chain",
   assert.deepEqual(replay.stateAt(15).trapChains.get("trap:0"), [1]);
 });
 
+test("replay keeps pre-split trap chains for motion-path reconstruction", () => {
+  const replay = createReplay(trace, 1);
+  const state = replay.stateAt(15);
+
+  assert.deepEqual(state.motionTrapChains.get("trap:0"), [0, 1]);
+  assert.deepEqual(state.trapChains.get("trap:0"), [1]);
+});
+
+test("replay reserves the merge endpoint during active merges to prevent visual overlap", () => {
+  const mergeTrace = {
+    schema_version: "1.0",
+    device_type: "ion_trap",
+    topology: {
+      traps: [
+        { id: 0, capacity: 3, slots: [0, 1, 2], orientation: { 0: "R" } },
+        { id: 1, capacity: 3, slots: [0, 1, 2], orientation: { 0: "L" } },
+      ],
+      segments: [{ id: 0, from: "trap:0", to: "trap:1", length: 10 }],
+      junctions: [],
+    },
+    particles: [
+      { id: 0, initial_location: "segment:0" },
+      { id: 1, initial_location: "trap:1", initial_slot: 0 },
+      { id: 2, initial_location: "trap:1", initial_slot: 1 },
+    ],
+    events: [
+      {
+        id: 0,
+        type: "merge",
+        start: 0,
+        end: 10,
+        ions: [0],
+        source: "segment:0",
+        target: "trap:1",
+        metadata: { endpoint: "L" },
+      },
+    ],
+    metrics: { event_count: 1 },
+  };
+  const replay = createReplay(mergeTrace, 1);
+
+  assert.deepEqual(replay.stateAt(5).trapChains.get("trap:1"), ["__merge:0:0", 1, 2]);
+  assert.deepEqual(replay.stateAt(10).trapChains.get("trap:1"), [0, 1, 2]);
+});
+
 test("replay preserves merge endpoint order in trap chains", () => {
   const endpointTrace = {
     schema_version: "1.0",
@@ -544,7 +609,7 @@ test("replay preserves merge endpoint order in trap chains", () => {
   };
   const replay = createReplay(endpointTrace, 1);
 
-  assert.deepEqual(replay.stateAt(0).trapChains.get("trap:1"), [1, 2]);
+  assert.deepEqual(replay.stateAt(0).trapChains.get("trap:1"), ["__merge:0:0", 1, 2]);
   assert.deepEqual(replay.stateAt(10).trapChains.get("trap:1"), [0, 1, 2]);
 
   endpointTrace.events[0].metadata.endpoint = "R";

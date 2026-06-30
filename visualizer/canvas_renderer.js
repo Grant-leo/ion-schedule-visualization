@@ -56,7 +56,7 @@ export function createRenderer(canvas) {
       drawChannelTerminals(context, trace, layout, state);
       drawTraps(context, trace, layout);
       drawTrapPorts(context, trace, layout);
-      drawJunctions(context, trace, layout);
+      drawJunctions(context, trace, layout, state);
       drawActiveEvents(context, layout, state);
       drawIons(context, trace, layout, state);
     },
@@ -106,7 +106,11 @@ export function trapSlotPoint(trapPoint, slotIndex, capacity) {
 
 export function trapRenderWidth(trap) {
   const highCapacityAllowance = Math.max(0, trap.capacity - 6) * 6;
-  return Math.max(68, Math.min(146, 15 * trap.capacity + 14 + highCapacityAllowance));
+  const readableChainWidth =
+    trap.capacity <= 1
+      ? 68
+      : ((trap.capacity - 1) * (RENDER_SIZES.activeIonRadius * 2 + 5)) / 0.8 + 24;
+  return Math.max(68, Math.min(240, Math.max(15 * trap.capacity + 14 + highCapacityAllowance, readableChainWidth)));
 }
 
 export function trapConnectionPoint(trap, trapPoint, segmentLocation) {
@@ -158,7 +162,7 @@ export function pointAlongPolyline(points, progress) {
   return points[points.length - 1];
 }
 
-export function motionPathPoints(layout, event) {
+export function motionPathPoints(layout, event, state = null) {
   const start = eventEndpointPoint(layout, event, event.source) || resolveLocationPoint(layout, event.source);
   const end = eventEndpointPoint(layout, event, event.target) || resolveLocationPoint(layout, event.target);
   if (!start || !end) return [start || end].filter(Boolean);
@@ -175,7 +179,7 @@ export function motionPathPoints(layout, event) {
   }
 
   if (event.source?.startsWith("trap:") && event.target?.startsWith("segment:")) {
-    const swapPath = splitInternalSwapPoints(layout, event);
+    const swapPath = splitInternalSwapPoints(layout, event, state);
     const exitPath = segmentEndpointToCenterPath(layout, event.target, event.source);
     return compactPath([...(swapPath.length ? swapPath : [start]), ...exitPath]);
   }
@@ -187,7 +191,7 @@ export function motionPathPoints(layout, event) {
   return compactPath([start, end]);
 }
 
-export function splitInternalSwapPoints(layout, event) {
+export function splitInternalSwapPoints(layout, event, state = null) {
   const swapHops = Number(event.metadata?.swap_hops || 0);
   const swapCount = Number(event.metadata?.swap_count || 0);
   if (event.type !== "split" || swapCount <= 0 || swapHops <= 0 || !event.source?.startsWith("trap:")) {
@@ -197,14 +201,24 @@ export function splitInternalSwapPoints(layout, event) {
   const trapPoint = layout.traps.get(event.source);
   if (!trap || !trapPoint) return [];
   const endpointSlot = endpointSlotIndex(trap, event.target);
-  const startSlot =
+  const liveSlot = liveTrapChainSlot(event, state);
+  const startSlot = liveSlot ?? (
     event.metadata?.endpoint === "R"
       ? Math.max(0, endpointSlot - swapHops)
-      : Math.min(trap.capacity - 1, endpointSlot + swapHops);
+      : Math.min(trap.capacity - 1, endpointSlot + swapHops)
+  );
+  if (startSlot === endpointSlot) return [];
   return [
     trapSlotPoint(trapPoint, startSlot, trap.capacity),
     trapSlotPoint(trapPoint, endpointSlot, trap.capacity),
   ];
+}
+
+function liveTrapChainSlot(event, state) {
+  const chain = state?.motionTrapChains?.get(event.source) || state?.trapChains?.get(event.source);
+  if (!chain || !(event.ions || []).length) return null;
+  const index = chain.indexOf(event.ions[0]);
+  return index >= 0 ? index : null;
 }
 
 export function ionRenderPoint(basePoint, location, activeMotion, offsetIndex) {
@@ -624,14 +638,19 @@ function drawTrapPort(context, point, side, connected) {
   context.restore();
 }
 
-function drawJunctions(context, trace, layout) {
+function drawJunctions(context, trace, layout, state) {
+  const activity = activeJunctionActivity(trace, layout, state);
   for (const junction of trace.topology.junctions) {
     const location = `junction:${junction.id}`;
     const point = layout.junctions.get(location);
     if (!point) continue;
     const directions = junctionDirections(trace, layout, location, point);
     const spec = junctionRenderSpec(junction, directions);
+    const active = activity.get(location) || 0;
     context.save();
+    if (active > 0) {
+      drawActiveJunctionGlow(context, point, directions, spec, active);
+    }
     context.shadowColor = "rgba(0, 0, 0, 0.5)";
     context.shadowBlur = 8;
     drawJunctionPatch(context, point, directions, spec.armLength, spec.outerWidth, "rgba(0, 0, 0, 0.74)", spec.armLineCap);
@@ -648,18 +667,41 @@ function drawJunctions(context, trace, layout) {
     );
     drawJunctionPatch(context, point, directions, spec.armLength, spec.channelWidth, cssColor("--color-segment"), spec.armLineCap);
     drawJunctionPatch(context, point, directions, spec.armLength, spec.highlightWidth, "rgba(255, 255, 255, 0.2)", spec.armLineCap);
-    drawJunctionMarker(context, point, directions, spec);
+    drawJunctionMarker(context, point, directions, spec, active);
     context.restore();
   }
 }
 
-function drawJunctionMarker(context, point, directions, spec) {
+function drawActiveJunctionGlow(context, point, directions, spec, active) {
+  const glow = clamp(active, 0, 1);
+  context.save();
+  context.shadowColor = `rgba(100, 210, 255, ${0.48 + glow * 0.28})`;
+  context.shadowBlur = 16 + glow * 14;
+  drawJunctionPatch(
+    context,
+    point,
+    directions,
+    spec.armLength + 3,
+    spec.channelWidth + 10,
+    `rgba(100, 210, 255, ${0.2 + glow * 0.25})`,
+    spec.armLineCap,
+  );
+  context.shadowColor = "rgba(255, 209, 102, 0.42)";
+  context.shadowBlur = 10 + glow * 8;
+  context.fillStyle = `rgba(255, 209, 102, ${0.22 + glow * 0.2})`;
+  context.beginPath();
+  context.arc(point.x, point.y, spec.centerRadius + 8, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+function drawJunctionMarker(context, point, directions, spec, active = 0) {
   if (!spec.markerRadius) return;
   context.save();
-  context.shadowColor = "rgba(255, 209, 102, 0.42)";
-  context.shadowBlur = 9;
-  context.strokeStyle = junctionStrokeColor(spec);
-  context.lineWidth = spec.markerWidth;
+  context.shadowColor = active > 0 ? "rgba(100, 210, 255, 0.74)" : "rgba(255, 209, 102, 0.42)";
+  context.shadowBlur = active > 0 ? 15 : 9;
+  context.strokeStyle = active > 0 ? "rgba(194, 244, 255, 0.98)" : junctionStrokeColor(spec);
+  context.lineWidth = active > 0 ? spec.markerWidth + 0.8 : spec.markerWidth;
   context.lineCap = "round";
   for (const direction of directions) {
     context.beginPath();
@@ -667,7 +709,7 @@ function drawJunctionMarker(context, point, directions, spec) {
     context.lineTo(point.x + direction.x * spec.markerArmLength, point.y + direction.y * spec.markerArmLength);
     context.stroke();
   }
-  context.fillStyle = junctionStrokeColor(spec);
+  context.fillStyle = active > 0 ? "rgba(194, 244, 255, 0.98)" : junctionStrokeColor(spec);
   context.beginPath();
   context.arc(point.x, point.y, spec.markerRadius, 0, Math.PI * 2);
   context.fill();
@@ -677,6 +719,45 @@ function drawJunctionMarker(context, point, directions, spec) {
   context.arc(point.x, point.y, Math.max(1.1, spec.markerRadius * 0.38), 0, Math.PI * 2);
   context.fill();
   context.restore();
+}
+
+export function activeJunctionActivity(trace, layout, state = {}) {
+  const activity = new Map();
+  for (const event of state.activeEvents || []) {
+    if (!MOTION_TYPES.has(event.type)) continue;
+    const junctions = eventJunctionLocations(trace, layout, event);
+    if (!junctions.length) continue;
+    const path = motionPathPoints(layout, event, state);
+    const point = pointAlongPolyline(path, eventProgress(event, state.time));
+    if (!point) continue;
+    for (const location of junctions) {
+      const junctionPoint = layout.junctions?.get(location) || sharedSegmentEndpoint(layout, event.source, event.target);
+      if (!junctionPoint) continue;
+      const radius = Math.max(RENDER_SIZES.segmentWidth * 2.2, 42);
+      const intensity = clamp(1 - distance(point, junctionPoint) / radius, 0, 1);
+      if (intensity <= 0) continue;
+      activity.set(location, Math.max(activity.get(location) || 0, intensity));
+    }
+  }
+  return activity;
+}
+
+function eventJunctionLocations(trace, layout, event) {
+  if (event.type !== "move" || !event.source?.startsWith("segment:") || !event.target?.startsWith("segment:")) {
+    return [];
+  }
+  const source = trace.topology.segments?.find((segment) => `segment:${segment.id}` === event.source);
+  const target = trace.topology.segments?.find((segment) => `segment:${segment.id}` === event.target);
+  const sourceEndpoints = new Set([source?.from, source?.to].filter(Boolean));
+  const targetEndpoints = new Set([target?.from, target?.to].filter(Boolean));
+  const locations = [...sourceEndpoints].filter((endpoint) => endpoint?.startsWith("junction:") && targetEndpoints.has(endpoint));
+  if (locations.length) return locations;
+  const shared = sharedSegmentEndpoint(layout, event.source, event.target);
+  if (!shared) return [];
+  for (const [location, point] of layout.junctions || []) {
+    if (samePoint(point, shared)) return [location];
+  }
+  return [];
 }
 
 function drawJunctionPatch(context, point, directions, length, width, color, lineCap) {
@@ -757,11 +838,11 @@ function normalizedDirection(from, to) {
 function drawActiveEvents(context, layout, state) {
   for (const event of state.activeEvents) {
     if (MOTION_TYPES.has(event.type)) {
-      const path = motionPathPoints(layout, event);
+      const path = motionPathPoints(layout, event, state);
       const point = pointAlongPolyline(path, eventProgress(event, state.time));
       if (!point) continue;
       drawMotionPath(context, path);
-      drawSwapCue(context, layout, event);
+      drawSwapCue(context, layout, event, state);
       context.save();
       context.shadowColor = cssColor("--color-move");
       context.shadowBlur = 18;
@@ -780,8 +861,8 @@ function drawActiveEvents(context, layout, state) {
   }
 }
 
-function drawSwapCue(context, layout, event) {
-  const path = splitInternalSwapPoints(layout, event);
+function drawSwapCue(context, layout, event, state = null) {
+  const path = splitInternalSwapPoints(layout, event, state);
   if (path.length < 2) return;
   context.save();
   context.strokeStyle = "rgba(230, 186, 96, 0.88)";
@@ -812,7 +893,7 @@ function drawIons(context, trace, layout, state) {
     );
     const location = state.locations.get(particle.id) || particle.initial_location;
     const basePoint = activeMotion
-      ? motionPoint(layout, activeMotion, state.time)
+      ? motionPoint(layout, activeMotion, state.time, state)
       : particlePoint(layout, trace, state, particle, location);
 
     if (!basePoint) continue;
@@ -844,8 +925,8 @@ function drawIons(context, trace, layout, state) {
   }
 }
 
-function motionPoint(layout, event, time) {
-  const path = motionPathPoints(layout, event);
+function motionPoint(layout, event, time, state = null) {
+  const path = motionPathPoints(layout, event, state);
   return pointAlongPolyline(path, eventProgress(event, time));
 }
 

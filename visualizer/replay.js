@@ -13,6 +13,7 @@ export function validateTrace(trace) {
 
   const topologyInfo = validateTopology(trace.topology || {}, errors);
   const occupancy = validateInitialParticles(trace.particles, topologyInfo, errors);
+  const trapChains = buildInitialTrapChains(trace);
   const locations = new Map(trace.particles.map((particle) => [particle.id, particle.initial_location]));
   const sortedEvents = sortedTraceEvents(trace.events);
   const busyUntil = new Map();
@@ -32,6 +33,7 @@ export function validateTrace(trace) {
     validateEventLocations(event, topologyInfo, errors);
     validateEventTopology(event, topologyInfo, errors);
     validateEventEndpoint(event, topologyInfo.trapSegmentOrientation, errors);
+    validateSplitEndpointIon(event, trapChains, errors);
     if (event.end < event.start) {
       errors.push(`event ${event.id} ends before it starts`);
     }
@@ -63,6 +65,7 @@ export function validateTrace(trace) {
       }
       if (event.type === "split" && event.source?.startsWith("trap:")) {
         decrementTrapOccupancy(occupancy, event.source, event, errors);
+        removeIonFromTrapChain(trapChains, event.source, ion);
       }
     }
 
@@ -89,12 +92,17 @@ export function validateTrace(trace) {
   return { valid: errors.length === 0, errors };
 
   function applyCompletedTransfers(pendingTransfers, locations, time) {
+    const chainEventsApplied = new Set();
     for (let index = pendingTransfers.length - 1; index >= 0; index -= 1) {
       const transfer = pendingTransfers[index];
       if (transfer.end <= time) {
         locations.set(transfer.ion, transfer.target);
         if (transfer.target?.startsWith("trap:")) {
           incrementTrapOccupancy(occupancy, topologyInfo.trapCapacity, transfer.target, transfer.event, errors);
+          if (!chainEventsApplied.has(transfer.event.id)) {
+            applyMergeToTrapChains(transfer.event, trapChains);
+            chainEventsApplied.add(transfer.event.id);
+          }
         }
         pendingTransfers.splice(index, 1);
       }
@@ -141,6 +149,7 @@ export function createReplay(trace, keyframeInterval = 100) {
         time: clampedTime,
         locations,
         activeEvents,
+        motionTrapChains: cloneTrapChains(trapChains),
         trapChains: visibleTrapChains(trapChains, activeEvents),
         dagState: buildDagState(trace, events, activeEvents, clampedTime),
         metrics,
@@ -381,6 +390,31 @@ function validateEventEndpoint(event, trapSegmentOrientation, errors) {
   }
 }
 
+function validateSplitEndpointIon(event, trapChains, errors) {
+  if (event.type !== "split" || !event.source?.startsWith("trap:")) return;
+  const endpoint = event.metadata?.endpoint;
+  if (endpoint !== "L" && endpoint !== "R") return;
+  const chain = trapChains.get(event.source) || [];
+  for (const ion of event.ions || []) {
+    const slot = chain.indexOf(ion);
+    if (slot === -1) {
+      errors.push(`event ${event.id} split ion ${ion} is not in ${event.source} chain`);
+      continue;
+    }
+    const endpointSlot = endpoint === "L" ? 0 : chain.length - 1;
+    const neededHops = Math.abs(slot - endpointSlot);
+    if (neededHops === 0) continue;
+    const swapHops = Number(event.metadata?.swap_hops || 0);
+    const swapCount = Number(event.metadata?.swap_count || 0);
+    if (swapCount <= 0 || swapHops < neededHops) {
+      errors.push(
+        `event ${event.id} split ion ${ion} is not at ${endpoint} endpoint of ${event.source}; ` +
+          `slot ${slot}, endpoint slot ${endpointSlot}, needs ${neededHops} swap hops but metadata has ${swapHops}`,
+      );
+    }
+  }
+}
+
 function decrementTrapOccupancy(occupancy, location, event, errors) {
   if (!location?.startsWith("trap:")) return;
   const next = (occupancy.get(location) || 0) - 1;
@@ -427,30 +461,49 @@ function visibleTrapChains(trapChains, activeEvents) {
     if (!chain) continue;
     for (const ion of event.ions || []) removeIon(chain, ion);
   }
+  for (const event of activeEvents) {
+    if (event.type !== "merge" || !event.target?.startsWith("trap:")) continue;
+    const chain = chains.get(event.target) || [];
+    for (const ion of event.ions || []) removeIon(chain, ion);
+    const placeholders = (event.ions || []).map((ion) => `__merge:${event.id}:${ion}`);
+    if (event.metadata?.endpoint === "L") {
+      chain.splice(0, 0, ...placeholders);
+    } else {
+      chain.push(...placeholders);
+    }
+    chains.set(event.target, chain);
+  }
   return chains;
 }
 
 function applyCompletedTransfer(event, locations, trapChains) {
   if (event.type === "split") {
-    const chain = trapChains.get(event.source);
-    if (chain) {
-      for (const ion of event.ions || []) removeIon(chain, ion);
-    }
+    for (const ion of event.ions || []) removeIonFromTrapChain(trapChains, event.source, ion);
   } else if (event.type === "merge") {
-    const chain = trapChains.get(event.target) || [];
-    for (const ion of event.ions || []) removeIon(chain, ion);
-    const endpoint = event.metadata?.endpoint;
-    if (endpoint === "L") {
-      chain.splice(0, 0, ...(event.ions || []));
-    } else {
-      chain.push(...(event.ions || []));
-    }
-    trapChains.set(event.target, chain);
+    applyMergeToTrapChains(event, trapChains);
   }
 
   for (const ion of event.ions || []) {
     locations.set(ion, event.target);
   }
+}
+
+function removeIonFromTrapChain(trapChains, location, ion) {
+  const chain = trapChains.get(location);
+  if (chain) removeIon(chain, ion);
+}
+
+function applyMergeToTrapChains(event, trapChains) {
+  if (event.type !== "merge" || !event.target?.startsWith("trap:")) return;
+  const chain = trapChains.get(event.target) || [];
+  for (const ion of event.ions || []) removeIon(chain, ion);
+  const endpoint = event.metadata?.endpoint;
+  if (endpoint === "L") {
+    chain.splice(0, 0, ...(event.ions || []));
+  } else {
+    chain.push(...(event.ions || []));
+  }
+  trapChains.set(event.target, chain);
 }
 
 function removeIon(chain, ion) {

@@ -7,6 +7,7 @@ import {
   endpointSlotIndex,
   eventProgress,
   gateLaserTargets,
+  activeJunctionActivity,
   interpolatePoint,
   ionLabelSpec,
   ionRenderPoint,
@@ -112,8 +113,16 @@ test("trapSlotPoint lays out ions along a horizontal trap chain", () => {
 
 test("trapRenderWidth keeps dense linear layouts readable without oversized trap bars", () => {
   assert.equal(trapRenderWidth({ capacity: 2 }), 68);
-  assert.equal(trapRenderWidth({ capacity: 5 }), 89);
-  assert.equal(trapRenderWidth({ capacity: 8 }), 146);
+  assert.ok(trapRenderWidth({ capacity: 5 }) >= 122);
+  assert.ok(trapRenderWidth({ capacity: 8 }) >= 220);
+});
+
+test("trapRenderWidth keeps high-capacity chain slots wider than active ion spheres", () => {
+  const trapPoint = { x: 0, y: 0, width: trapRenderWidth({ capacity: 8 }) };
+  const left = trapSlotPoint(trapPoint, 0, 8);
+  const next = trapSlotPoint(trapPoint, 1, 8);
+
+  assert.ok(next.x - left.x > RENDER_SIZES.activeIonRadius * 2 + 4);
 });
 
 test("trapConnectionPoint connects hardware channels to trap chain ends", () => {
@@ -342,6 +351,32 @@ test("splitInternalSwapPoints reconstructs the chain-internal swap path before s
   );
 });
 
+test("splitInternalSwapPoints starts from the ion's live trap-chain slot", () => {
+  const layout = {
+    traps: new Map([["trap:0", { x: 100, y: 40, width: 80 }]]),
+    traceTrapsFallback: [{ id: 0, capacity: 5, orientation: { 7: "R" } }],
+  };
+  const state = { trapChains: new Map([["trap:0", [8, 9, 7, 2, 3]]]) };
+
+  assert.deepEqual(
+    splitInternalSwapPoints(
+      layout,
+      {
+        type: "split",
+        ions: [7],
+        source: "trap:0",
+        target: "segment:7",
+        metadata: { endpoint: "R", swap_count: 1, swap_hops: 1 },
+      },
+      state,
+    ),
+    [
+      trapSlotPoint({ x: 100, y: 40, width: 80 }, 2, 5),
+      trapSlotPoint({ x: 100, y: 40, width: 80 }, 4, 5),
+    ],
+  );
+});
+
 test("ionRenderPoint keeps trap-chain ions exactly on their slots", () => {
   const basePoint = { x: 120, y: 80 };
 
@@ -497,6 +532,37 @@ test("motionPathPoints routes segment moves through the shared junction", () => 
     { x: 100, y: 0 },
     { x: 100, y: 50 },
   ]);
+});
+
+test("activeJunctionActivity highlights the shared junction while an ion is crossing it", () => {
+  const trace = {
+    topology: {
+      junctions: [{ id: 0, degree: 3 }],
+      segments: [
+        { id: 0, from: "trap:0", to: "junction:0" },
+        { id: 1, from: "junction:0", to: "trap:1" },
+      ],
+    },
+  };
+  const layout = {
+    traps: new Map(),
+    junctions: new Map([["junction:0", { x: 100, y: 0 }]]),
+    segments: new Map([
+      ["segment:0", { x: 50, y: 0 }],
+      ["segment:1", { x: 150, y: 0 }],
+    ]),
+    segmentEndpoints: new Map([
+      ["segment:0", { from: "trap:0", to: "junction:0", start: { x: 0, y: 0 }, end: { x: 100, y: 0 } }],
+      ["segment:1", { from: "junction:0", to: "trap:1", start: { x: 100, y: 0 }, end: { x: 200, y: 0 } }],
+    ]),
+  };
+
+  const activity = activeJunctionActivity(trace, layout, {
+    time: 5,
+    activeEvents: [{ id: 1, type: "move", start: 0, end: 10, ions: [0], source: "segment:0", target: "segment:1" }],
+  });
+
+  assert.ok(activity.get("junction:0") > 0.9);
 });
 
 test("pointAlongPolyline interpolates by physical path length", () => {

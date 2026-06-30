@@ -8,7 +8,10 @@ from http.server import ThreadingHTTPServer
 import pytest
 
 from visualizer_server import VisualizerHandler
+from visualizer_server import CAPACITIES
+from visualizer_server import PROGRAMS
 from visualizer_server import STATIC_DIR
+from visualizer_server import _machine_trap_count
 
 
 class QuietVisualizerHandler(VisualizerHandler):
@@ -88,7 +91,7 @@ def test_visualizer_desktop_dag_inspector_keeps_dag_large_without_hiding_timelin
     assert "grid-template-rows: minmax(0, 1fr);" in css
     assert "overflow: hidden;\n  display: grid;" in css
     assert "height: 100%;" in css
-    assert "grid-template-rows: 112px minmax(0, 1fr);" in css
+    assert "grid-template-rows: 136px minmax(0, 1fr);" in css
     assert "grid-template-areas:\n      \"header\"\n      \"viewport\"\n      \"timeline\"\n      \"left\"\n      \"right\";" in css
 
 
@@ -117,6 +120,40 @@ def test_visualizer_trace_endpoint_serves_valid_qccdsim_trace(visualizer_http_se
     assert trace["metrics"]["shuttling_time"] > 0
 
 
+def test_visualizer_trace_endpoint_applies_mapper_ordering_and_scheduler(visualizer_http_server):
+    query = urllib.parse.urlencode(
+        {
+            "program": "qft_n4",
+            "machine": "G3x3",
+            "capacity": "2",
+            "mapper": "SABRE",
+            "ordering": "Naive",
+            "scheduler": "EJF-GlobalSerial",
+        }
+    )
+
+    trace = read_json(f"{visualizer_http_server}/api/trace?{query}")
+
+    assert trace["run"]["mapper"] == "SABRE"
+    assert trace["run"]["reorder"] == "Naive"
+    assert trace["run"]["scheduler_policy"] == "EJF-GlobalSerial"
+    assert trace["run"]["serial_all"] is True
+    assert trace["validation"]["valid"] is True
+
+
+def test_visualizer_program_catalog_has_feasible_demo_configurations():
+    max_capacity = max(CAPACITIES)
+    largest_machine_slots = max(_machine_trap_count(machine, max_capacity) * max_capacity for machine in ["L6", "G2x3", "G3x3", "G9", "T4x2", "T6x3", "T8x4", "H6"])
+
+    impossible = [
+        (program_id, program.get("qubits"))
+        for program_id, program in PROGRAMS.items()
+        if int(program.get("qubits") or 0) > largest_machine_slots
+    ]
+
+    assert impossible == []
+
+
 def test_visualizer_trace_endpoint_rejects_infeasible_capacity(visualizer_http_server):
     query = urllib.parse.urlencode(
         {
@@ -133,3 +170,23 @@ def test_visualizer_trace_endpoint_rejects_infeasible_capacity(visualizer_http_s
     assert excinfo.value.code == 400
     payload = json.loads(excinfo.value.read().decode("utf-8"))
     assert "requires 22 logical qubits" in payload["error"]
+
+
+def test_visualizer_trace_endpoint_rejects_demo_unsafe_capacity(visualizer_http_server):
+    query = urllib.parse.urlencode(
+        {
+            "program": "hhl_n7",
+            "machine": "G3x3",
+            "capacity": "1",
+            "mapper": "Greedy",
+            "ordering": "Naive",
+            "scheduler": "EJF",
+        }
+    )
+
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        read_json(f"{visualizer_http_server}/api/trace?{query}")
+
+    assert excinfo.value.code == 400
+    payload = json.loads(excinfo.value.read().decode("utf-8"))
+    assert "Generated trace failed validation" in payload["error"]

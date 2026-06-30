@@ -467,6 +467,76 @@ def test_validate_trace_rejects_split_endpoint_that_disagrees_with_architecture_
     assert any("endpoint L does not match trap:0 segment:0 orientation R" in error for error in validation["errors"])
 
 
+def test_validate_trace_rejects_non_endpoint_split_without_internal_swaps():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [{"id": 0, "capacity": 3, "orientation": {"0": "R"}}],
+            "segments": [{"id": 0, "from": "trap:0", "to": "junction:0", "length": 10}],
+            "junctions": [{"id": 0}],
+        },
+        "particles": [
+            {"id": 0, "initial_location": "trap:0", "initial_slot": 0},
+            {"id": 1, "initial_location": "trap:0", "initial_slot": 1},
+            {"id": 2, "initial_location": "trap:0", "initial_slot": 2},
+        ],
+        "events": [
+            {
+                "id": 0,
+                "type": "split",
+                "start": 0,
+                "end": 80,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "segment:0",
+                "metadata": {"endpoint": "R"},
+            }
+        ],
+        "metrics": {"event_count": 1},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("split ion 0 is not at R endpoint of trap:0" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_internal_split_metadata_that_cannot_reach_endpoint():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [{"id": 0, "capacity": 3, "orientation": {"0": "R"}}],
+            "segments": [{"id": 0, "from": "trap:0", "to": "junction:0", "length": 10}],
+            "junctions": [{"id": 0}],
+        },
+        "particles": [
+            {"id": 0, "initial_location": "trap:0", "initial_slot": 0},
+            {"id": 1, "initial_location": "trap:0", "initial_slot": 1},
+            {"id": 2, "initial_location": "trap:0", "initial_slot": 2},
+        ],
+        "events": [
+            {
+                "id": 0,
+                "type": "split",
+                "start": 0,
+                "end": 80,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "segment:0",
+                "metadata": {"endpoint": "R", "swap_count": 1, "swap_hops": 1, "swap_ions": [0, 2]},
+            }
+        ],
+        "metrics": {"event_count": 1},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("needs 2 swap hops" in error for error in validation["errors"])
+
+
 def test_validate_trace_rejects_shuttling_that_skips_topology_adjacency():
     bad_trace = {
         "schema_version": "1.0",

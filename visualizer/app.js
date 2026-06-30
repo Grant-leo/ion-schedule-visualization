@@ -13,6 +13,8 @@ import {
 
 const LIVE_PANEL_INTERVAL_MS = 160;
 const PERFORMANCE_PANEL_INTERVAL_MS = 250;
+const MIN_MOTION_DISPLAY_CYCLES = 80;
+const MOTION_EVENT_TYPES = new Set(["split", "move", "merge"]);
 
 const elements = {
   controlPanel: document.getElementById("controlPanel"),
@@ -237,6 +239,7 @@ function wireControls() {
   });
   window.addEventListener("resize", () => {
     lastDagKey = "";
+    lastCircuitKey = "";
     draw({ forcePanels: true });
   });
 }
@@ -444,12 +447,23 @@ function selectedCapacityFeasibility(selection = {}) {
   const programId = selection.program || elements.programSelect.value;
   const machine = selection.machine || elements.architectureSelect.value;
   const capacity = Number(selection.capacity ?? elements.capacitySelect.value);
-  const qubits = Number(programCatalog.get(programId)?.qubits || 0);
+  const program = programCatalog.get(programId);
+  const qubits = Number(program?.qubits || 0);
+  const recommendedCapacity = machine === "L6" ? Number(program?.recommended_l6_min_capacity || 1) : 1;
   const trapCount = Number(machineTrapCounts.get(machine) || 0);
   if (!qubits || !trapCount || !capacity) return { valid: true };
-  const requiredCapacity = Math.ceil(qubits / trapCount);
+  const slotCapacity = Math.ceil(qubits / trapCount);
+  const requiredCapacity = Math.max(slotCapacity, recommendedCapacity);
   if (capacity >= requiredCapacity) return { valid: true, requiredCapacity };
   const shortMessage = `needs cap ${requiredCapacity}+ on ${machine}`;
+  if (capacity >= slotCapacity && capacity < recommendedCapacity) {
+    return {
+      valid: false,
+      requiredCapacity,
+      shortMessage,
+      message: `${programLabelFromId(programId)} fits total ion slots on ${machine}, but this benchmark needs demo-safe trap capacity ${requiredCapacity} or larger to avoid invalid intermediate trap occupancy.`,
+    };
+  }
   return {
     valid: false,
     requiredCapacity,
@@ -564,7 +578,8 @@ function loop(now) {
   lastFrame = now;
 
   if (playing && replay) {
-    currentTime = Math.min(replay.finishTime, currentTime + delta * Number(elements.speedSelect.value));
+    const motionScale = playbackMotionScale(replay.stateAt(currentTime));
+    currentTime = Math.min(replay.finishTime, currentTime + delta * Number(elements.speedSelect.value) * motionScale);
     if (currentTime >= replay.finishTime) {
       playing = false;
       elements.playPauseButton.textContent = "Play";
@@ -574,6 +589,15 @@ function loop(now) {
 
   recordFrame(delta, now);
   requestAnimationFrame(loop);
+}
+
+function playbackMotionScale(state) {
+  const motionDurations = (state.activeEvents || [])
+    .filter((event) => MOTION_EVENT_TYPES.has(event.type))
+    .map((event) => Math.max(1, event.end - event.start));
+  if (!motionDurations.length) return 1;
+  const shortest = Math.min(...motionDurations);
+  return Math.min(1, Math.max(0.18, shortest / MIN_MOTION_DISPLAY_CYCLES));
 }
 
 function draw(options = {}) {
@@ -611,7 +635,8 @@ function draw(options = {}) {
     lastDagKey = dagKey;
   }
 
-  const circuitKey = `${dagKey}|${trace?.particles?.length ?? 0}`;
+  const circuitSizeKey = `${elements.circuitPanel.clientWidth}x${elements.circuitPanel.clientHeight}`;
+  const circuitKey = `${dagKey}|${trace?.particles?.length ?? 0}|${circuitSizeKey}`;
   if (circuitKey !== lastCircuitKey) {
     renderCircuitSvg(elements.circuitPanel, state.dagState, { qubitCount: trace.particles.length });
     lastCircuitKey = circuitKey;

@@ -71,7 +71,12 @@ def _visualizer_scheduler_options():
 
 
 def generate_trace(program_id, machine, capacity, mapper, ordering="Naive", scheduler="EJF"):
-    return json.loads(_generate_trace_json(program_id, machine, int(capacity), mapper, ordering, scheduler))
+    trace = json.loads(_generate_trace_json(program_id, machine, int(capacity), mapper, ordering, scheduler))
+    validation = trace.get("validation") or {}
+    if not validation.get("valid", False):
+        errors = "; ".join((validation.get("errors") or [])[:4]) or "unknown validation error"
+        raise ValueError(f"Generated trace failed validation: {errors}")
+    return trace
 
 
 @lru_cache(maxsize=64)
@@ -111,11 +116,20 @@ def _generate_trace_json(program_id, machine, capacity, mapper, ordering, schedu
 
 def _validate_demo_capacity(program_id, machine, capacity):
     qubits = _program_qubit_count(program_id)
-    slots = _machine_trap_count(machine, capacity) * capacity
+    trap_count = _machine_trap_count(machine, capacity)
+    slots = trap_count * capacity
     if qubits > slots:
         raise ValueError(
             f"{PROGRAMS[program_id]['label']} requires {qubits} logical qubits, "
             f"but {machine} with capacity {capacity} provides {slots} ion slots"
+        )
+    recommended_capacity = int(PROGRAMS[program_id].get("recommended_l6_min_capacity") or 1) if machine == "L6" else 1
+    required_capacity = max((qubits + max(1, trap_count) - 1) // max(1, trap_count), recommended_capacity)
+    if capacity < required_capacity:
+        raise ValueError(
+            f"{PROGRAMS[program_id]['label']} requires demo-safe trap capacity {required_capacity} "
+            f"for this benchmark; {machine} with capacity {capacity} can fit {slots} total ions but may "
+            "produce invalid intermediate trap occupancy"
         )
 
 
@@ -242,7 +256,7 @@ def _fallback_program_catalog():
 def _program_label(program_id):
     acronyms = {"qft": "QFT", "qaoa": "QAOA", "qec": "QEC", "vqe": "VQE", "hhl": "HHL", "bv": "BV"}
     parts = program_id.split("_")
-    return " ".join(acronyms.get(part, part.capitalize()) for part in parts)
+    return " ".join(acronyms.get(part, part if part.startswith("n") and part[1:].isdigit() else part.capitalize()) for part in parts)
 
 
 PROGRAMS.update(_load_program_catalog())
