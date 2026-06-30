@@ -124,11 +124,18 @@ test("main hardware viewport contains a synchronized TikZ-style circuit strip ab
 });
 
 test("circuit strip exposes an expanded synchronized circuit view", () => {
+  const expandButtonCss = cssSource.match(/\.circuit-expand-button\s*{[^}]*}/)?.[0] || "";
+  assert.match(indexSource, /class="circuit-shell"/);
+  assert.ok(indexSource.indexOf('id="circuitPanel"') < indexSource.indexOf('id="circuitExpandButton"'));
   assert.match(indexSource, /id="circuitExpandButton"/);
   assert.match(indexSource, /id="circuitDialog"/);
   assert.match(indexSource, /id="circuitDialogPanel"/);
   assert.match(appSource, /function openCircuitDialog\(\)/);
   assert.match(appSource, /renderCircuitSvg\(elements\.circuitDialogPanel,\s*state\.dagState/);
+  assert.match(cssSource, /\.circuit-shell\s*{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+48px/);
+  assert.doesNotMatch(expandButtonCss, /position:\s*absolute/);
+  assert.match(cssSource, /\.circuit-expand-icon::before/);
+  assert.match(cssSource, /\.circuit-expand-icon::after/);
   assert.match(cssSource, /\.circuit-dialog\[hidden\]/);
   assert.match(cssSource, /\.circuit-dialog-panel/);
 });

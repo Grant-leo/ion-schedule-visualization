@@ -666,34 +666,105 @@ select {
   min-height: 0;
 }
 
-.circuit-strip {
+.circuit-shell {
   position: relative;
   z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
   min-width: 0;
-  overflow: auto;
+  min-height: 0;
   border-bottom: 1px solid var(--color-border);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.012)),
     rgba(8, 9, 11, 0.94);
+}
+
+.circuit-strip {
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
   scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
   scrollbar-width: thin;
 }
 
-.circuit-expand-button {
+.circuit-tool-rail {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 10px;
+  border-left: 1px solid rgba(255, 255, 255, 0.09);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent 58%),
+    rgba(7, 8, 10, 0.66);
+}
+
+.circuit-tool-rail::before {
   position: absolute;
-  top: 8px;
-  right: 10px;
-  z-index: 3;
-  min-height: 28px;
-  padding: 0 10px;
+  inset: 10px auto 12px 0;
+  width: 1px;
+  content: "";
+  background: linear-gradient(180deg, transparent, rgba(100, 210, 255, 0.46), transparent);
+}
+
+.circuit-expand-button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
   border-color: rgba(100, 210, 255, 0.34);
   background:
-    linear-gradient(180deg, rgba(100, 210, 255, 0.16), rgba(100, 210, 255, 0.045)),
-    rgba(15, 18, 22, 0.84);
+    radial-gradient(circle at 50% 0%, rgba(100, 210, 255, 0.28), transparent 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.026)),
+    rgba(15, 18, 22, 0.9);
   color: #eaf9ff;
-  font-size: 11px;
-  font-weight: 760;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.035) inset,
+    0 10px 24px rgba(0, 0, 0, 0.28);
   backdrop-filter: blur(16px);
+}
+
+.circuit-expand-button:hover {
+  border-color: rgba(100, 210, 255, 0.68);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(100, 210, 255, 0.42), transparent 62%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.034)),
+    rgba(16, 22, 28, 0.96);
+  transform: translateY(-1px);
+}
+
+.circuit-expand-icon {
+  position: relative;
+  display: block;
+  width: 16px;
+  height: 16px;
+  color: currentColor;
+}
+
+.circuit-expand-icon::before,
+.circuit-expand-icon::after {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  content: "";
+  border-color: currentColor;
+  opacity: 0.95;
+}
+
+.circuit-expand-icon::before {
+  top: 1px;
+  right: 1px;
+  border-top: 2px solid;
+  border-right: 2px solid;
+}
+
+.circuit-expand-icon::after {
+  bottom: 1px;
+  left: 1px;
+  border-bottom: 2px solid;
+  border-left: 2px solid;
 }
 
 .circuit-strip::-webkit-scrollbar {
