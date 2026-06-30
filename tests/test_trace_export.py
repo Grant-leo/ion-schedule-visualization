@@ -177,6 +177,127 @@ def test_validate_trace_rejects_gate_when_ions_are_not_colocated():
     assert any("not at trap:0" in error for error in validation["errors"])
 
 
+def test_validate_trace_rejects_unsupported_event_types_and_gates_outside_traps():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [{"id": 0, "capacity": 2, "orientation": {"0": "R"}}],
+            "segments": [{"id": 0, "from": "trap:0", "to": "junction:0", "length": 10}],
+            "junctions": [{"id": 0}],
+        },
+        "dag": {"nodes": [{"id": 0, "gate_name": "h", "qubits": [0], "arity": 1}], "edges": []},
+        "particles": [{"id": 0, "initial_location": "trap:0"}],
+        "events": [
+            {
+                "id": 0,
+                "type": "teleport",
+                "start": 0,
+                "end": 10,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "segment:0",
+                "metadata": {},
+            },
+            {
+                "id": 1,
+                "type": "gate",
+                "start": 10,
+                "end": 20,
+                "ions": [0],
+                "source": "segment:0",
+                "target": "segment:0",
+                "metadata": {"gate_id": 0, "arity": 1},
+            },
+        ],
+        "metrics": {"event_count": 2},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("unsupported event type teleport" in error for error in validation["errors"])
+    assert any("gate event 1 must execute inside one trap" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_dag_nodes_without_matching_gate_events():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {"traps": [{"id": 0, "capacity": 1}], "segments": [], "junctions": []},
+        "dag": {
+            "nodes": [
+                {"id": 0, "gate_name": "h", "qubits": [0], "arity": 1},
+                {"id": 1, "gate_name": "x", "qubits": [0], "arity": 1},
+            ],
+            "edges": [{"source": 0, "target": 1}],
+        },
+        "particles": [{"id": 0, "initial_location": "trap:0"}],
+        "events": [
+            {
+                "id": 0,
+                "type": "gate",
+                "start": 0,
+                "end": 10,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "trap:0",
+                "metadata": {"gate_id": 0, "arity": 1},
+            }
+        ],
+        "metrics": {"event_count": 1},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("dag node 1 has no matching gate event" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_dag_dependency_timing_violations():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {"traps": [{"id": 0, "capacity": 1}], "segments": [], "junctions": []},
+        "dag": {
+            "nodes": [
+                {"id": 0, "gate_name": "h", "qubits": [0], "arity": 1},
+                {"id": 1, "gate_name": "x", "qubits": [0], "arity": 1},
+            ],
+            "edges": [{"source": 0, "target": 1}],
+        },
+        "particles": [{"id": 0, "initial_location": "trap:0"}],
+        "events": [
+            {
+                "id": 0,
+                "type": "gate",
+                "start": 0,
+                "end": 10,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "trap:0",
+                "metadata": {"gate_id": 0, "arity": 1},
+            },
+            {
+                "id": 1,
+                "type": "gate",
+                "start": 5,
+                "end": 15,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "trap:0",
+                "metadata": {"gate_id": 1, "arity": 1},
+            },
+        ],
+        "metrics": {"event_count": 2},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("dag edge 0->1 violates event order" in error for error in validation["errors"])
+
+
 def test_validate_trace_rejects_overlapping_events_for_same_ion():
     bad_trace = {
         "schema_version": "1.0",

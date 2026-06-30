@@ -1,3 +1,5 @@
+const VALID_EVENT_TYPES = new Set(["gate", "split", "move", "merge"]);
+
 export function validateTrace(trace) {
   const errors = [];
   if (!trace || typeof trace !== "object") {
@@ -22,9 +24,11 @@ export function validateTrace(trace) {
   if (expectedEvents !== undefined && expectedEvents !== trace.events.length) {
     errors.push(`metrics event_count ${expectedEvents} does not match ${trace.events.length} events`);
   }
+  validateDagEvents(trace, sortedEvents, errors);
 
   for (const event of sortedEvents) {
     applyCompletedTransfers(pendingTransfers, locations, event.start);
+    if (!validateEventShape(event, errors)) continue;
     validateEventLocations(event, topologyInfo, errors);
     validateEventTopology(event, topologyInfo, errors);
     validateEventEndpoint(event, topologyInfo.trapSegmentOrientation, errors);
@@ -267,6 +271,91 @@ function validateEventTopology(event, topologyInfo, errors) {
     const sharedJunction = [...sourceEndpoints].some((endpoint) => endpoint.startsWith("junction:") && targetEndpoints.has(endpoint));
     if (!sharedJunction) {
       errors.push(`event ${event.id} source ${event.source} not adjacent to ${event.target}`);
+    }
+  }
+}
+
+function validateEventShape(event, errors) {
+  if (!VALID_EVENT_TYPES.has(event.type)) {
+    errors.push(`unsupported event type ${event.type} for event ${event.id}`);
+    return false;
+  }
+
+  if (!Array.isArray(event.ions) || event.ions.length === 0) {
+    errors.push(`event ${event.id} must reference at least one ion`);
+  }
+
+  if (event.type === "gate") {
+    if (event.source !== event.target || !event.target?.startsWith("trap:")) {
+      errors.push(`gate event ${event.id} must execute inside one trap`);
+    }
+    if (!Number.isInteger(event.metadata?.gate_id)) {
+      errors.push(`gate event ${event.id} must include integer metadata.gate_id`);
+    }
+    if (Number.isInteger(event.metadata?.arity) && event.metadata.arity !== (event.ions || []).length) {
+      errors.push(`gate event ${event.id} arity ${event.metadata.arity} does not match ${(event.ions || []).length} ions`);
+    }
+  }
+
+  return true;
+}
+
+function validateDagEvents(trace, events, errors) {
+  const dag = trace.dag || {};
+  const nodes = dag.nodes || [];
+  const edges = dag.edges || [];
+  if (nodes.length === 0 && edges.length === 0) return;
+
+  const dagNodes = new Map();
+  for (const node of nodes) {
+    if (!Number.isInteger(node.id)) {
+      errors.push(`dag node has non-integer id ${node.id}`);
+      continue;
+    }
+    if (dagNodes.has(node.id)) {
+      errors.push(`duplicate dag node id ${node.id}`);
+    }
+    dagNodes.set(node.id, node);
+  }
+
+  const gateEventsById = new Map();
+  for (const event of events) {
+    if (event.type !== "gate") continue;
+    const gateId = event.metadata?.gate_id;
+    if (!Number.isInteger(gateId)) continue;
+    if (!dagNodes.has(gateId)) {
+      errors.push(`gate event ${event.id} references unknown dag node ${gateId}`);
+      continue;
+    }
+    if (gateEventsById.has(gateId)) {
+      errors.push(`dag node ${gateId} has multiple matching gate events`);
+      continue;
+    }
+    gateEventsById.set(gateId, event);
+  }
+
+  for (const nodeId of [...dagNodes.keys()].sort((left, right) => left - right)) {
+    if (!gateEventsById.has(nodeId)) {
+      errors.push(`dag node ${nodeId} has no matching gate event`);
+    }
+  }
+
+  for (const edge of edges) {
+    if (!dagNodes.has(edge.source)) {
+      errors.push(`dag edge ${edge.source}->${edge.target} references unknown source`);
+      continue;
+    }
+    if (!dagNodes.has(edge.target)) {
+      errors.push(`dag edge ${edge.source}->${edge.target} references unknown target`);
+      continue;
+    }
+    const sourceEvent = gateEventsById.get(edge.source);
+    const targetEvent = gateEventsById.get(edge.target);
+    if (!sourceEvent || !targetEvent) continue;
+    if (sourceEvent.end > targetEvent.start) {
+      errors.push(
+        `dag edge ${edge.source}->${edge.target} violates event order: source ends at ${sourceEvent.end} but target starts at ${targetEvent.start}`,
+      );
     }
   }
 }

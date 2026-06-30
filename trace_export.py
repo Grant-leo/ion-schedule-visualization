@@ -6,6 +6,9 @@ from schedule import Schedule
 from simulation import SCHEDULER_POLICIES, effective_scheduler_flags
 
 
+VALID_EVENT_TYPES = {"gate", "split", "move", "merge"}
+
+
 def location_key(kind, idx):
     return f"{kind}:{idx}"
 
@@ -49,6 +52,7 @@ def validate_trace(trace):
     expected_events = trace.get("metrics", {}).get("event_count")
     if expected_events is not None and expected_events != len(trace["events"]):
         errors.append(f"metrics event_count {expected_events} does not match {len(trace['events'])} events")
+    _validate_dag_events(trace, errors)
 
     def apply_completed_transfers(time):
         remaining = []
@@ -63,6 +67,8 @@ def validate_trace(trace):
 
     for event in sorted(trace["events"], key=lambda item: (item["start"], item["id"])):
         apply_completed_transfers(event["start"])
+        if not _validate_event_shape(event, errors):
+            continue
         target = event["target"]
         source = event["source"]
         if source not in known_locations:
@@ -82,7 +88,7 @@ def validate_trace(trace):
         for junction_location in _event_junction_resources(event, topology_adjacency):
             if junction_busy_until.get(junction_location, 0) > event["start"]:
                 errors.append(f"{junction_location} busy until {junction_busy_until[junction_location]} for event {event['id']}")
-        for ion in event["ions"]:
+        for ion in event.get("ions", []):
             if busy_until.get(ion, 0) > event["start"]:
                 errors.append(f"ion {ion} busy until {busy_until[ion]} for event {event['id']}")
             current = locations.get(ion)
@@ -220,6 +226,93 @@ def _validate_event_topology(event, topology_adjacency, errors):
         )
         if not shared_junction:
             errors.append(f"event {event.get('id')} source {source} not adjacent to {target}")
+
+
+def _validate_event_shape(event, errors):
+    event_id = event.get("id")
+    event_type = event.get("type")
+    if event_type not in VALID_EVENT_TYPES:
+        errors.append(f"unsupported event type {event_type} for event {event_id}")
+        return False
+
+    ions = event.get("ions")
+    if not isinstance(ions, list) or len(ions) == 0:
+        errors.append(f"event {event_id} must reference at least one ion")
+
+    metadata = event.get("metadata") or {}
+    if event_type == "gate":
+        source = event.get("source")
+        target = event.get("target")
+        if source != target or not str(target).startswith("trap:"):
+            errors.append(f"gate event {event_id} must execute inside one trap")
+        gate_id = metadata.get("gate_id")
+        if not _is_int(gate_id):
+            errors.append(f"gate event {event_id} must include integer metadata.gate_id")
+        arity = metadata.get("arity")
+        if _is_int(arity) and isinstance(ions, list) and arity != len(ions):
+            errors.append(f"gate event {event_id} arity {arity} does not match {len(ions)} ions")
+
+    return True
+
+
+def _validate_dag_events(trace, errors):
+    dag = trace.get("dag") or {}
+    nodes = dag.get("nodes") or []
+    edges = dag.get("edges") or []
+    if not nodes and not edges:
+        return
+
+    dag_nodes = {}
+    for node in nodes:
+        node_id = node.get("id")
+        if not _is_int(node_id):
+            errors.append(f"dag node has non-integer id {node_id}")
+            continue
+        if node_id in dag_nodes:
+            errors.append(f"duplicate dag node id {node_id}")
+        dag_nodes[node_id] = node
+
+    gate_events_by_id = {}
+    for event in trace.get("events", []):
+        if event.get("type") != "gate":
+            continue
+        gate_id = (event.get("metadata") or {}).get("gate_id")
+        if not _is_int(gate_id):
+            continue
+        if gate_id not in dag_nodes:
+            errors.append(f"gate event {event.get('id')} references unknown dag node {gate_id}")
+            continue
+        if gate_id in gate_events_by_id:
+            errors.append(f"dag node {gate_id} has multiple matching gate events")
+            continue
+        gate_events_by_id[gate_id] = event
+
+    for node_id in sorted(dag_nodes):
+        if node_id not in gate_events_by_id:
+            errors.append(f"dag node {node_id} has no matching gate event")
+
+    for edge in edges:
+        source = edge.get("source")
+        target = edge.get("target")
+        if source not in dag_nodes:
+            errors.append(f"dag edge {source}->{target} references unknown source")
+            continue
+        if target not in dag_nodes:
+            errors.append(f"dag edge {source}->{target} references unknown target")
+            continue
+        source_event = gate_events_by_id.get(source)
+        target_event = gate_events_by_id.get(target)
+        if source_event is None or target_event is None:
+            continue
+        if source_event.get("end", 0) > target_event.get("start", 0):
+            errors.append(
+                f"dag edge {source}->{target} violates event order: "
+                f"source ends at {source_event.get('end')} but target starts at {target_event.get('start')}"
+            )
+
+
+def _is_int(value):
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _decrement_trap_occupancy(occupancy, location, event, errors):

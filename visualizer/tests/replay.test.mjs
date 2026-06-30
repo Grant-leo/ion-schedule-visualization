@@ -60,8 +60,48 @@ const trace = {
       target: "trap:1",
       metadata: { endpoint: "L" },
     },
+    {
+      id: 3,
+      type: "split",
+      start: 30,
+      end: 40,
+      ions: [1],
+      source: "trap:0",
+      target: "segment:0",
+      metadata: { endpoint: "R" },
+    },
+    {
+      id: 4,
+      type: "merge",
+      start: 40,
+      end: 50,
+      ions: [1],
+      source: "segment:0",
+      target: "trap:1",
+      metadata: { endpoint: "L" },
+    },
+    {
+      id: 5,
+      type: "gate",
+      start: 50,
+      end: 60,
+      ions: [0, 1],
+      source: "trap:1",
+      target: "trap:1",
+      metadata: { gate_id: 1, gate_name: "cx", arity: 2 },
+    },
+    {
+      id: 6,
+      type: "gate",
+      start: 60,
+      end: 65,
+      ions: [1],
+      source: "trap:1",
+      target: "trap:1",
+      metadata: { gate_id: 2, gate_name: "x", arity: 1 },
+    },
   ],
-  metrics: { event_count: 3 },
+  metrics: { event_count: 7 },
 };
 
 test("validateTrace accepts a valid motion trace", () => {
@@ -122,6 +162,7 @@ test("replay keyframes do not move a long parallel shuttle before it ends", () =
     },
   ];
   parallelTrace.metrics = { event_count: 2 };
+  parallelTrace.dag = { nodes: [], edges: [] };
 
   const replay = createReplay(parallelTrace, 1);
   const state = replay.stateAt(50);
@@ -138,7 +179,7 @@ test("replay reports live cumulative schedule progress at the current time", () 
   const replay = createReplay(trace, 1);
   const progress = replay.stateAt(25).progressMetrics;
 
-  assert.equal(progress.finishTime, 30);
+  assert.equal(progress.finishTime, 65);
   assert.equal(progress.elapsedTime, 25);
   assert.equal(progress.shuttlingTime, 15);
   assert.equal(progress.shuttlingOps, 2);
@@ -331,6 +372,7 @@ test("validateTrace rejects dynamic trap capacity overflow after merge", () => {
 test("validateTrace rejects two-qubit gates when ions are not colocated", () => {
   const badTrace = {
     ...trace,
+    dag: { nodes: [{ id: 0, gate_name: "cx", qubits: [0, 1], arity: 2 }], edges: [] },
     particles: [
       { id: 0, initial_location: "trap:0" },
       { id: 1, initial_location: "trap:1" },
@@ -344,9 +386,10 @@ test("validateTrace rejects two-qubit gates when ions are not colocated", () => 
         ions: [0, 1],
         source: "trap:0",
         target: "trap:0",
-        metadata: { arity: 2 },
+        metadata: { gate_id: 0, arity: 2 },
       },
     ],
+    metrics: { event_count: 1 },
   };
 
   const validation = validateTrace(badTrace);
@@ -371,6 +414,13 @@ test("validateTrace rejects overlapping events for the same ion", () => {
 
 test("validateTrace rejects overlapping operations on the same trap", () => {
   const badTrace = structuredClone(trace);
+  badTrace.dag = {
+    nodes: [
+      { id: 0, gate_name: "h", qubits: [0], arity: 1 },
+      { id: 1, gate_name: "x", qubits: [1], arity: 1 },
+    ],
+    edges: [],
+  };
   badTrace.events = [
     {
       id: 0,
@@ -380,7 +430,7 @@ test("validateTrace rejects overlapping operations on the same trap", () => {
       ions: [0],
       source: "trap:0",
       target: "trap:0",
-      metadata: { arity: 1 },
+      metadata: { gate_id: 0, arity: 1 },
     },
     {
       id: 1,
@@ -390,14 +440,61 @@ test("validateTrace rejects overlapping operations on the same trap", () => {
       ions: [1],
       source: "trap:0",
       target: "trap:0",
-      metadata: { arity: 1 },
+      metadata: { gate_id: 1, arity: 1 },
     },
   ];
+  badTrace.metrics = { event_count: 2 };
 
   const validation = validateTrace(badTrace);
 
   assert.equal(validation.valid, false);
   assert.match(validation.errors.join("\n"), /trap:0 busy until 10/);
+});
+
+test("validateTrace rejects unsupported event types and gates outside traps", () => {
+  const badTrace = structuredClone(trace);
+  badTrace.events[0] = {
+    ...badTrace.events[0],
+    type: "teleport",
+  };
+  badTrace.events[5] = {
+    ...badTrace.events[5],
+    source: "segment:0",
+    target: "segment:0",
+  };
+
+  const validation = validateTrace(badTrace);
+
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors.join("\n"), /unsupported event type teleport/);
+  assert.match(validation.errors.join("\n"), /gate event 5 must execute inside one trap/);
+});
+
+test("validateTrace rejects DAG nodes without matching gate events", () => {
+  const badTrace = structuredClone(trace);
+  badTrace.events = badTrace.events.filter((event) => event.metadata?.gate_id !== 1);
+  badTrace.metrics = { event_count: badTrace.events.length };
+
+  const validation = validateTrace(badTrace);
+
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors.join("\n"), /dag node 1 has no matching gate event/);
+});
+
+test("validateTrace rejects gate events that violate DAG dependency timing", () => {
+  const badTrace = structuredClone(trace);
+  badTrace.events[5] = {
+    ...badTrace.events[5],
+    start: 2,
+    end: 8,
+    source: "trap:0",
+    target: "trap:0",
+  };
+
+  const validation = validateTrace(badTrace);
+
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors.join("\n"), /dag edge 0->1 violates event order/);
 });
 
 test("nextEventTime advances to the next event start", () => {
@@ -515,6 +612,14 @@ test("replay summarizes swap and parallel gate metrics when trace metrics are st
       metadata: { endpoint: "R", swap_count: 2, swap_hops: 3, ion_hops: 4 },
     },
   ];
+  metricsTrace.dag = {
+    nodes: [
+      { id: 0, gate_name: "h", qubits: [0], arity: 1 },
+      { id: 2, gate_name: "x", qubits: [1], arity: 1 },
+    ],
+    edges: [],
+  };
+  metricsTrace.metrics = { event_count: 3 };
 
   const replay = createReplay(metricsTrace, 1);
   const metrics = replay.stateAt(0).metrics;

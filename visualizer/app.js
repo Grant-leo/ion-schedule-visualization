@@ -1,6 +1,6 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260629-dagfull2";
-import { renderDagSvg } from "./dag_renderer.js?v=20260629-dagfull2";
-import { createReplay, validateTrace } from "./replay.js?v=20260629-dagfull2";
+import { createRenderer } from "./canvas_renderer.js?v=20260630-audit4";
+import { renderDagSvg } from "./dag_renderer.js?v=20260630-audit4";
+import { createReplay, validateTrace } from "./replay.js?v=20260630-audit4";
 import {
   createHeadlineMetricCards,
   createMetricCards,
@@ -8,7 +8,7 @@ import {
   describeEvent,
   formatLocation,
   summarizeDag,
-} from "./ui_model.js?v=20260629-dagfull2";
+} from "./ui_model.js?v=20260630-audit4";
 
 const LIVE_PANEL_INTERVAL_MS = 160;
 const PERFORMANCE_PANEL_INTERVAL_MS = 250;
@@ -46,6 +46,21 @@ const elements = {
   runConfigPanel: document.getElementById("runConfigPanel"),
   timeReadout: document.getElementById("timeReadout"),
 };
+
+const GENERATION_LOCKED_ELEMENTS = [
+  elements.traceSelect,
+  elements.programSelect,
+  elements.architectureSelect,
+  elements.capacitySelect,
+  elements.mapperSelect,
+  elements.orderingSelect,
+  elements.schedulerSelect,
+  elements.playPauseButton,
+  elements.restartButton,
+  elements.stepButton,
+  elements.speedSelect,
+  elements.timeline,
+];
 
 const renderer = createRenderer(elements.canvas);
 
@@ -182,11 +197,13 @@ function wireControls() {
   elements.restartButton.addEventListener("click", restart);
   elements.stepButton.addEventListener("click", stepToNextEvent);
   elements.timeline.addEventListener("input", () => {
+    if (generationLoading) return;
     currentTime = Number(elements.timeline.value);
     draw({ forcePanels: true });
   });
   window.addEventListener("resize", () => {
-    draw();
+    lastDagKey = "";
+    draw({ forcePanels: true });
   });
 }
 
@@ -214,6 +231,18 @@ function beginLoadRequest() {
 function loadTraceData(nextTrace) {
   const frontendValidation = validateTrace(nextTrace);
   const backendValidation = nextTrace.validation || { valid: true, errors: [] };
+  const validationErrors = [...(frontendValidation.errors || []), ...(backendValidation.errors || [])];
+  const valid = frontendValidation.valid && backendValidation.valid;
+  if (!valid) {
+    playing = false;
+    elements.playPauseButton.textContent = "Play";
+    setStatus("Trace invalid", "invalid");
+    const message = validationErrors.join("; ") || "Trace validation failed.";
+    elements.eventPanel.textContent = formatErrorMessage(message);
+    showConfigError(validationErrors.join("; "));
+    return false;
+  }
+
   const nextReplay = createReplay(nextTrace);
   previousTraceMetrics = trace?.metrics || null;
   trace = nextTrace;
@@ -231,10 +260,10 @@ function loadTraceData(nextTrace) {
   renderRunConfig(trace);
   resetInspectorRenderCache();
 
-  const valid = frontendValidation.valid && backendValidation.valid;
-  setStatus(valid ? "Schedule verified" : "Trace invalid", valid ? "valid" : "invalid");
+  setStatus("Schedule verified", "valid");
   draw({ forcePanels: true });
   elements.controlPanel.scrollTop = 0;
+  return true;
 }
 
 async function loadSelectedConfig() {
@@ -270,13 +299,13 @@ async function loadSelectedConfig() {
       const nextTrace = await fetchJson(`api/trace?${params.toString()}`, { signal });
       if (requestId !== loadRequestId) return;
       const key = `generated:${program}:${machine}:${capacity}:${mapper}:${ordering}:${scheduler}`;
+      if (!loadTraceData(nextTrace)) return;
       rememberGeneratedTrace(key, nextTrace);
       upsertTraceOption(
         key,
         `${programLabelFromId(program)} | ${machine} | cap ${capacity} | ${mapper} | ${ordering} | ${scheduler}`,
       );
       elements.traceSelect.value = key;
-      loadTraceData(nextTrace);
       return;
     }
 
@@ -454,8 +483,17 @@ function setStatus(message, state) {
 
 function setGenerationLoading(isLoading) {
   generationLoading = isLoading;
+  if (isLoading) {
+    playing = false;
+    elements.playPauseButton.textContent = "Play";
+  }
   elements.loadConfigButton.disabled = isLoading;
+  elements.playPauseButton.disabled = isLoading;
+  elements.timeline.disabled = isLoading;
   elements.loadConfigButton.textContent = isLoading ? "Generating..." : "Generate Schedule";
+  for (const element of GENERATION_LOCKED_ELEMENTS) {
+    element.disabled = isLoading;
+  }
   updateSchedulerModeButtons();
 }
 
@@ -470,12 +508,13 @@ function clearConfigError() {
 }
 
 function togglePlayback() {
-  if (!replay) return;
+  if (!replay || generationLoading) return;
   playing = !playing;
   elements.playPauseButton.textContent = playing ? "Pause" : "Play";
 }
 
 function restart() {
+  if (generationLoading) return;
   currentTime = 0;
   playing = false;
   elements.playPauseButton.textContent = "Play";
@@ -483,7 +522,7 @@ function restart() {
 }
 
 function stepToNextEvent() {
-  if (!replay) return;
+  if (!replay || generationLoading) return;
   currentTime = replay.nextEventTime(currentTime);
   draw({ forcePanels: true });
 }

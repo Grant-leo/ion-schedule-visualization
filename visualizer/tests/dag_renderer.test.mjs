@@ -113,7 +113,7 @@ test("layoutDag preserves every node and dependency for very large DAGs", () => 
   );
   const edges = Array.from({ length: 499 }, (_, id) => ({ source: id, target: id + 1 }));
 
-  const graph = layoutDag({ nodes, edges }, { width: 420, height: 620, direction: "vertical", maxNodes: 80 });
+  const graph = layoutDag({ nodes, edges }, { width: 420, height: 620, direction: "vertical" });
   const ids = new Set(graph.nodes.map((node) => node.id));
 
   assert.equal(graph.nodes.length, 500);
