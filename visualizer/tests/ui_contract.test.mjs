@@ -68,6 +68,13 @@ test("primary playback controls appear before advanced experiment configuration"
   assert.ok(indexSource.indexOf('for="speedSelect"') < indexSource.indexOf('class="advanced-config"'));
 });
 
+test("left control shell stays fixed while experiment configuration scrolls internally", () => {
+  assert.match(indexSource, /class="left-fixed-region"/);
+  assert.match(indexSource, /id="controlScrollRegion"\s+class="left-scroll-region"/);
+  assert.match(cssSource, /\.left-control-panel\s*{[\s\S]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)[\s\S]*overflow:\s*hidden/);
+  assert.match(cssSource, /\.left-scroll-region\s*{[\s\S]*overflow:\s*auto/);
+});
+
 test("scheduler mode buttons cover every exposed demo scheduling mode", () => {
   assert.match(indexSource, /data-scheduler-mode="EJF"/);
   assert.match(indexSource, /data-scheduler-mode="EJF-SerialComm"/);
@@ -77,9 +84,10 @@ test("scheduler mode buttons cover every exposed demo scheduling mode", () => {
 
 test("scheduler mode regeneration preserves the control panel scroll position", () => {
   assert.match(appSource, /async function loadSelectedConfig\(\{\s*preserveControlScroll\s*=\s*true\s*\}\s*=\s*\{\}\)/);
-  assert.match(appSource, /const controlScrollTop\s*=\s*preserveControlScroll\s*\?\s*elements\.controlPanel\.scrollTop\s*:\s*null/);
+  assert.match(appSource, /controlScrollRegion:\s*document\.getElementById\("controlScrollRegion"\)/);
+  assert.match(appSource, /const controlScrollTop\s*=\s*preserveControlScroll\s*\?\s*getControlScrollTop\(\)\s*:\s*null/);
   assert.match(appSource, /loadTraceData\(nextTrace,\s*\{\s*resetControlPanelScroll:\s*!preserveControlScroll\s*\}\)/);
-  assert.match(appSource, /elements\.controlPanel\.scrollTop\s*=\s*controlScrollTop/);
+  assert.match(appSource, /restoreControlScrollTop\(controlScrollTop\)/);
 });
 
 test("active laser gates are visually stronger in the DAG and circuit strip", () => {

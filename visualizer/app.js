@@ -18,6 +18,7 @@ const MOTION_EVENT_TYPES = new Set(["split", "move", "merge"]);
 
 const elements = {
   controlPanel: document.getElementById("controlPanel"),
+  controlScrollRegion: document.getElementById("controlScrollRegion"),
   traceSelect: document.getElementById("traceSelect"),
   sourceModeButtons: [...document.querySelectorAll("[data-source-mode]")],
   scenarioTitle: document.getElementById("scenarioTitle"),
@@ -279,6 +280,17 @@ function beginLoadRequest() {
   return { requestId: loadRequestId, signal: activeLoadController.signal };
 }
 
+function getControlScrollTop() {
+  const scroller = elements.controlScrollRegion || elements.controlPanel;
+  return scroller ? scroller.scrollTop : 0;
+}
+
+function restoreControlScrollTop(scrollTop) {
+  if (scrollTop === null || scrollTop === undefined) return;
+  const scroller = elements.controlScrollRegion || elements.controlPanel;
+  if (scroller) scroller.scrollTop = scrollTop;
+}
+
 function loadTraceData(nextTrace, { resetControlPanelScroll = true } = {}) {
   const frontendValidation = validateTrace(nextTrace);
   const backendValidation = nextTrace.validation || { valid: true, errors: [] };
@@ -315,14 +327,14 @@ function loadTraceData(nextTrace, { resetControlPanelScroll = true } = {}) {
   setStatus("Schedule verified", "valid");
   draw({ forcePanels: true });
   if (resetControlPanelScroll) {
-    elements.controlPanel.scrollTop = 0;
+    restoreControlScrollTop(0);
   }
   return true;
 }
 
 async function loadSelectedConfig({ preserveControlScroll = true } = {}) {
   setSourceMode("experiment");
-  const controlScrollTop = preserveControlScroll ? elements.controlPanel.scrollTop : null;
+  const controlScrollTop = preserveControlScroll ? getControlScrollTop() : null;
   const { requestId, signal } = beginLoadRequest();
   const program = elements.programSelect.value;
   const machine = elements.architectureSelect.value;
@@ -355,7 +367,7 @@ async function loadSelectedConfig({ preserveControlScroll = true } = {}) {
       const nextTrace = await fetchJson(`api/trace?${params.toString()}`, { signal });
       if (requestId !== loadRequestId) return;
       if (!loadTraceData(nextTrace, { resetControlPanelScroll: !preserveControlScroll })) return;
-      if (controlScrollTop !== null) elements.controlPanel.scrollTop = controlScrollTop;
+      restoreControlScrollTop(controlScrollTop);
       return;
     }
 
@@ -377,7 +389,7 @@ async function loadSelectedConfig({ preserveControlScroll = true } = {}) {
     const nextTrace = await fetchJson(match.path, { signal });
     if (requestId !== loadRequestId) return;
     loadTraceData(nextTrace, { resetControlPanelScroll: !preserveControlScroll });
-    if (controlScrollTop !== null) elements.controlPanel.scrollTop = controlScrollTop;
+    restoreControlScrollTop(controlScrollTop);
   } catch (error) {
     if (isAbortError(error) || requestId !== loadRequestId) return;
     setStatus("Generation failed", "invalid");

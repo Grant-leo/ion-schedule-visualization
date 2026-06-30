@@ -379,21 +379,23 @@ select {
 .left-control-panel,
 .right-inspector-panel {
   min-height: 0;
-  overflow: auto;
-  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
-  scrollbar-width: thin;
   background: rgba(14, 15, 18, 0.78);
   backdrop-filter: blur(22px);
 }
 
-.left-control-panel::-webkit-scrollbar,
+.left-scroll-region {
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+  scrollbar-width: thin;
+}
+
+.left-scroll-region::-webkit-scrollbar,
 .right-inspector-panel::-webkit-scrollbar,
 #dagPanel::-webkit-scrollbar {
   width: 9px;
   height: 9px;
 }
 
-.left-control-panel::-webkit-scrollbar-thumb,
+.left-scroll-region::-webkit-scrollbar-thumb,
 .right-inspector-panel::-webkit-scrollbar-thumb,
 #dagPanel::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
@@ -404,11 +406,31 @@ select {
 
 .left-control-panel {
   grid-area: left;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
+  overflow: hidden;
   padding: var(--space-3);
   border-right: 1px solid var(--color-border);
+}
+
+.left-fixed-region,
+.left-scroll-region {
+  min-width: 0;
+}
+
+.left-fixed-region {
+  display: grid;
+  gap: 10px;
+}
+
+.left-scroll-region {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .right-inspector-panel {
