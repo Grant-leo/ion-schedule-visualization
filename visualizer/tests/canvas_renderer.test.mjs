@@ -574,11 +574,81 @@ test("activeSplitSwapPoint exchanges the displayed labels for the reported swap 
     trapChains: new Map([["trap:0", [1, 0, 2]]]),
   };
 
-  assert.deepEqual(activeSplitSwapPoint(layout, event, state, 1), { x: 84, y: 40 });
-  assert.deepEqual(activeSplitSwapPoint(layout, event, state, 2), { x: 84, y: 40 });
+  const firstMoving = activeSplitSwapPoint(layout, event, state, 1);
+  const secondMoving = activeSplitSwapPoint(layout, event, state, 2);
+  assert.ok(firstMoving.x > 68 && firstMoving.x < 100);
+  assert.ok(secondMoving.x > 68 && secondMoving.x < 100);
+  assert.notEqual(firstMoving.y, secondMoving.y);
   state.time = 60;
   assert.equal(activeSplitSwapPoint(layout, event, state, 1), null);
   assert.deepEqual(activeSplitSwapPoint(layout, event, state, 2), { x: 68, y: 40 });
+});
+
+test("activeSplitSwapPoint separates swap lanes so ions do not overlap mid-swap", () => {
+  const layout = {
+    traps: new Map([["trap:0", { x: 100, y: 40, width: 80 }]]),
+    traceTrapsFallback: [{ id: 0, capacity: 5, orientation: { 7: "R" } }],
+  };
+  const event = {
+    id: 4,
+    type: "split",
+    ions: [1],
+    start: 0,
+    end: 100,
+    source: "trap:0",
+    target: "segment:7",
+    metadata: { endpoint: "R", swap_count: 1, swap_hops: 2, swap_ions: [1, 2] },
+  };
+  const state = {
+    time: 17,
+    motionTrapChains: new Map([["trap:0", [1, 0, 2]]]),
+    trapChains: new Map([["trap:0", [1, 0, 2]]]),
+  };
+
+  const first = activeSplitSwapPoint(layout, event, state, 1);
+  const second = activeSplitSwapPoint(layout, event, state, 2);
+
+  assert.ok(Math.hypot(first.x - second.x, first.y - second.y) > RENDER_SIZES.activeIonRadius * 2);
+});
+
+test("activeSplitSwapPoint hands off the split ion to its unified split path without a jump", () => {
+  const layout = {
+    traps: new Map([["trap:0", { x: 100, y: 40, width: 80 }]]),
+    segments: new Map([["segment:7", { x: 300, y: 40 }]]),
+    segmentEndpoints: new Map([
+      [
+        "segment:7",
+        {
+          start: trapSlotPoint({ x: 100, y: 40, width: 80 }, 4, 5),
+          end: { x: 468, y: 40 },
+          from: "trap:0",
+          to: "junction:0",
+          route: [trapSlotPoint({ x: 100, y: 40, width: 80 }, 4, 5), { x: 468, y: 40 }],
+        },
+      ],
+    ]),
+    traceTrapsFallback: [{ id: 0, capacity: 5, orientation: { 7: "R" } }],
+  };
+  const event = {
+    id: 4,
+    type: "split",
+    ions: [1],
+    start: 0,
+    end: 100,
+    source: "trap:0",
+    target: "segment:7",
+    metadata: { endpoint: "R", swap_count: 1, swap_hops: 2, swap_ions: [1, 2] },
+  };
+  const state = {
+    time: 20,
+    motionTrapChains: new Map([["trap:0", [1, 0, 2]]]),
+    trapChains: new Map([["trap:0", [1, 0, 2]]]),
+  };
+  const secondSlot = trapSlotPoint({ x: 100, y: 40, width: 80 }, 2, 5);
+
+  assert.ok(motionPoint(layout, event, state.time, state).x > secondSlot.x);
+  assert.equal(activeSplitSwapPoint(layout, event, state, 1), null);
+  assert.deepEqual(activeSplitSwapPoint(layout, event, state, 2), trapSlotPoint({ x: 100, y: 40, width: 80 }, 0, 5));
 });
 
 test("ionRenderPoint keeps trap-chain ions exactly on their slots", () => {

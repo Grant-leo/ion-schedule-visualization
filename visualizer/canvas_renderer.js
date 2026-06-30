@@ -246,18 +246,45 @@ export function activeSplitSwapPoint(layout, event, state = {}, ionId) {
   if (ion !== info.firstIon && ion !== info.secondIon) return null;
   const firstPoint = trapSlotPoint(info.trapPoint, info.firstSlot, info.trap.capacity);
   const secondPoint = trapSlotPoint(info.trapPoint, info.secondSlot, info.trap.capacity);
-  const swapLength = distance(firstPoint, secondPoint);
-  const traveled = motionTravelDistance(event, state.time ?? event.start, layout.motionSpeedPxPerCycle);
-  const swapProgress =
-    traveled === null || swapLength <= 0
-      ? clamp(eventProgress(event, state.time ?? event.start) / SPLIT_SWAP_PHASE_FRACTION, 0, 1)
-      : clamp(traveled / swapLength, 0, 1);
+  const swapProgress = splitSwapProgress(layout, event, state, firstPoint, secondPoint);
 
   if (ion === info.firstIon) {
     if (swapProgress >= 1) return null;
-    return interpolatePoint(firstPoint, secondPoint, swapProgress);
+    return swapLanePoint(firstPoint, secondPoint, swapProgress, -1);
   }
-  return interpolatePoint(secondPoint, firstPoint, swapProgress);
+  if (swapProgress >= 1) return firstPoint;
+  return swapLanePoint(secondPoint, firstPoint, swapProgress, -1);
+}
+
+function splitSwapProgress(layout, event, state, firstPoint, secondPoint) {
+  const swapLength = distance(firstPoint, secondPoint);
+  if (swapLength <= 0) return 1;
+  const reference = continuousMotionGroup(layout, event, state);
+  const path = reference?.path || eventMotionPathPoints(layout, event, state);
+  const pathLength = polylineLength(path);
+  if (pathLength > 0) {
+    const traveled = pathLength * eventProgress(
+      { start: reference?.start ?? event.start, end: reference?.end ?? event.end },
+      state.time ?? event.start,
+    );
+    return clamp(traveled / swapLength, 0, 1);
+  }
+  const traveled = motionTravelDistance(event, state.time ?? event.start, layout.motionSpeedPxPerCycle);
+  return traveled === null
+    ? clamp(eventProgress(event, state.time ?? event.start) / SPLIT_SWAP_PHASE_FRACTION, 0, 1)
+    : clamp(traveled / swapLength, 0, 1);
+}
+
+function swapLanePoint(start, end, progress, lane) {
+  const clampedProgress = clamp(progress, 0, 1);
+  const base = interpolatePoint(start, end, clampedProgress);
+  const length = distance(start, end);
+  if (length <= 0) return base;
+  const offset = Math.sin(Math.PI * clampedProgress) * Math.max(RENDER_SIZES.activeIonRadius * 1.45, 14) * lane;
+  return {
+    x: base.x - ((end.y - start.y) / length) * offset,
+    y: base.y + ((end.x - start.x) / length) * offset,
+  };
 }
 
 function splitSwapInfo(layout, event, state = {}) {
@@ -734,7 +761,7 @@ function trapEndpointSide(trap, segmentLocation) {
 }
 
 function resolveLocationPoint(layout, location) {
-  return layout.traps.get(location) || layout.junctions.get(location) || layout.segments.get(location) || null;
+  return layout.traps?.get(location) || layout.junctions?.get(location) || layout.segments?.get(location) || null;
 }
 
 function drawBackground(context, canvas) {
