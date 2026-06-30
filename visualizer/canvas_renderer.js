@@ -406,6 +406,9 @@ function computeLayout(viewport, trace) {
 
 export function normalizeTraceLayoutForRendering(trace) {
   const rawLayout = trace?.topology?.layout || {};
+  if (trace?.run?.machine === "H6") {
+    return repairH6JunctionLayout(trace, rawLayout);
+  }
   if (trace?.run?.machine === "L6") {
     return repairLinearJunctionLayout(trace, rawLayout);
   }
@@ -442,6 +445,74 @@ function repairLinearJunctionLayout(trace, rawLayout) {
   }
 
   return repaired;
+}
+
+function repairH6JunctionLayout(trace, rawLayout) {
+  const repaired = {};
+  for (const [location, point] of Object.entries(rawLayout)) {
+    repaired[location] = { ...point };
+  }
+
+  const trapPoints = [];
+  for (const trap of trace?.topology?.traps || []) {
+    const point = repaired[`trap:${trap.id}`];
+    if (point) trapPoints.push(point);
+  }
+  if (!trapPoints.length) return repaired;
+
+  const center = {
+    x: average(trapPoints.map((point) => point.x)),
+    y: average(trapPoints.map((point) => point.y)),
+  };
+  const trapRadius = average(trapPoints.map((point) => distance(point, center))) || 1;
+  const minimumRingRadius = trapRadius * 0.9;
+
+  for (const junction of trace?.topology?.junctions || []) {
+    const junctionLocation = `junction:${junction.id}`;
+    const current = repaired[junctionLocation];
+    if (!current) continue;
+    const connectedTrapPoints = connectedTrapLocations(trace, junctionLocation)
+      .map((location) => repaired[location])
+      .filter(Boolean);
+    const direction = h6JunctionDirection(center, connectedTrapPoints, current);
+    if (!direction || distance(current, center) >= minimumRingRadius) continue;
+    repaired[junctionLocation] = {
+      ...current,
+      x: center.x + direction.x * trapRadius,
+      y: center.y + direction.y * trapRadius,
+    };
+  }
+
+  return repaired;
+}
+
+function connectedTrapLocations(trace, junctionLocation) {
+  const locations = [];
+  for (const segment of trace?.topology?.segments || []) {
+    if (segment.from === junctionLocation && segment.to?.startsWith("trap:")) locations.push(segment.to);
+    if (segment.to === junctionLocation && segment.from?.startsWith("trap:")) locations.push(segment.from);
+  }
+  return locations;
+}
+
+function h6JunctionDirection(center, connectedTrapPoints, fallbackPoint) {
+  const vectors = connectedTrapPoints.map((point) => unitVector(center, point)).filter(Boolean);
+  const summed = vectors.reduce((accumulator, vector) => ({
+    x: accumulator.x + vector.x,
+    y: accumulator.y + vector.y,
+  }), { x: 0, y: 0 });
+  return normalizeVector(summed) || unitVector(center, fallbackPoint);
+}
+
+function unitVector(from, to) {
+  if (!from || !to) return null;
+  return normalizeVector({ x: to.x - from.x, y: to.y - from.y });
+}
+
+function normalizeVector(vector) {
+  const length = Math.hypot(vector.x, vector.y);
+  if (length < 0.001) return null;
+  return { x: vector.x / length, y: vector.y / length };
 }
 
 function g9TraceLayoutNeedsExteriorRepair(trace, rawLayout) {
@@ -571,7 +642,7 @@ function sameRawLayoutPoint(left, right) {
 }
 
 export function alignJunctionsToTrapPorts(trace, traps, junctions) {
-  if (trace.run?.machine === "G9") return;
+  if (trace.run?.machine === "G9" || trace.run?.machine === "H6") return;
   for (const junction of trace.topology.junctions || []) {
     const junctionLocation = `junction:${junction.id}`;
     const junctionPoint = junctions.get(junctionLocation);

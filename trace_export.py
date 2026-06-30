@@ -659,7 +659,7 @@ def _circle_layout(machine):
         layout[location_key("trap", trap.id)] = {"x": 1.0 + math.cos(angle), "y": 1.0 + math.sin(angle)}
     for junction in machine.junctions:
         angle = (2 * math.pi * (junction.id + 0.5)) / junction_count
-        layout[location_key("junction", junction.id)] = {"x": 1.0 + 0.55 * math.cos(angle), "y": 1.0 + 0.55 * math.sin(angle)}
+        layout[location_key("junction", junction.id)] = {"x": 1.0 + math.cos(angle), "y": 1.0 + math.sin(angle)}
     return layout
 
 

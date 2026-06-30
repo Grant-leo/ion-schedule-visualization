@@ -2,14 +2,15 @@
   "schema_version": "1.0",
   "device_type": "ion_trap",
   "run": {
-    "program": "E:\\doctor\\\u9ed1\u5ba2\u677e\\QCCDSim\\programs\\benchmarks\\qasmbench\\small\\qft_n4.qasm",
+    "program": ".\\programs\\benchmarks\\qasmbench\\small\\qft_n4.qasm",
     "machine": "H6",
     "ions_per_region": 2,
     "mapper": "Greedy",
     "reorder": "Naive",
-    "serial_trap_ops": 1,
-    "serial_comm": 0,
-    "serial_all": 0,
+    "scheduler_policy": "EJF",
+    "serial_trap_ops": true,
+    "serial_comm": false,
+    "serial_all": false,
     "gate_type": "FM",
     "swap_type": "GateSwap",
     "single_qubit_gate_time": 7,
@@ -178,22 +179,40 @@
     ],
     "junctions": [
       {
-        "id": 0
+        "id": 0,
+        "degree": 2,
+        "junction_type": "J2",
+        "cross_time": 5
       },
       {
-        "id": 1
+        "id": 1,
+        "degree": 2,
+        "junction_type": "J2",
+        "cross_time": 5
       },
       {
-        "id": 2
+        "id": 2,
+        "degree": 2,
+        "junction_type": "J2",
+        "cross_time": 5
       },
       {
-        "id": 3
+        "id": 3,
+        "degree": 2,
+        "junction_type": "J2",
+        "cross_time": 5
       },
       {
-        "id": 4
+        "id": 4,
+        "degree": 2,
+        "junction_type": "J2",
+        "cross_time": 5
       },
       {
-        "id": 5
+        "id": 5,
+        "degree": 2,
+        "junction_type": "J2",
+        "cross_time": 5
       }
     ],
     "layout": {
@@ -222,28 +241,28 @@
         "y": 0.1339745962155614
       },
       "junction:0": {
-        "x": 1.4763139720814413,
-        "y": 1.275
+        "x": 1.8660254037844388,
+        "y": 1.5
       },
       "junction:1": {
         "x": 1.0,
-        "y": 1.55
+        "y": 2.0
       },
       "junction:2": {
-        "x": 0.5236860279185587,
-        "y": 1.275
+        "x": 0.1339745962155613,
+        "y": 1.5
       },
       "junction:3": {
-        "x": 0.5236860279185587,
-        "y": 0.7250000000000001
+        "x": 0.13397459621556118,
+        "y": 0.5000000000000002
       },
       "junction:4": {
-        "x": 0.9999999999999999,
-        "y": 0.44999999999999996
+        "x": 0.9999999999999998,
+        "y": 0.0
       },
       "junction:5": {
-        "x": 1.476313972081441,
-        "y": 0.7249999999999998
+        "x": 1.8660254037844384,
+        "y": 0.49999999999999956
       }
     }
   },
@@ -1733,7 +1752,13 @@
     },
     "one_qubit_gates": 24,
     "two_qubit_gates": 12,
-    "shuttling_time": 1110
+    "shuttling_time": 1110,
+    "swap_count": 2,
+    "swap_hops": 3,
+    "ion_hops": 0,
+    "max_parallel_gates": 2,
+    "cross_trap_parallel_gates": 13,
+    "same_trap_gate_overlaps": 0
   },
   "validation": {
     "valid": true,
