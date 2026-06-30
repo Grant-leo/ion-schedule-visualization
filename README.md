@@ -1,5 +1,7 @@
 # QCCD Schedule Visualizer
 
+This repository is the project submission of Qubit Questers for the ISIT 2026 Quantum Hackathon. The project was built as a trapped-ion QCCD scheduling visualization and verification tool, with the goal of making hardware-constrained ion movement, gate execution, and dependency progress easier to inspect during algorithm development.
+
 QCCD Schedule Visualizer is an interactive debugger for trapped-ion QCCD schedules. It extends QCCDSim with a browser-based replay view so users can inspect ion movement, trap-chain ordering, shuttling routes, laser gate execution, dependency progress, and schedule metrics in one place.
 
 The prototype focuses on ion-trap QCCD hardware. It does not model noise, calibration drift, or pulse-level control. Its purpose is schedule verification and explanation: it makes the process behind a QCCDSim schedule visible enough to find repeated shuttling, blocked dependencies, routing bottlenecks, and suspicious chain operations.
