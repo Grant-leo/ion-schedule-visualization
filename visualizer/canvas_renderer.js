@@ -26,10 +26,6 @@ export const RENDER_SIZES = Object.freeze({
   activeSegmentOuterWidth: 36,
   motionPathWidth: 28,
   trapHeight: 28,
-  trapPortGap: 14,
-  trapPortRadius: 5,
-  couplerWidth: 20,
-  couplerLength: 16,
   junctionRadius: 10,
 });
 
@@ -54,11 +50,10 @@ export function createRenderer(canvas) {
       context.clearRect(0, 0, viewport.width, viewport.height);
       drawBackground(context, viewport);
       drawSegments(context, trace, layout, state);
-      drawChannelTerminals(context, trace, layout, state);
       drawTraps(context, trace, layout);
-      drawTrapPorts(context, trace, layout);
       drawJunctions(context, trace, layout, state);
       drawActiveEvents(context, layout, state);
+      drawActiveJunctionOverlays(context, trace, layout, state);
       drawIons(context, trace, layout, state);
     },
   };
@@ -566,49 +561,6 @@ function drawSegments(context, trace, layout, state) {
   }
 }
 
-function drawChannelTerminals(context, trace, layout, state) {
-  const activeMotion = new Set(
-    state.activeEvents.filter((event) => MOTION_TYPES.has(event.type)).flatMap((event) => [event.source, event.target]),
-  );
-
-  for (const segment of trace.topology.segments) {
-    const key = `segment:${segment.id}`;
-    const endpoints = layout.segmentEndpoints?.get(key);
-    if (!endpoints) continue;
-    const route = endpoints.route || [endpoints.start, endpoints.end].filter(Boolean);
-    const isActive = activeMotion.has(key);
-    drawTerminalForEndpoint(context, route, endpoints.start, endpoints.from, isActive);
-    drawTerminalForEndpoint(context, [...route].reverse(), endpoints.end, endpoints.to, isActive);
-  }
-}
-
-function drawTerminalForEndpoint(context, route, point, location, active) {
-  if (!point) return;
-  if (location?.startsWith("trap:")) {
-    const next = route?.[1] || point;
-    drawTrapCoupler(context, point, next, active);
-  }
-}
-
-function drawTrapCoupler(context, point, nextPoint, active) {
-  const horizontal = Math.abs((nextPoint?.x ?? point.x) - point.x) >= Math.abs((nextPoint?.y ?? point.y) - point.y);
-  const length = RENDER_SIZES.couplerLength;
-  const width = RENDER_SIZES.couplerWidth;
-  const x = point.x - (horizontal ? length / 2 : width / 2);
-  const y = point.y - (horizontal ? width / 2 : length / 2);
-
-  context.save();
-  context.fillStyle = active ? "rgba(100, 210, 255, 0.32)" : "rgba(124, 135, 152, 0.36)";
-  context.strokeStyle = active ? cssColor("--color-move") : "rgba(255, 255, 255, 0.24)";
-  context.lineWidth = active ? 1.8 : 1.2;
-  context.shadowColor = active ? cssColor("--color-move") : "rgba(0, 0, 0, 0.42)";
-  context.shadowBlur = active ? 12 : 4;
-  roundedRect(context, x, y, horizontal ? length : width, horizontal ? width : length, 5);
-  context.fill();
-  context.stroke();
-  context.restore();
-}
-
 function drawTraps(context, trace, layout) {
   for (const trap of trace.topology.traps) {
     const point = layout.traps.get(`trap:${trap.id}`);
@@ -662,66 +614,6 @@ function drawTrapChain(context, trap, point) {
   context.restore();
 }
 
-function drawTrapPorts(context, trace, layout) {
-  for (const trap of trace.topology.traps) {
-    const point = layout.traps.get(`trap:${trap.id}`);
-    if (!point) continue;
-    const ports = trapPortPoints(point, trap.capacity);
-    const connected = trapConnectedPortSides(trap);
-    for (const side of ["L", "R"]) {
-      drawTrapNeck(context, point, ports[side], side, connected.has(side));
-      drawTrapPort(context, ports[side], side, connected.has(side));
-    }
-  }
-}
-
-function drawTrapNeck(context, trapPoint, portPoint, side, connected) {
-  if (!connected) return;
-  const sign = side === "R" ? 1 : -1;
-  const edge = { x: trapPoint.x + sign * trapPoint.width / 2, y: trapPoint.y };
-  context.save();
-  context.strokeStyle = "rgba(0, 0, 0, 0.62)";
-  context.lineWidth = RENDER_SIZES.couplerWidth + 6;
-  context.lineCap = "round";
-  context.beginPath();
-  context.moveTo(edge.x, edge.y);
-  context.lineTo(portPoint.x, portPoint.y);
-  context.stroke();
-  context.strokeStyle = "rgba(124, 135, 152, 0.42)";
-  context.lineWidth = RENDER_SIZES.couplerWidth;
-  context.beginPath();
-  context.moveTo(edge.x, edge.y);
-  context.lineTo(portPoint.x, portPoint.y);
-  context.stroke();
-  context.strokeStyle = "rgba(255, 255, 255, 0.18)";
-  context.lineWidth = 1.1;
-  context.beginPath();
-  context.moveTo(edge.x, edge.y);
-  context.lineTo(portPoint.x, portPoint.y);
-  context.stroke();
-  context.restore();
-}
-
-function drawTrapPort(context, point, side, connected) {
-  context.save();
-  context.fillStyle = connected ? "rgba(14, 18, 24, 0.98)" : "rgba(115, 127, 145, 0.18)";
-  context.strokeStyle = connected ? "rgba(100, 210, 255, 0.54)" : "rgba(115, 127, 145, 0.36)";
-  context.lineWidth = connected ? 1.8 : 1;
-  context.shadowColor = connected ? "rgba(100, 210, 255, 0.24)" : "transparent";
-  context.shadowBlur = connected ? 8 : 0;
-  context.beginPath();
-  context.arc(point.x, point.y, connected ? RENDER_SIZES.trapPortRadius + 1 : RENDER_SIZES.trapPortRadius, 0, Math.PI * 2);
-  context.fill();
-  context.stroke();
-
-  context.shadowBlur = 0;
-  context.fillStyle = connected ? "rgba(100, 210, 255, 0.92)" : "rgba(168, 179, 195, 0.48)";
-  context.beginPath();
-  context.arc(point.x, point.y, 2.2, 0, Math.PI * 2);
-  context.fill();
-  context.restore();
-}
-
 function drawJunctions(context, trace, layout, state) {
   const activity = activeJunctionActivity(trace, layout, state);
   for (const junction of trace.topology.junctions) {
@@ -751,6 +643,23 @@ function drawJunctions(context, trace, layout, state) {
     );
     drawJunctionPatch(context, point, directions, spec.armLength, spec.channelWidth, cssColor("--color-segment"), spec.armLineCap);
     drawJunctionPatch(context, point, directions, spec.armLength, spec.highlightWidth, "rgba(255, 255, 255, 0.2)", spec.armLineCap);
+    drawJunctionMarker(context, point, directions, spec, active);
+    context.restore();
+  }
+}
+
+function drawActiveJunctionOverlays(context, trace, layout, state) {
+  const activity = activeJunctionActivity(trace, layout, state);
+  for (const junction of trace.topology.junctions) {
+    const location = `junction:${junction.id}`;
+    const active = activity.get(location) || 0;
+    if (active <= 0) continue;
+    const point = layout.junctions.get(location);
+    if (!point) continue;
+    const directions = junctionDirections(trace, layout, location, point);
+    const spec = junctionRenderSpec(junction, directions);
+    context.save();
+    drawActiveJunctionGlow(context, point, directions, spec, active);
     drawJunctionMarker(context, point, directions, spec, active);
     context.restore();
   }
@@ -819,7 +728,7 @@ export function activeJunctionActivity(trace, layout, state = {}) {
       if (!junctionPoint) continue;
       const radius = Math.max(RENDER_SIZES.segmentWidth * 2.2, 42);
       const pathDistance = distanceToPolyline(junctionPoint, path);
-      const pathGlow = pathDistance <= RENDER_SIZES.segmentWidth * 0.75 ? 0.34 : 0;
+      const pathGlow = pathDistance <= RENDER_SIZES.segmentWidth * 0.75 ? 0.92 : 0;
       const intensity = Math.max(pathGlow, clamp(1 - distance(point, junctionPoint) / radius, 0, 1));
       if (intensity <= 0) continue;
       activity.set(location, Math.max(activity.get(location) || 0, intensity));

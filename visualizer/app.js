@@ -1,4 +1,4 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260630-constant-speed1";
+import { createRenderer } from "./canvas_renderer.js?v=20260630-junction-glow1";
 import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-circuit-subscript1";
 import { renderDagSvg } from "./dag_renderer.js?v=20260630-swap-circuit1";
 import { createReplay, validateTrace } from "./replay.js?v=20260630-swap-circuit1";

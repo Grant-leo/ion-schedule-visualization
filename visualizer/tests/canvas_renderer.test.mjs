@@ -80,8 +80,6 @@ test("hardware shuttle channels render wider than moving ions", () => {
   assert.ok(RENDER_SIZES.motionPathWidth > movingIonDiameter);
   assert.ok(RENDER_SIZES.junctionRadius >= RENDER_SIZES.segmentWidth / 2);
   assert.ok(RENDER_SIZES.junctionRadius <= RENDER_SIZES.segmentWidth / 2);
-  assert.ok(RENDER_SIZES.couplerWidth >= RENDER_SIZES.segmentWidth);
-  assert.ok(RENDER_SIZES.couplerWidth <= RENDER_SIZES.segmentWidth);
 });
 
 test("eventProgress clamps time inside event duration", () => {
@@ -661,7 +659,7 @@ test("activeJunctionActivity keeps a junction lit while the active path passes t
     activeEvents: [{ id: 1, type: "move", start: 0, end: 10, ions: [0], source: "segment:0", target: "segment:1" }],
   });
 
-  assert.ok(activity.get("junction:0") > 0.25);
+  assert.ok(activity.get("junction:0") >= 0.9);
 });
 
 test("pointAlongPolyline interpolates by physical path length", () => {

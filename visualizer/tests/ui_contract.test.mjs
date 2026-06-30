@@ -75,6 +75,14 @@ test("left control shell stays fixed while experiment configuration scrolls inte
   assert.match(cssSource, /\.left-scroll-region\s*{[\s\S]*overflow:\s*auto/);
 });
 
+test("hardware canvas omits decorative trap endpoint overlays", () => {
+  assert.doesNotMatch(canvasSource, /drawChannelTerminals\(context/);
+  assert.doesNotMatch(canvasSource, /drawTrapPorts\(context/);
+  assert.doesNotMatch(canvasSource, /function drawChannelTerminals/);
+  assert.doesNotMatch(canvasSource, /function drawTrapPorts/);
+  assert.doesNotMatch(canvasSource, /trapPortRadius|couplerWidth|couplerLength/);
+});
+
 test("scheduler mode buttons cover every exposed demo scheduling mode", () => {
   assert.match(indexSource, /data-scheduler-mode="EJF"/);
   assert.match(indexSource, /data-scheduler-mode="EJF-SerialComm"/);
