@@ -8,15 +8,45 @@ The prototype focuses on ion-trap QCCD hardware. It does not model noise, calibr
 
 ![QCCD Schedule Visualizer main interface showing an H6 trapped-ion architecture replay, synchronized circuit strip, laser gates, and dependency DAG](docs/assets/qccd-visualizer-main.png)
 
-## Purpose
+## At A Glance
 
-This project is intended to grow from a schedule replay demo into a QCCD algorithm research workbench.
+| Item | Details |
+| --- | --- |
+| Event | ISIT 2026 Quantum Hackathon |
+| Team | Qubit Questers |
+| Scope | Trapped-ion QCCD schedule visualization and validation |
+| Input | QCCDSim traces, curated JSON traces, or schedules generated from the UI |
+| Output | Hardware replay, synchronized circuit strip, dependency DAG, and live metrics |
+| Current status | Ion-trap prototype with QCCDSim-backed topology, replay, validation, and benchmark controls |
 
-- Visual verification of existing scheduling algorithms. A trace is checked against topology adjacency, trap capacity, trap/channel/junction resource conflicts, chain-end split/merge constraints, ion locations, and DAG dependency timing before replay is installed. If a schedule is inconsistent, playback is blocked and the UI reports the concrete validation reason.
-- Visual verification of existing mapping algorithms. Mapper choices change the initial ion-to-trap placement and chain order, so the resulting shuttling pressure, swap work, and gate locality can be inspected visually instead of only through aggregate metrics.
-- Exploration of richer scheduling policies. The current UI exposes parallel scheduling, serialized shuttling, and a global serial baseline; the code path is designed so more scheduler policies can be added behind the same trace contract.
-- Architecture-level experiments. QCCDSim machine layouts and trap capacities can be selected in the UI today. Longer term, the goal is to let researchers plug in custom QCCD architectures, run schedules even when no curated result exists, and immediately visualize whether the result is hardware-valid.
-- A path toward an algorithm research platform. Future extensions should include editable/importable circuits, external scheduler adapters, side-by-side comparison of multiple scheduling policies, breakthrough markers for locally improved regions, and shared validation/metric views so mapping, scheduling, architecture, and circuit changes remain connected.
+## Demo Path
+
+1. Start the local server with `.\venv\Scripts\python.exe visualizer_server.py --port 63200`.
+2. Open `http://127.0.0.1:63200/`.
+3. Choose `Verified trace` and select the H6 QFT demo trace.
+4. Press `Play` to watch ion shuttling, laser gates, circuit progress, and DAG completion advance together.
+
+## Why This Is Not Just Animation
+
+The replay is backed by a hardware trace contract. Before a schedule is installed, the visualizer checks topology adjacency, trap capacity, trap/channel/junction resource conflicts, chain-end split and merge legality, ion location consistency, overlapping operations, and DAG dependency timing. Invalid schedules are blocked with a concrete reason instead of being animated as if they were valid.
+
+This makes the tool useful for scheduler and mapper debugging. The canvas is not only drawing particles; it is showing whether the recorded process is consistent with the QCCD trap-and-channel model used by QCCDSim.
+
+## Current Use Cases
+
+- Visual verification of scheduling algorithms. A QCCDSim trace can be replayed with hardware-valid shuttling paths, junction activity, gate timing, and dependency progress.
+- Visual verification of mapping algorithms. Mapper choices change the initial ion-to-trap placement and chain order, so shuttling pressure, swap work, and gate locality can be inspected visually instead of only through aggregate metrics.
+- Scheduler comparison. The current UI exposes parallel scheduling, serialized shuttling, and a global serial baseline so their behavior can be compared on the same benchmark family.
+- Architecture-level experiments. QCCDSim machine layouts and trap capacities can be selected in the UI, including linear, grid, and ring-like QCCD topologies.
+- Demo-ready benchmark replay. Curated traces under `visualizer/traces/` make it possible to open the page and immediately demonstrate a verified schedule without waiting for generation.
+
+## Roadmap
+
+- Custom QCCD architecture import and external scheduler adapters.
+- Editable or importable circuit views that stay connected to mapper, scheduler, DAG, and replay logic.
+- Side-by-side comparison of multiple scheduling policies on the same circuit and architecture.
+- Breakthrough markers that highlight where a new mapper or scheduler improves travel distance, channel pressure, or dependency stalls.
+- A broader algorithm research platform where mapping, scheduling, architecture design, validation, visualization, and metrics share one trace contract.
 
 ## What It Shows
 
