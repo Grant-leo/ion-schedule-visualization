@@ -1,4 +1,4 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260630-swap-smooth1";
+import { createRenderer } from "./canvas_renderer.js?v=20260630-rottrap1";
 import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-circuit-parallel2";
 import { renderDagSvg } from "./dag_renderer.js?v=20260630-swap-circuit1";
 import { createReplay, validateTrace } from "./replay.js?v=20260630-fidelity2";
@@ -364,6 +364,7 @@ async function loadSelectedConfig({ preserveControlScroll = true } = {}) {
   const mapper = elements.mapperSelect.value;
   const ordering = elements.orderingSelect.value;
   const scheduler = elements.schedulerSelect.value;
+  renderSelectedScenarioSummary();
   const feasibility = selectedCapacityFeasibility({ program, machine, capacity });
   clearConfigError();
   if (!feasibility.valid) {
@@ -549,6 +550,19 @@ function renderRunConfig(nextTrace) {
 function renderScenarioSummary(nextTrace) {
   const run = nextTrace.run || {};
   const program = programCatalog.get(programIdFromPath(run.program));
+  const copy = createScenarioCopy({ run, program });
+  elements.scenarioTitle.textContent = copy.title;
+  elements.scenarioDescription.textContent = copy.description;
+}
+
+function renderSelectedScenarioSummary() {
+  const program = programCatalog.get(elements.programSelect.value);
+  const run = {
+    program: elements.programSelect.value,
+    machine: elements.architectureSelect.value,
+    mapper: elements.mapperSelect.value,
+    scheduler_policy: elements.schedulerSelect.value,
+  };
   const copy = createScenarioCopy({ run, program });
   elements.scenarioTitle.textContent = copy.title;
   elements.scenarioDescription.textContent = copy.description;

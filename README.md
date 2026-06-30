@@ -18,13 +18,14 @@ This project is intended to grow from a schedule replay demo into a QCCD algorit
 
 - Trap/channel topologies derived from QCCDSim machine definitions.
 - Ion chains inside each trap, with endpoint split/merge constraints.
+- Architecture-aware trap orientation. Linear and grid machines keep regular horizontal trap chains, while ring-like H6 layouts rotate trap chains from their QCCDSim L/R port connections so channels enter real chain ends instead of visual midpoints.
 - Shuttling along hardware-valid segment and junction paths.
 - Junction highlighting when an active route passes through a junction.
 - GateSwap-style split preparation: the two reported qubit labels exchange before the endpoint ion leaves the trap.
 - Laser highlighting for active gate execution.
 - A TikZ-style circuit strip synchronized with playback, plus an expanded circuit view.
 - A full-height dependency DAG where active gates are emphasized and completed nodes dim.
-- Live headline metrics for gate progress, shuttling operations, and estimated fidelity.
+- Live headline metrics for elapsed schedule time, shuttling operations, and estimated fidelity. Time and shuttle counters show per-operation deltas during playback; the time card also reports the display magnification used to make microsecond-scale hardware events visible in a demo.
 
 ## Quick Start
 
@@ -132,6 +133,8 @@ The page performs capacity preflight checks before generation. If a circuit cann
 ## Validation
 
 Trace validation is part of the user-facing workflow, not only a test helper. Invalid schedules are rejected before replay construction, playback controls are disabled, and the hardware stage reports the first validation failures. This is meant to support debugging of externally generated schedules as well as QCCDSim-produced traces.
+
+The validator checks topology adjacency, trap capacity, segment and junction conflicts, split/merge chain-end legality, ion location consistency, overlapping operations on the same ion or trap, and DAG dependency timing. This means an externally produced schedule can be loaded through the same trace contract and either replayed or blocked with a concrete reason.
 
 Run the frontend tests:
 

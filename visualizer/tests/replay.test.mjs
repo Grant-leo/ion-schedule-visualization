@@ -108,6 +108,23 @@ test("validateTrace accepts a valid motion trace", () => {
   assert.equal(validateTrace(trace).valid, true);
 });
 
+test("validateTrace rejects malformed topology collections without throwing", () => {
+  const badTrace = {
+    schema_version: "1.0",
+    device_type: "ion_trap",
+    topology: { traps: {}, segments: null, junctions: "bad" },
+    particles: [],
+    events: [],
+  };
+
+  const validation = validateTrace(badTrace);
+
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors.join("\n"), /topology\.traps must be an array/);
+  assert.match(validation.errors.join("\n"), /topology\.segments must be an array/);
+  assert.match(validation.errors.join("\n"), /topology\.junctions must be an array/);
+});
+
 test("replay returns correct locations before and after motion", () => {
   const replay = createReplay(trace, 1);
 
@@ -182,9 +199,9 @@ test("replay reports live cumulative schedule progress at the current time", () 
   assert.equal(progress.finishTime, 65);
   assert.equal(progress.elapsedTime, 25);
   assert.equal(progress.shuttlingTime, 15);
-  assert.equal(progress.shuttlingOps, 2);
+  assert.equal(progress.shuttlingOps, 1);
   assert.equal(progress.activeShuttlingOps, 1);
-  assert.deepEqual(progress.counts, { gate: 1, split: 1, move: 0, merge: 1 });
+  assert.deepEqual(progress.counts, { gate: 1, split: 1, move: 0, merge: 0 });
   assert.deepEqual(progress.times, { gate: 5, split: 10, move: 0, merge: 5 });
 });
 

@@ -208,6 +208,11 @@ test("infeasible circuit and capacity combinations are caught before generation"
   assert.match(appSource, /needs cap \$\{requiredCapacity\}\+ on \$\{machine\}/);
 });
 
+test("selected experiment summary updates before generation or blocking", () => {
+  assert.match(appSource, /function renderSelectedScenarioSummary\(\)/);
+  assert.match(appSource, /renderSelectedScenarioSummary\(\);\s*const feasibility\s*=\s*selectedCapacityFeasibility/);
+});
+
 test("demo errors are presented without exposing JavaScript stack traces", () => {
   assert.match(appSource, /formatErrorMessage\(error\)/);
   assert.doesNotMatch(appSource, /error\.stack/);

@@ -93,11 +93,25 @@ export function endpointSlotIndex(trap, segmentLocation) {
   return 0;
 }
 
-export function trapSlotPoint(trapPoint, slotIndex, capacity) {
+function trapSlotOffset(trapPoint, slotIndex, capacity) {
   const usableWidth = trapPoint.width * 0.8;
-  const left = trapPoint.x - usableWidth / 2;
+  const left = -usableWidth / 2;
   const step = capacity <= 1 ? 0 : usableWidth / (capacity - 1);
-  return { x: left + step * slotIndex, y: trapPoint.y };
+  return left + step * slotIndex;
+}
+
+function trapAxisUnit(trapPoint) {
+  const angle = Number.isFinite(trapPoint?.angle) ? trapPoint.angle : 0;
+  return { x: Math.cos(angle), y: Math.sin(angle) };
+}
+
+export function trapSlotPoint(trapPoint, slotIndex, capacity) {
+  const offset = trapSlotOffset(trapPoint, slotIndex, capacity);
+  const axis = trapAxisUnit(trapPoint);
+  return {
+    x: trapPoint.x + axis.x * offset,
+    y: trapPoint.y + axis.y * offset,
+  };
 }
 
 export function trapRenderWidth(trap) {
@@ -404,6 +418,7 @@ function computeLayout(viewport, trace) {
 
   alignTrapPortsToFixedJunctions(trace, traps, junctions);
   alignJunctionsToTrapPorts(trace, traps, junctions);
+  assignTrapAngles(trace, traps, junctions);
 
   for (const segment of trace.topology.segments) {
     const start = resolveSegmentNodePoint(traps, junctions, trace.topology.traps, segment.from, segment.id);
@@ -725,6 +740,49 @@ export function alignTrapPortsToFixedJunctions(trace, traps, junctions) {
   }
 }
 
+function assignTrapAngles(trace, traps, junctions) {
+  if (trace.run?.machine !== "H6") return;
+  for (const trap of trace.topology.traps || []) {
+    const trapPoint = traps.get(`trap:${trap.id}`);
+    if (!trapPoint) continue;
+    trapPoint.angle = trapAxisAngle(trace, trap, trapPoint, junctions);
+  }
+}
+
+export function trapAxisAngle(trace, trap, trapPoint, junctions) {
+  const trapLocation = `trap:${trap.id}`;
+  const sidePoints = { L: [], R: [] };
+  for (const segment of trace.topology?.segments || []) {
+    if (segment.from !== trapLocation && segment.to !== trapLocation) continue;
+    const otherLocation = segment.from === trapLocation ? segment.to : segment.from;
+    const otherPoint = junctions.get(otherLocation);
+    if (!otherPoint) continue;
+    sidePoints[trapEndpointSide(trap, `segment:${segment.id}`)].push(otherPoint);
+  }
+
+  const leftPoint = averagePoint(sidePoints.L);
+  const rightPoint = averagePoint(sidePoints.R);
+  if (leftPoint && rightPoint && distance(leftPoint, rightPoint) > 0.001) {
+    return Math.atan2(rightPoint.y - leftPoint.y, rightPoint.x - leftPoint.x);
+  }
+
+  if (rightPoint && distance(trapPoint, rightPoint) > 0.001) {
+    return Math.atan2(rightPoint.y - trapPoint.y, rightPoint.x - trapPoint.x);
+  }
+  if (leftPoint && distance(trapPoint, leftPoint) > 0.001) {
+    return Math.atan2(trapPoint.y - leftPoint.y, trapPoint.x - leftPoint.x);
+  }
+  return Number.isFinite(trapPoint?.angle) ? trapPoint.angle : 0;
+}
+
+function averagePoint(points) {
+  if (!points.length) return null;
+  return {
+    x: average(points.map((point) => point.x)),
+    y: average(points.map((point) => point.y)),
+  };
+}
+
 function scaleLayoutPoint(point, minX, maxX, minY, maxY, marginX, marginY, width, height) {
   const spanX = Math.max(1, maxX - minX);
   const spanY = Math.max(1, maxY - minY);
@@ -837,46 +895,61 @@ function drawTraps(context, trace, layout) {
 function drawTrapChain(context, trap, point) {
   const width = point.width;
   const height = RENDER_SIZES.trapHeight;
+  const angle = Number.isFinite(point.angle) ? point.angle : 0;
   context.save();
+  context.translate(point.x, point.y);
+  context.rotate(angle);
   context.shadowColor = "rgba(94, 143, 242, 0.2)";
   context.shadowBlur = 14;
   context.fillStyle = "rgba(13, 17, 24, 0.92)";
   context.strokeStyle = "rgba(255, 255, 255, 0.14)";
   context.lineWidth = 1.2;
-  roundedRect(context, point.x - width / 2 - 4, point.y - height / 2 - 4, width + 8, height + 8, 8);
+  roundedRect(context, -width / 2 - 4, -height / 2 - 4, width + 8, height + 8, 8);
   context.fill();
   context.stroke();
 
   context.shadowBlur = 0;
-  const gradient = context.createLinearGradient(point.x - width / 2, point.y, point.x + width / 2, point.y);
+  const gradient = context.createLinearGradient(-width / 2, 0, width / 2, 0);
   gradient.addColorStop(0, "rgba(94, 143, 242, 0.26)");
   gradient.addColorStop(0.5, "rgba(94, 143, 242, 0.12)");
   gradient.addColorStop(1, "rgba(94, 143, 242, 0.26)");
   context.fillStyle = gradient;
   context.strokeStyle = cssColor("--color-trap");
   context.lineWidth = 1.6;
-  roundedRect(context, point.x - width / 2, point.y - height / 2, width, height, 5);
+  roundedRect(context, -width / 2, -height / 2, width, height, 5);
   context.fill();
   context.stroke();
 
   context.strokeStyle = "rgba(255, 255, 255, 0.24)";
   context.lineWidth = 1.2;
   context.beginPath();
-  context.moveTo(point.x - width / 2 + 8, point.y);
-  context.lineTo(point.x + width / 2 - 8, point.y);
+  context.moveTo(-width / 2 + 8, 0);
+  context.lineTo(width / 2 - 8, 0);
   context.stroke();
 
   for (const slot of trap.slots || []) {
-    const slotPoint = trapSlotPoint(point, slot, trap.capacity);
+    const slotX = trapSlotOffset(point, slot, trap.capacity);
     context.strokeStyle = "rgba(238, 242, 247, 0.28)";
     context.beginPath();
-    context.moveTo(slotPoint.x, point.y - height / 2);
-    context.lineTo(slotPoint.x, point.y + height / 2);
+    context.moveTo(slotX, -height / 2);
+    context.lineTo(slotX, height / 2);
     context.stroke();
   }
-
-  drawLabel(context, `T${trap.id}`, point.x, point.y + 24, cssColor("--color-muted"));
   context.restore();
+
+  const labelPoint = trapLabelPoint(point, height);
+  drawLabel(context, `T${trap.id}`, labelPoint.x, labelPoint.y, cssColor("--color-muted"));
+}
+
+function trapLabelPoint(point, trapHeight) {
+  const axis = trapAxisUnit(point);
+  const normal = { x: -axis.y, y: axis.x };
+  const downwardNormal = normal.y >= 0 ? normal : { x: -normal.x, y: -normal.y };
+  const offset = trapHeight / 2 + 13;
+  return {
+    x: point.x + downwardNormal.x * offset,
+    y: point.y + downwardNormal.y * offset,
+  };
 }
 
 function drawJunctions(context, trace, layout, state) {

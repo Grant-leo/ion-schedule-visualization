@@ -37,24 +37,44 @@ def write_trace(trace, output_path):
 
 
 def validate_trace(trace):
-    locations = {particle["id"]: particle["initial_location"] for particle in trace["particles"]}
+    errors = []
+    if not isinstance(trace, dict):
+        return {
+            "valid": False,
+            "errors": ["trace must be an object"],
+            "final_locations": {},
+            "event_count_match": False,
+        }
+    if trace.get("schema_version") != "1.0":
+        errors.append("unsupported schema_version")
+    if trace.get("device_type") != "ion_trap":
+        errors.append("unsupported device_type")
+    particles = _trace_collection(trace, "particles", errors)
+    events = _trace_collection(trace, "events", errors)
+    metrics = trace.get("metrics", {})
+    if not isinstance(metrics, dict):
+        errors.append("metrics must be an object")
+        metrics = {}
+    locations = {particle.get("id"): particle.get("initial_location") for particle in particles}
     busy_until = {}
     trap_busy_until = {}
     segment_busy_until = {}
     junction_busy_until = {}
     pending_transfers = []
-    errors = []
-    topology = trace.get("topology", {})
+    topology = trace.get("topology")
+    if not isinstance(topology, dict):
+        errors.append("topology must be an object")
+        topology = {}
     known_locations = _validate_topology(topology, errors)
     topology_adjacency = _topology_adjacency(topology)
     trap_capacity = _trap_capacity(topology)
-    occupancy = _validate_initial_particles(trace.get("particles", []), known_locations, trap_capacity, errors)
-    trap_chains = _initial_trap_chains(trace.get("particles", []), topology)
-    trap_segment_orientation = _trap_segment_orientation(topology)
-    expected_events = trace.get("metrics", {}).get("event_count")
-    if expected_events is not None and expected_events != len(trace["events"]):
-        errors.append(f"metrics event_count {expected_events} does not match {len(trace['events'])} events")
-    _validate_dag_events(trace, errors)
+    occupancy = _validate_initial_particles(particles, known_locations, trap_capacity, errors)
+    trap_chains = _initial_trap_chains(particles, topology)
+    trap_segment_orientation = _trap_segment_orientation(topology, errors)
+    expected_events = metrics.get("event_count")
+    if expected_events is not None and expected_events != len(events):
+        errors.append(f"metrics event_count {expected_events} does not match {len(events)} events")
+    _validate_dag_events(trace, events, errors)
 
     def apply_completed_transfers(time):
         remaining = []
@@ -72,10 +92,10 @@ def validate_trace(trace):
                 remaining.append(transfer)
         pending_transfers[:] = remaining
 
-    for event in sorted(trace["events"], key=lambda item: (item["start"], item["id"])):
-        apply_completed_transfers(event["start"])
+    for event in sorted(events, key=_event_sort_key):
         if not _validate_event_shape(event, errors):
             continue
+        apply_completed_transfers(event["start"])
         target = event["target"]
         source = event["source"]
         if source not in known_locations:
@@ -122,7 +142,7 @@ def validate_trace(trace):
         "valid": len(errors) == 0,
         "errors": errors,
         "final_locations": {str(key): value for key, value in sorted(locations.items())},
-        "event_count_match": expected_events == len(trace["events"]),
+        "event_count_match": expected_events == len(events),
     }
 
 
@@ -131,22 +151,25 @@ def _validate_topology(topology, errors):
     trap_ids = set()
     junction_ids = set()
     segment_ids = set()
+    traps = _topology_collection(topology, "traps", errors)
+    junctions = _topology_collection(topology, "junctions", errors)
+    segments = _topology_collection(topology, "segments", errors)
 
-    for trap in topology.get("traps", []):
+    for trap in traps:
         trap_id = trap.get("id")
         if trap_id in trap_ids:
             errors.append(f"duplicate trap id {trap_id}")
         trap_ids.add(trap_id)
         known_locations.add(location_key("trap", trap_id))
 
-    for junction in topology.get("junctions", []):
+    for junction in junctions:
         junction_id = junction.get("id")
         if junction_id in junction_ids:
             errors.append(f"duplicate junction id {junction_id}")
         junction_ids.add(junction_id)
         known_locations.add(location_key("junction", junction_id))
 
-    for segment in topology.get("segments", []):
+    for segment in segments:
         segment_id = segment.get("id")
         if segment_id in segment_ids:
             errors.append(f"duplicate segment id {segment_id}")
@@ -160,9 +183,32 @@ def _validate_topology(topology, errors):
     return known_locations
 
 
+def _topology_collection(topology, key, errors=None):
+    value = (topology or {}).get(key, [])
+    if isinstance(value, list):
+        return value
+    if errors is not None:
+        errors.append(f"topology.{key} must be a list")
+    return []
+
+
+def _trace_collection(trace, key, errors):
+    value = trace.get(key)
+    if not isinstance(value, list):
+        errors.append(f"{key} must be a list")
+        return []
+    records = []
+    for index, item in enumerate(value):
+        if isinstance(item, dict):
+            records.append(item)
+        else:
+            errors.append(f"{key}[{index}] must be an object")
+    return records
+
+
 def _topology_adjacency(topology):
     segment_endpoints = {}
-    for segment in topology.get("segments", []):
+    for segment in _topology_collection(topology, "segments"):
         segment_endpoints[location_key("segment", segment.get("id"))] = {
             segment.get("from"),
             segment.get("to"),
@@ -173,7 +219,7 @@ def _topology_adjacency(topology):
 def _trap_capacity(topology):
     return {
         location_key("trap", trap.get("id")): trap.get("capacity")
-        for trap in topology.get("traps", [])
+        for trap in _topology_collection(topology, "traps")
         if trap.get("capacity") is not None
     }
 
@@ -202,7 +248,7 @@ def _validate_initial_particles(particles, known_locations, trap_capacity, error
 
 
 def _initial_trap_chains(particles, topology):
-    chains = {location_key("trap", trap.get("id")): [] for trap in topology.get("traps", [])}
+    chains = {location_key("trap", trap.get("id")): [] for trap in _topology_collection(topology, "traps")}
     for particle in sorted(particles, key=lambda item: (item.get("initial_slot", item.get("id")), item.get("id"))):
         location = particle.get("initial_location")
         if not str(location).startswith("trap:"):
@@ -250,6 +296,13 @@ def _validate_event_topology(event, topology_adjacency, errors):
 def _validate_event_shape(event, errors):
     event_id = event.get("id")
     event_type = event.get("type")
+    valid = True
+    if not _is_number(event.get("start")) or not _is_number(event.get("end")):
+        errors.append(f"event {event_id} must include numeric start and end")
+        valid = False
+    if event.get("source") is None or event.get("target") is None:
+        errors.append(f"event {event_id} must include source and target")
+        valid = False
     if event_type not in VALID_EVENT_TYPES:
         errors.append(f"unsupported event type {event_type} for event {event_id}")
         return False
@@ -257,6 +310,9 @@ def _validate_event_shape(event, errors):
     ions = event.get("ions")
     if not isinstance(ions, list) or len(ions) == 0:
         errors.append(f"event {event_id} must reference at least one ion")
+        valid = False
+    if not valid:
+        return False
 
     metadata = event.get("metadata") or {}
     if event_type == "gate":
@@ -274,7 +330,7 @@ def _validate_event_shape(event, errors):
     return True
 
 
-def _validate_dag_events(trace, errors):
+def _validate_dag_events(trace, events, errors):
     dag = trace.get("dag") or {}
     nodes = dag.get("nodes") or []
     edges = dag.get("edges") or []
@@ -292,7 +348,7 @@ def _validate_dag_events(trace, errors):
         dag_nodes[node_id] = node
 
     gate_events_by_id = {}
-    for event in trace.get("events", []):
+    for event in events:
         if event.get("type") != "gate":
             continue
         gate_id = (event.get("metadata") or {}).get("gate_id")
@@ -334,6 +390,18 @@ def _is_int(value):
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def _is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _event_sort_key(event):
+    start = event.get("start")
+    event_id = event.get("id")
+    safe_start = start if _is_number(start) else 0
+    safe_id = event_id if _is_int(event_id) else 0
+    return safe_start, safe_id
+
+
 def _decrement_trap_occupancy(occupancy, location, event, errors):
     occupancy[location] = occupancy.get(location, 0) - 1
     if occupancy[location] < 0:
@@ -350,12 +418,25 @@ def _increment_trap_occupancy(occupancy, trap_capacity, location, event, errors)
         )
 
 
-def _trap_segment_orientation(topology):
+def _trap_segment_orientation(topology, errors=None):
     orientation = {}
-    for trap in topology.get("traps", []):
+    for trap in _topology_collection(topology, "traps"):
         trap_location = location_key("trap", trap.get("id"))
-        for segment_id, side in (trap.get("orientation") or {}).items():
-            orientation[(trap_location, location_key("segment", int(segment_id)))] = side
+        trap_orientation = trap.get("orientation", {})
+        if trap_orientation is None:
+            trap_orientation = {}
+        if not isinstance(trap_orientation, dict):
+            if errors is not None:
+                errors.append(f"trap {trap.get('id')} orientation must be a dict")
+            continue
+        for segment_id, side in trap_orientation.items():
+            try:
+                segment_id_value = int(segment_id)
+            except (TypeError, ValueError):
+                if errors is not None:
+                    errors.append(f"trap {trap.get('id')} orientation segment id {segment_id} is invalid")
+                continue
+            orientation[(trap_location, location_key("segment", segment_id_value))] = side
     return orientation
 
 

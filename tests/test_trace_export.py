@@ -483,6 +483,112 @@ def test_validate_trace_rejects_duplicate_topology_ids_and_missing_locations():
     assert any("unknown target segment:missing" in error for error in validation["errors"])
 
 
+def test_validate_trace_rejects_malformed_topology_collections_without_throwing():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {"traps": {}, "segments": None, "junctions": "bad"},
+        "particles": [],
+        "events": [],
+        "metrics": {"event_count": 0},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("topology.traps must be a list" in error for error in validation["errors"])
+    assert any("topology.segments must be a list" in error for error in validation["errors"])
+    assert any("topology.junctions must be a list" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_missing_required_top_level_fields_without_throwing():
+    validation = validate_trace({})
+
+    assert validation["valid"] is False
+    assert any("unsupported schema_version" in error for error in validation["errors"])
+    assert any("unsupported device_type" in error for error in validation["errors"])
+    assert any("topology must be an object" in error for error in validation["errors"])
+    assert any("particles must be a list" in error for error in validation["errors"])
+    assert any("events must be a list" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_malformed_trap_orientation_without_throwing():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [{"id": 0, "capacity": 1, "orientation": {"bad": "L"}}],
+            "segments": [],
+            "junctions": [],
+        },
+        "particles": [],
+        "events": [],
+        "metrics": {"event_count": 0},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("trap 0 orientation segment id bad is invalid" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_non_object_trap_orientation_without_throwing():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [{"id": 0, "capacity": 1, "orientation": []}],
+            "segments": [],
+            "junctions": [],
+        },
+        "particles": [],
+        "events": [],
+        "metrics": {"event_count": 0},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("trap 0 orientation must be a dict" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_malformed_particles_and_events_without_throwing():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {"traps": [], "segments": [], "junctions": []},
+        "dag": {"nodes": [{"id": 0, "gate_name": "h", "qubits": [0], "arity": 1}], "edges": []},
+        "particles": None,
+        "events": "bad",
+        "metrics": None,
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("particles must be a list" in error for error in validation["errors"])
+    assert any("events must be a list" in error for error in validation["errors"])
+    assert any("metrics must be an object" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_malformed_event_fields_without_throwing():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {"traps": [{"id": 0, "capacity": 1}], "segments": [], "junctions": []},
+        "dag": {"nodes": [{"id": 0, "gate_name": "h", "qubits": [0], "arity": 1}], "edges": []},
+        "particles": [{"id": 0, "initial_location": "trap:0"}],
+        "events": [{"id": 0, "type": "gate", "ions": [0], "metadata": {"gate_id": 0, "arity": 1}}],
+        "metrics": {"event_count": 1},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("event 0 must include numeric start and end" in error for error in validation["errors"])
+    assert any("event 0 must include source and target" in error for error in validation["errors"])
+
+
 def test_validate_trace_rejects_initial_trap_capacity_overflow_and_event_count_mismatch():
     bad_trace = {
         "schema_version": "1.0",

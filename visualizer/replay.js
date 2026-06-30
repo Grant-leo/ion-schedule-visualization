@@ -175,8 +175,11 @@ function validateTopology(topology, errors) {
   const trapIds = new Set();
   const junctionIds = new Set();
   const segmentIds = new Set();
+  const traps = topologyCollection(topology, "traps", errors);
+  const junctions = topologyCollection(topology, "junctions", errors);
+  const segments = topologyCollection(topology, "segments", errors);
 
-  for (const trap of topology.traps || []) {
+  for (const trap of traps) {
     const trapId = trap.id;
     if (trapIds.has(trapId)) errors.push(`duplicate trap id ${trapId}`);
     trapIds.add(trapId);
@@ -190,14 +193,14 @@ function validateTopology(topology, errors) {
     }
   }
 
-  for (const junction of topology.junctions || []) {
+  for (const junction of junctions) {
     const junctionId = junction.id;
     if (junctionIds.has(junctionId)) errors.push(`duplicate junction id ${junctionId}`);
     junctionIds.add(junctionId);
     knownLocations.add(locationKey("junction", junctionId));
   }
 
-  for (const segment of topology.segments || []) {
+  for (const segment of segments) {
     const segmentId = segment.id;
     if (segmentIds.has(segmentId)) errors.push(`duplicate segment id ${segmentId}`);
     segmentIds.add(segmentId);
@@ -213,6 +216,14 @@ function validateTopology(topology, errors) {
   }
 
   return { knownLocations, trapCapacity, trapSegmentOrientation, segmentEndpoints };
+}
+
+function topologyCollection(topology, key, errors) {
+  const value = topology?.[key];
+  if (value === undefined) return [];
+  if (Array.isArray(value)) return value;
+  errors.push(`topology.${key} must be an array`);
+  return [];
 }
 
 function validateInitialParticles(particles, topologyInfo, errors) {
@@ -436,7 +447,8 @@ function locationKey(kind, id) {
 }
 
 function buildInitialTrapChains(trace) {
-  const chains = new Map((trace.topology?.traps || []).map((trap) => [`trap:${trap.id}`, []]));
+  const traps = Array.isArray(trace.topology?.traps) ? trace.topology.traps : [];
+  const chains = new Map(traps.map((trap) => [`trap:${trap.id}`, []]));
   const particles = [...trace.particles].sort(
     (left, right) => (left.initial_slot ?? left.id) - (right.initial_slot ?? right.id) || left.id - right.id,
   );
@@ -651,7 +663,7 @@ function summarizeProgress(events, time, finishTime, trace = {}) {
 
   for (const event of events) {
     const type = event.type;
-    if (event.start <= time) {
+    if (event.end <= time) {
       counts[type] = (counts[type] || 0) + 1;
     }
 

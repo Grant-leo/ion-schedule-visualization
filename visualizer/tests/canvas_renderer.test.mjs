@@ -28,10 +28,19 @@ import {
   splitInternalSwapPoints,
   trapConnectedPortSides,
   trapConnectionPoint,
+  trapAxisAngle,
   trapPortPoints,
   trapRenderWidth,
   trapSlotPoint,
 } from "../canvas_renderer.js";
+
+function assertClose(actual, expected, tolerance = 0.001) {
+  assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} is not within ${tolerance} of ${expected}`);
+}
+
+function distanceBetween(left, right) {
+  return Math.hypot(left.x - right.x, left.y - right.y);
+}
 
 test("resizeCanvas keeps layout dimensions in CSS pixels on high-DPI displays", () => {
   const previousDpr = globalThis.devicePixelRatio;
@@ -147,6 +156,17 @@ test("trapSlotPoint lays out ions along a horizontal trap chain", () => {
 
   assert.deepEqual(trapSlotPoint(trapPoint, 0, 5), { x: 68, y: 40 });
   assert.deepEqual(trapSlotPoint(trapPoint, 4, 5), { x: 132, y: 40 });
+});
+
+test("trapSlotPoint lays out ions along a rotated trap chain", () => {
+  const trapPoint = { x: 100, y: 100, width: 80, angle: Math.PI / 2 };
+  const first = trapSlotPoint(trapPoint, 0, 5);
+  const last = trapSlotPoint(trapPoint, 4, 5);
+
+  assertClose(first.x, 100);
+  assertClose(first.y, 68);
+  assertClose(last.x, 100);
+  assertClose(last.y, 132);
 });
 
 test("trapRenderWidth keeps dense linear layouts readable without oversized trap bars", () => {
@@ -273,6 +293,35 @@ test("alignJunctionsToTrapPorts preserves H6 ring junction positions", () => {
   alignJunctionsToTrapPorts(trace, traps, junctions);
 
   assert.deepEqual(junctions.get("junction:0"), { x: 186.6, y: 150 });
+});
+
+test("trapAxisAngle aligns H6 trap chains from L-side junctions to R-side junctions", () => {
+  const trace = {
+    run: { machine: "H6" },
+    topology: {
+      traps: [{ id: 0, capacity: 2, orientation: { 0: "L", 1: "R" } }],
+      segments: [
+        { id: 0, from: "trap:0", to: "junction:0" },
+        { id: 1, from: "trap:0", to: "junction:1" },
+      ],
+      junctions: [{ id: 0 }, { id: 1 }],
+    },
+  };
+  const trap = trace.topology.traps[0];
+  const trapPoint = { x: 100, y: 100, width: 80 };
+  const junctions = new Map([
+    ["junction:0", { x: 72, y: 128 }],
+    ["junction:1", { x: 128, y: 72 }],
+  ]);
+
+  const angle = trapAxisAngle(trace, trap, trapPoint, junctions);
+  const rotatedTrapPoint = { ...trapPoint, angle };
+  const leftPort = trapConnectionPoint(trap, rotatedTrapPoint, "segment:0");
+  const rightPort = trapConnectionPoint(trap, rotatedTrapPoint, "segment:1");
+
+  assertClose(angle, -Math.PI / 4);
+  assert.ok(distanceBetween(leftPort, junctions.get("junction:0")) < distanceBetween(rightPort, junctions.get("junction:0")));
+  assert.ok(distanceBetween(rightPort, junctions.get("junction:1")) < distanceBetween(leftPort, junctions.get("junction:1")));
 });
 
 test("normalizeTraceLayoutForRendering moves stale G9 trap coordinates outside the junction grid", () => {
