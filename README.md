@@ -4,6 +4,16 @@ QCCD Schedule Visualizer is an interactive debugger for trapped-ion QCCD schedul
 
 The prototype focuses on ion-trap QCCD hardware. It does not model noise, calibration drift, or pulse-level control. Its purpose is schedule verification and explanation: it makes the process behind a QCCDSim schedule visible enough to find repeated shuttling, blocked dependencies, routing bottlenecks, and suspicious chain operations.
 
+## Purpose
+
+This project is intended to grow from a schedule replay demo into a QCCD algorithm research workbench.
+
+- Visual verification of existing scheduling algorithms. A trace is checked against topology adjacency, trap capacity, trap/channel/junction resource conflicts, chain-end split/merge constraints, ion locations, and DAG dependency timing before replay is installed. If a schedule is inconsistent, playback is blocked and the UI reports the concrete validation reason.
+- Visual verification of existing mapping algorithms. Mapper choices change the initial ion-to-trap placement and chain order, so the resulting shuttling pressure, swap work, and gate locality can be inspected visually instead of only through aggregate metrics.
+- Exploration of richer scheduling policies. The current UI exposes parallel scheduling, serialized shuttling, and a global serial baseline; the code path is designed so more scheduler policies can be added behind the same trace contract.
+- Architecture-level experiments. QCCDSim machine layouts and trap capacities can be selected in the UI today. Longer term, the goal is to let researchers plug in custom QCCD architectures, run schedules even when no curated result exists, and immediately visualize whether the result is hardware-valid.
+- A path toward an algorithm research platform. Future extensions should include editable/importable circuits, external scheduler adapters, side-by-side comparison of multiple scheduling policies, breakthrough markers for locally improved regions, and shared validation/metric views so mapping, scheduling, architecture, and circuit changes remain connected.
+
 ## What It Shows
 
 - Trap/channel topologies derived from QCCDSim machine definitions.
@@ -120,6 +130,8 @@ The manifest records each program path, category, qubit count, operation count, 
 The page performs capacity preflight checks before generation. If a circuit cannot fit safely on the selected architecture/capacity pair, the UI shows a configuration error instead of installing an invalid replay.
 
 ## Validation
+
+Trace validation is part of the user-facing workflow, not only a test helper. Invalid schedules are rejected before replay construction, playback controls are disabled, and the hardware stage reports the first validation failures. This is meant to support debugging of externally generated schedules as well as QCCDSim-produced traces.
 
 Run the frontend tests:
 
