@@ -2,10 +2,10 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 export function layoutDag(dagState, options = {}) {
   const direction = options.direction === "vertical" ? "vertical" : "horizontal";
-  const nodes = [...(dagState.nodes?.values() || [])].sort((left, right) => left.id - right.id);
-  const edges = dagState.edges || [];
-  const incoming = new Map(nodes.map((node) => [node.id, []]));
-  for (const edge of edges) {
+  const allNodes = [...(dagState.nodes?.values() || [])].sort((left, right) => left.id - right.id);
+  const allEdges = dagState.edges || [];
+  const incoming = new Map(allNodes.map((node) => [node.id, []]));
+  for (const edge of allEdges) {
     if (!incoming.has(edge.target)) incoming.set(edge.target, []);
     incoming.get(edge.target).push(edge.source);
   }
@@ -22,16 +22,20 @@ export function layoutDag(dagState, options = {}) {
     return level;
   };
 
+  const nodesWithLevels = allNodes.map((node) => ({ ...node, level: levelOf(node.id) }));
+  const windowedNodeIds = dagWindowNodeIds(nodesWithLevels, allEdges, options.maxNodes);
+  const nodes = nodesWithLevels.filter((node) => windowedNodeIds.has(node.id));
+  const edges = allEdges.filter((edge) => windowedNodeIds.has(edge.source) && windowedNodeIds.has(edge.target));
   const byLevel = new Map();
   for (const node of nodes) {
-    const level = levelOf(node.id);
+    const level = node.level;
     if (!byLevel.has(level)) byLevel.set(level, []);
     byLevel.get(level).push(node);
   }
 
   if (direction === "vertical") {
     const graph = layoutVerticalDag(byLevel, edges, options);
-    return graph;
+    return { ...graph, totalNodeCount: allNodes.length, omittedNodeCount: allNodes.length - nodes.length };
   }
 
   const levelCount = Math.max(1, byLevel.size);
@@ -66,15 +70,80 @@ export function layoutDag(dagState, options = {}) {
     .map((edge) => ({ ...edge, sourceNode: nodeById.get(edge.source), targetNode: nodeById.get(edge.target) }))
     .filter((edge) => edge.sourceNode && edge.targetNode);
 
-  return { width, height, direction, nodes: layoutNodes.sort((left, right) => left.id - right.id), edges: layoutEdges };
+  return {
+    width,
+    height,
+    direction,
+    nodes: layoutNodes.sort((left, right) => left.id - right.id),
+    edges: layoutEdges,
+    totalNodeCount: allNodes.length,
+    omittedNodeCount: allNodes.length - nodes.length,
+  };
+}
+
+function dagWindowNodeIds(nodes, edges, maxNodes) {
+  const limit = Number(maxNodes);
+  if (!Number.isFinite(limit) || limit <= 0 || nodes.length <= limit) {
+    return new Set(nodes.map((node) => node.id));
+  }
+
+  const predecessorIds = new Map(nodes.map((node) => [node.id, []]));
+  const successorIds = new Map(nodes.map((node) => [node.id, []]));
+  for (const edge of edges) {
+    if (predecessorIds.has(edge.target)) predecessorIds.get(edge.target).push(edge.source);
+    if (successorIds.has(edge.source)) successorIds.get(edge.source).push(edge.target);
+  }
+
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const selected = new Set();
+  const queue = [];
+  const enqueue = (id) => {
+    if (!byId.has(id) || queue.includes(id)) return;
+    queue.push(id);
+  };
+  const add = (id) => {
+    if (!byId.has(id) || selected.has(id) || selected.size >= limit) return false;
+    selected.add(id);
+    return true;
+  };
+
+  const active = nodes.filter((node) => node.state === "active");
+  const ready = nodes.filter((node) => node.state === "ready");
+  const frontier = active.length ? active : ready.length ? ready : nodes.filter((node) => node.state !== "completed");
+  const seeds = (frontier.length ? frontier : nodes.slice(-1)).sort((left, right) => left.id - right.id);
+
+  for (const node of seeds) {
+    if (add(node.id)) enqueue(node.id);
+  }
+
+  let cursor = 0;
+  while (selected.size < limit && cursor < queue.length) {
+    const id = queue[cursor];
+    cursor += 1;
+    const neighbors = [
+      ...(predecessorIds.get(id) || []).sort((left, right) => right - left),
+      ...(successorIds.get(id) || []).sort((left, right) => left - right),
+    ];
+    for (const neighbor of neighbors) {
+      if (add(neighbor)) enqueue(neighbor);
+      if (selected.size >= limit) break;
+    }
+  }
+
+  for (const node of nodes) {
+    if (selected.size >= limit) break;
+    add(node.id);
+  }
+
+  return selected;
 }
 
 function layoutVerticalDag(byLevel, edges, options) {
   const requestedWidth = Math.max(options.width || 360, 240);
   const minHeight = Math.max(options.height || 520, 260);
   const width = requestedWidth;
-  const nodeWidth = requestedWidth < 300 ? 62 : 68;
-  const nodeHeight = 34;
+  const nodeWidth = requestedWidth < 300 ? 64 : requestedWidth < 380 ? 74 : 82;
+  const nodeHeight = 36;
   const xPad = 16;
   const yPad = 42;
   const nodeGap = 10;
@@ -125,13 +194,16 @@ function chunk(items, size) {
 export function renderDagSvg(container, dagState, options = {}) {
   const rect = container.getBoundingClientRect();
   const graph = layoutDag(dagState, {
-    width: Math.max(360, Math.floor(rect.width || 0)),
+    width: Math.max(300, Math.floor(rect.width || 0)),
     height: Math.max(360, Math.floor(rect.height || 0)),
     direction: options.direction,
+    maxNodes: options.maxNodes,
   });
 
   const svg = svgElement("svg", {
     class: "dag-svg",
+    "data-total-nodes": graph.totalNodeCount,
+    "data-omitted-nodes": graph.omittedNodeCount,
     viewBox: `0 0 ${graph.width} ${graph.height}`,
     width: graph.width,
     height: graph.height,
@@ -139,6 +211,9 @@ export function renderDagSvg(container, dagState, options = {}) {
     "aria-label": "Dependency DAG",
   });
   svg.appendChild(arrowMarker());
+  if (graph.omittedNodeCount > 0) {
+    svg.appendChild(dagWindowLabel(graph));
+  }
 
   const edgeLayer = svgElement("g", { class: "dag-edge-layer" });
   for (const edge of graph.edges) {
@@ -166,6 +241,15 @@ export function renderDagSvg(container, dagState, options = {}) {
   }
   svg.appendChild(nodeLayer);
   container.replaceChildren(svg);
+}
+
+function dagWindowLabel(graph) {
+  const group = svgElement("g", { class: "dag-window-label" });
+  group.appendChild(svgElement("rect", { x: 12, y: 10, width: 172, height: 24, rx: 6, ry: 6 }));
+  const label = svgElement("text", { x: 22, y: 26 });
+  label.textContent = `${graph.nodes.length}/${graph.totalNodeCount} ops in focus`;
+  group.appendChild(label);
+  return group;
 }
 
 function dagEdgePath(direction, source, target) {

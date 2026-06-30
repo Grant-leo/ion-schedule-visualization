@@ -199,6 +199,95 @@ test("validateTrace rejects shuttling that skips topology adjacency", () => {
   assert.match(validation.errors.join("\n"), /not adjacent to segment:2/);
 });
 
+test("validateTrace rejects overlapping use of the same channel segment", () => {
+  const badTrace = structuredClone(trace);
+  badTrace.topology.traps = [
+    { id: 0, capacity: 1, slots: [0], orientation: { 0: "R" } },
+    { id: 1, capacity: 1, slots: [0], orientation: { 0: "L" } },
+  ];
+  badTrace.particles = [
+    { id: 0, initial_location: "trap:0", initial_slot: 0 },
+    { id: 1, initial_location: "trap:1", initial_slot: 0 },
+  ];
+  badTrace.events = [
+    {
+      id: 0,
+      type: "split",
+      start: 0,
+      end: 10,
+      ions: [0],
+      source: "trap:0",
+      target: "segment:0",
+      metadata: { endpoint: "R" },
+    },
+    {
+      id: 1,
+      type: "split",
+      start: 5,
+      end: 15,
+      ions: [1],
+      source: "trap:1",
+      target: "segment:0",
+      metadata: { endpoint: "L" },
+    },
+  ];
+  badTrace.metrics = { event_count: 2 };
+
+  const validation = validateTrace(badTrace);
+
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors.join("\n"), /segment:0 busy until 10/);
+});
+
+test("validateTrace rejects overlapping crossings through the same junction", () => {
+  const badTrace = {
+    schema_version: "1.0",
+    device_type: "ion_trap",
+    topology: {
+      traps: Array.from({ length: 4 }, (_, id) => ({ id, capacity: 1, slots: [0] })),
+      segments: [
+        { id: 0, from: "trap:0", to: "junction:0", length: 10 },
+        { id: 1, from: "junction:0", to: "trap:1", length: 10 },
+        { id: 2, from: "trap:2", to: "junction:0", length: 10 },
+        { id: 3, from: "junction:0", to: "trap:3", length: 10 },
+      ],
+      junctions: [{ id: 0 }],
+    },
+    particles: [
+      { id: 0, initial_location: "segment:0" },
+      { id: 1, initial_location: "segment:2" },
+    ],
+    events: [
+      {
+        id: 0,
+        type: "move",
+        start: 0,
+        end: 10,
+        ions: [0],
+        source: "segment:0",
+        target: "segment:1",
+        metadata: {},
+      },
+      {
+        id: 1,
+        type: "move",
+        start: 5,
+        end: 15,
+        ions: [1],
+        source: "segment:2",
+        target: "segment:3",
+        metadata: {},
+      },
+    ],
+    metrics: { event_count: 2 },
+  };
+
+  const validation = validateTrace(badTrace);
+
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors.join("\n"), /junction:0 busy until 10/);
+});
+
 test("validateTrace rejects dynamic trap capacity overflow after merge", () => {
   const badTrace = structuredClone(trace);
   badTrace.topology.traps = [
@@ -323,6 +412,49 @@ test("replay returns trap chains with active split ions removed from the chain",
 
   assert.deepEqual(replay.stateAt(0).trapChains.get("trap:0"), [0, 1]);
   assert.deepEqual(replay.stateAt(15).trapChains.get("trap:0"), [1]);
+});
+
+test("replay preserves merge endpoint order in trap chains", () => {
+  const endpointTrace = {
+    schema_version: "1.0",
+    device_type: "ion_trap",
+    topology: {
+      traps: [
+        { id: 0, capacity: 2, slots: [0, 1], orientation: { 0: "R" } },
+        { id: 1, capacity: 3, slots: [0, 1, 2], orientation: { 0: "L" } },
+      ],
+      segments: [{ id: 0, from: "trap:0", to: "trap:1", length: 10 }],
+      junctions: [],
+    },
+    particles: [
+      { id: 0, initial_location: "segment:0" },
+      { id: 1, initial_location: "trap:1", initial_slot: 0 },
+      { id: 2, initial_location: "trap:1", initial_slot: 1 },
+    ],
+    events: [
+      {
+        id: 0,
+        type: "merge",
+        start: 0,
+        end: 10,
+        ions: [0],
+        source: "segment:0",
+        target: "trap:1",
+        metadata: { endpoint: "L" },
+      },
+    ],
+    metrics: { event_count: 1 },
+  };
+  const replay = createReplay(endpointTrace, 1);
+
+  assert.deepEqual(replay.stateAt(0).trapChains.get("trap:1"), [1, 2]);
+  assert.deepEqual(replay.stateAt(10).trapChains.get("trap:1"), [0, 1, 2]);
+
+  endpointTrace.events[0].metadata.endpoint = "R";
+  endpointTrace.topology.traps[1].orientation = { 0: "R" };
+  const rightReplay = createReplay(endpointTrace, 1);
+
+  assert.deepEqual(rightReplay.stateAt(10).trapChains.get("trap:1"), [1, 2, 0]);
 });
 
 test("replay exposes active internal swaps before endpoint shuttling", () => {

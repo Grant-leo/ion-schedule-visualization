@@ -14,6 +14,7 @@ const FALLBACK_COLORS = {
 };
 
 const MOTION_TYPES = new Set(["split", "move", "merge"]);
+const cssColorCache = new Map();
 
 export const RENDER_SIZES = Object.freeze({
   ionRadius: 8,
@@ -35,20 +36,22 @@ export function createRenderer(canvas) {
   const context = canvas.getContext("2d", { alpha: false });
   let trace = null;
   let layout = null;
+  let viewport = null;
 
   return {
     setTrace(nextTrace) {
       trace = nextTrace;
-      resizeCanvas(canvas);
-      layout = computeLayout(canvas, trace);
+      viewport = resizeCanvas(canvas);
+      layout = computeLayout(viewport, trace);
     },
     draw(state) {
       if (!trace || !layout) return;
-      const resized = resizeCanvas(canvas);
-      if (resized) layout = computeLayout(canvas, trace);
+      viewport = resizeCanvas(canvas);
+      if (viewport.resized) layout = computeLayout(viewport, trace);
 
-      context.clearRect(0, 0, canvas.width, canvas.height);
-      drawBackground(context, canvas);
+      context.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
+      context.clearRect(0, 0, viewport.width, viewport.height);
+      drawBackground(context, viewport);
       drawSegments(context, trace, layout, state);
       drawChannelTerminals(context, trace, layout, state);
       drawTraps(context, trace, layout);
@@ -58,6 +61,21 @@ export function createRenderer(canvas) {
       drawIons(context, trace, layout, state);
     },
   };
+}
+
+export function resizeCanvas(canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.max(1, Number(globalThis.devicePixelRatio) || 1);
+  const width = Math.max(320, Math.floor(rect.width || 0));
+  const height = Math.max(240, Math.floor(rect.height || 0));
+  const pixelWidth = Math.floor(width * dpr);
+  const pixelHeight = Math.floor(height * dpr);
+  const resized = canvas.width !== pixelWidth || canvas.height !== pixelHeight;
+  if (resized) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+  }
+  return { width, height, dpr, resized };
 }
 
 export function eventProgress(event, time) {
@@ -228,20 +246,9 @@ export function junctionRenderSpec(junction = {}, directions = []) {
   };
 }
 
-function resizeCanvas(canvas) {
-  const rect = canvas.getBoundingClientRect();
-  const scale = globalThis.devicePixelRatio || 1;
-  const width = Math.max(320, Math.floor(rect.width * scale));
-  const height = Math.max(240, Math.floor(rect.height * scale));
-  if (canvas.width === width && canvas.height === height) return false;
-  canvas.width = width;
-  canvas.height = height;
-  return true;
-}
-
-function computeLayout(canvas, trace) {
-  const width = canvas.width;
-  const height = canvas.height;
+function computeLayout(viewport, trace) {
+  const width = viewport.width;
+  const height = viewport.height;
   const marginX = Math.max(92, width * 0.1);
   const marginY = Math.max(84, height * 0.12);
   const traps = new Map();
@@ -1150,12 +1157,22 @@ function shadeColor(hex, percent) {
   return `#${(0x1000000 + red * 0x10000 + green * 0x100 + blue).toString(16).slice(1)}`;
 }
 
-function cssColor(name) {
+export function resetCssColorCache() {
+  cssColorCache.clear();
+}
+
+export function cssColor(name) {
+  if (cssColorCache.has(name)) return cssColorCache.get(name);
   if (globalThis.document && globalThis.getComputedStyle) {
     const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    if (value) return value;
+    if (value) {
+      cssColorCache.set(name, value);
+      return value;
+    }
   }
-  return FALLBACK_COLORS[name] || "#ffffff";
+  const fallback = FALLBACK_COLORS[name] || "#ffffff";
+  cssColorCache.set(name, fallback);
+  return fallback;
 }
 
 function clamp(value, min, max) {

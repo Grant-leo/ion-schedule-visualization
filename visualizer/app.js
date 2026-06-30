@@ -1,6 +1,6 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260629-junction15";
-import { renderDagSvg } from "./dag_renderer.js?v=20260629-junction15";
-import { createReplay, validateTrace } from "./replay.js?v=20260629-junction15";
+import { createRenderer } from "./canvas_renderer.js?v=20260629-junction17";
+import { renderDagSvg } from "./dag_renderer.js?v=20260629-junction17";
+import { createReplay, validateTrace } from "./replay.js?v=20260629-junction17";
 import {
   createHeadlineMetricCards,
   createMetricCards,
@@ -8,10 +8,12 @@ import {
   describeEvent,
   formatLocation,
   summarizeDag,
-} from "./ui_model.js?v=20260629-junction15";
+} from "./ui_model.js?v=20260629-junction17";
 
 const LIVE_PANEL_INTERVAL_MS = 160;
 const PERFORMANCE_PANEL_INTERVAL_MS = 250;
+const DAG_MAX_RENDERED_NODES = 260;
+const GENERATED_TRACE_LIMIT = 12;
 
 const elements = {
   controlPanel: document.getElementById("controlPanel"),
@@ -26,6 +28,7 @@ const elements = {
   schedulerSelect: document.getElementById("schedulerSelect"),
   schedulerModeButtons: [...document.querySelectorAll("[data-scheduler-mode]")],
   loadConfigButton: document.getElementById("loadConfigButton"),
+  configErrorPanel: document.getElementById("configErrorPanel"),
   playPauseButton: document.getElementById("playPauseButton"),
   restartButton: document.getElementById("restartButton"),
   stepButton: document.getElementById("stepButton"),
@@ -67,13 +70,15 @@ let lastEventKey = "";
 let programCatalog = new Map();
 let machineTrapCounts = new Map();
 let loadRequestId = 0;
+let activeLoadController = null;
+let generationLoading = false;
 let lastLivePanelRender = 0;
 let lastPerformancePanelRender = 0;
 
 init().catch((error) => {
-  elements.validationPanel.textContent = "Load failed";
-  elements.validationPanel.classList.add("is-invalid");
+  setStatus("Load failed", "invalid");
   elements.eventPanel.textContent = formatErrorMessage(error);
+  showConfigError(formatErrorMessage(error));
 });
 
 async function init() {
@@ -154,7 +159,7 @@ function wireControls() {
   elements.traceSelect.addEventListener("change", () => {
     const value = elements.traceSelect.value;
     if (generatedTraces.has(value)) {
-      loadRequestId += 1;
+      beginLoadRequest();
       loadTraceData(generatedTraces.get(value));
     } else {
       loadTrace(value);
@@ -187,19 +192,35 @@ function wireControls() {
 }
 
 async function loadTrace(path) {
-  const requestId = ++loadRequestId;
-  const nextTrace = await fetchJson(path);
-  if (requestId !== loadRequestId) return;
-  loadTraceData(nextTrace);
+  const { requestId, signal } = beginLoadRequest();
+  try {
+    const nextTrace = await fetchJson(path, { signal });
+    if (requestId !== loadRequestId) return;
+    loadTraceData(nextTrace);
+  } catch (error) {
+    if (isAbortError(error) || requestId !== loadRequestId) return;
+    setStatus("Load failed", "invalid");
+    elements.eventPanel.textContent = formatErrorMessage(error);
+    showConfigError(formatErrorMessage(error));
+  }
+}
+
+function beginLoadRequest() {
+  loadRequestId += 1;
+  if (activeLoadController) activeLoadController.abort();
+  activeLoadController = new AbortController();
+  return { requestId: loadRequestId, signal: activeLoadController.signal };
 }
 
 function loadTraceData(nextTrace) {
+  const frontendValidation = validateTrace(nextTrace);
+  const backendValidation = nextTrace.validation || { valid: true, errors: [] };
+  const nextReplay = createReplay(nextTrace);
   previousTraceMetrics = trace?.metrics || null;
   trace = nextTrace;
-  const frontendValidation = validateTrace(trace);
-  const backendValidation = trace.validation || { valid: true, errors: [] };
-  replay = createReplay(trace);
-  renderer.setTrace(trace);
+  replay = nextReplay;
+  renderer.setTrace(nextTrace);
+  clearConfigError();
 
   currentTime = 0;
   playing = false;
@@ -218,7 +239,7 @@ function loadTraceData(nextTrace) {
 }
 
 async function loadSelectedConfig() {
-  const requestId = ++loadRequestId;
+  const { requestId, signal } = beginLoadRequest();
   const program = elements.programSelect.value;
   const machine = elements.architectureSelect.value;
   const capacity = Number(elements.capacitySelect.value);
@@ -226,13 +247,15 @@ async function loadSelectedConfig() {
   const ordering = elements.orderingSelect.value;
   const scheduler = elements.schedulerSelect.value;
   const feasibility = selectedCapacityFeasibility({ program, machine, capacity });
+  clearConfigError();
   if (!feasibility.valid) {
     setStatus("Capacity too small", "invalid");
     elements.eventPanel.textContent = feasibility.message;
+    showConfigError(feasibility.message);
     renderSelectedBenchmark();
     return;
   }
-  elements.loadConfigButton.disabled = true;
+  setGenerationLoading(true);
 
   try {
     if (apiAvailable) {
@@ -245,10 +268,10 @@ async function loadSelectedConfig() {
         ordering,
         scheduler,
       });
-      const nextTrace = await fetchJson(`api/trace?${params.toString()}`);
+      const nextTrace = await fetchJson(`api/trace?${params.toString()}`, { signal });
       if (requestId !== loadRequestId) return;
       const key = `generated:${program}:${machine}:${capacity}:${mapper}:${ordering}:${scheduler}`;
-      generatedTraces.set(key, nextTrace);
+      rememberGeneratedTrace(key, nextTrace);
       upsertTraceOption(
         key,
         `${programLabelFromId(program)} | ${machine} | cap ${capacity} | ${mapper} | ${ordering} | ${scheduler}`,
@@ -269,20 +292,33 @@ async function loadSelectedConfig() {
     );
     if (!match) {
       setStatus("Config trace missing", "invalid");
+      showConfigError("No pre-generated trace matches the selected circuit, architecture, mapper, and scheduler.");
       return;
     }
     elements.traceSelect.value = match.path;
-    const nextTrace = await fetchJson(match.path);
+    const nextTrace = await fetchJson(match.path, { signal });
     if (requestId !== loadRequestId) return;
     loadTraceData(nextTrace);
   } catch (error) {
-    if (requestId !== loadRequestId) return;
+    if (isAbortError(error) || requestId !== loadRequestId) return;
     setStatus("Generation failed", "invalid");
     elements.eventPanel.textContent = formatErrorMessage(error);
+    showConfigError(formatErrorMessage(error));
   } finally {
     if (requestId === loadRequestId) {
-      elements.loadConfigButton.disabled = false;
+      setGenerationLoading(false);
     }
+  }
+}
+
+function rememberGeneratedTrace(key, nextTrace) {
+  if (generatedTraces.has(key)) generatedTraces.delete(key);
+  generatedTraces.set(key, nextTrace);
+  while (generatedTraces.size > GENERATED_TRACE_LIMIT) {
+    const oldestKey = generatedTraces.keys().next().value;
+    generatedTraces.delete(oldestKey);
+    const option = [...elements.traceSelect.options].find((item) => item.value === oldestKey);
+    if (option) option.remove();
   }
 }
 
@@ -417,6 +453,23 @@ function setStatus(message, state) {
   elements.validationPanel.classList.toggle("is-loading", state === "loading");
 }
 
+function setGenerationLoading(isLoading) {
+  generationLoading = isLoading;
+  elements.loadConfigButton.disabled = isLoading;
+  elements.loadConfigButton.textContent = isLoading ? "Generating..." : "Generate Schedule";
+  updateSchedulerModeButtons();
+}
+
+function showConfigError(message) {
+  elements.configErrorPanel.textContent = message;
+  elements.configErrorPanel.classList.add("is-visible");
+}
+
+function clearConfigError() {
+  elements.configErrorPanel.textContent = "";
+  elements.configErrorPanel.classList.remove("is-visible");
+}
+
 function togglePlayback() {
   if (!replay) return;
   playing = !playing;
@@ -483,7 +536,7 @@ function draw(options = {}) {
 
   if (dagKey !== lastDagKey) {
     renderDagSummary(state.dagState);
-    renderDagSvg(elements.dagPanel, state.dagState, { direction: "vertical" });
+    renderDagSvg(elements.dagPanel, state.dagState, { direction: "vertical", maxNodes: DAG_MAX_RENDERED_NODES });
     focusDagViewport(elements.dagPanel);
     lastDagKey = dagKey;
   }
@@ -602,7 +655,7 @@ function updateSchedulerModeButtons() {
     const active = elements.schedulerSelect.value === scheduler;
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-pressed", String(active));
-    button.disabled = !availableSchedulers.has(scheduler);
+    button.disabled = generationLoading || !availableSchedulers.has(scheduler);
   }
 }
 
@@ -756,14 +809,24 @@ function focusDagViewport(container) {
   container.scrollLeft = 0;
 }
 
-async function fetchJson(path) {
-  const response = await fetch(path);
+async function fetchJson(path, options = {}) {
+  const response = await fetch(path, { signal: options.signal });
   const text = await response.text();
-  const payload = text ? JSON.parse(text) : null;
+  let payload = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch (error) {
+    if (response.ok) throw error;
+    payload = { error: text };
+  }
   if (!response.ok) {
     throw new Error(payload?.error || `Failed to load ${path}: ${response.status}`);
   }
   return payload;
+}
+
+function isAbortError(error) {
+  return error?.name === "AbortError";
 }
 
 function formatErrorMessage(error) {

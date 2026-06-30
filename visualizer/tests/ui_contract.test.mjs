@@ -8,17 +8,30 @@ const cssSource = readFileSync(new URL("../styles.css", import.meta.url), "utf8"
 test("desktop demo layout keeps the DAG side panel visible at common 1280px widths", () => {
   assert.match(cssSource, /@media\s*\(max-width:\s*1240px\)/);
   assert.doesNotMatch(cssSource, /@media\s*\(max-width:\s*1360px\)/);
-  assert.match(cssSource, /grid-template-columns:\s*clamp\(260px,\s*19vw,\s*300px\)\s+minmax\(620px,\s*1fr\)\s+clamp\(340px,\s*26vw,\s*400px\)/);
+  assert.match(cssSource, /grid-template-columns:\s*clamp\(248px,\s*18vw,\s*288px\)\s+minmax\(560px,\s*1fr\)\s+clamp\(380px,\s*28vw,\s*460px\)/);
 });
 
 test("trace generation ignores stale responses and disables duplicate submissions", () => {
   assert.match(appSource, /let\s+loadRequestId\s*=\s*0/);
-  assert.match(appSource, /const\s+requestId\s*=\s*\+\+loadRequestId/);
+  assert.match(appSource, /let\s+activeLoadController\s*=\s*null/);
+  assert.match(appSource, /new AbortController\(\)/);
+  assert.match(appSource, /function beginLoadRequest\(\)\s*{[\s\S]*?loadRequestId\s*\+=\s*1/);
   assert.match(appSource, /requestId\s*!==\s*loadRequestId/);
-  assert.match(appSource, /async function loadTrace\(path\)\s*{[\s\S]*?const\s+requestId\s*=\s*\+\+loadRequestId[\s\S]*?loadTraceData\(nextTrace\)/);
-  assert.match(appSource, /generatedTraces\.has\(value\)[\s\S]*?loadRequestId\s*\+=\s*1[\s\S]*?loadTraceData\(generatedTraces\.get\(value\)\)/);
-  assert.match(appSource, /elements\.loadConfigButton\.disabled\s*=\s*true/);
-  assert.match(appSource, /elements\.loadConfigButton\.disabled\s*=\s*false/);
+  assert.match(appSource, /async function loadTrace\(path\)\s*{[\s\S]*?const\s+\{\s*requestId,\s*signal\s*\}\s*=\s*beginLoadRequest\(\)[\s\S]*?loadTraceData\(nextTrace\)/);
+  assert.match(appSource, /generatedTraces\.has\(value\)[\s\S]*?beginLoadRequest\(\)[\s\S]*?loadTraceData\(generatedTraces\.get\(value\)\)/);
+  assert.match(appSource, /function setGenerationLoading\(isLoading\)/);
+  assert.match(appSource, /elements\.loadConfigButton\.disabled\s*=\s*isLoading/);
+  assert.match(appSource, /const GENERATED_TRACE_LIMIT\s*=\s*12/);
+  assert.match(appSource, /while\s*\(generatedTraces\.size\s*>\s*GENERATED_TRACE_LIMIT\)/);
+});
+
+test("large dependency DAGs are rendered with a bounded focus window", () => {
+  assert.match(appSource, /const DAG_MAX_RENDERED_NODES\s*=\s*260/);
+  assert.match(appSource, /renderDagSvg\(elements\.dagPanel,\s*state\.dagState,\s*\{\s*direction:\s*"vertical",\s*maxNodes:\s*DAG_MAX_RENDERED_NODES\s*\}\)/);
+});
+
+test("mobile layout surfaces the animation before form controls", () => {
+  assert.match(cssSource, /@media\s*\(max-width:\s*760px\)[\s\S]*grid-template-areas:\s*"header"\s*"viewport"\s*"timeline"\s*"left"\s*"right"/);
 });
 
 test("infeasible circuit and capacity combinations are caught before generation", () => {

@@ -146,7 +146,7 @@ select {
   height: 100vh;
   min-height: 0;
   display: grid;
-  grid-template-columns: clamp(260px, 19vw, 300px) minmax(620px, 1fr) clamp(340px, 26vw, 400px);
+  grid-template-columns: clamp(248px, 18vw, 288px) minmax(560px, 1fr) clamp(380px, 28vw, 460px);
   grid-template-rows: 132px minmax(0, 1fr) 60px;
   grid-template-areas:
     "header header right"
@@ -479,7 +479,7 @@ select {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .scheduler-mode-toggle strong {
@@ -550,6 +550,22 @@ select {
 .advanced-config .primary-action {
   width: 100%;
   margin-top: var(--space-3);
+}
+
+.config-error {
+  display: none;
+  margin-top: var(--space-3);
+  padding: 8px 9px;
+  border: 1px solid rgba(255, 107, 118, 0.42);
+  border-radius: var(--radius-2);
+  background: rgba(255, 107, 118, 0.09);
+  color: #ffb8be;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.config-error.is-visible {
+  display: block;
 }
 
 .playback-grid {
@@ -694,8 +710,8 @@ select {
 
 .dag-page {
   width: 100%;
-  min-height: calc(100vh - (var(--space-5) * 2));
-  flex: 0 0 calc(100vh - (var(--space-5) * 2));
+  min-height: min(650px, calc(100vh - 180px));
+  flex: 0 0 min(650px, calc(100vh - 180px));
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -772,8 +788,8 @@ select {
 
 .dag-svg {
   display: block;
-  width: 100%;
-  min-width: 0;
+  width: auto;
+  min-width: 100%;
   height: auto;
 }
 
@@ -796,13 +812,26 @@ select {
 .dag-svg-node text {
   fill: var(--color-text);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 9.5px;
   letter-spacing: 0;
 }
 
 .dag-svg-node .dag-qubits {
   fill: #c5ccd6;
-  font-size: 8px;
+  font-size: 8.5px;
+}
+
+.dag-window-label rect {
+  fill: rgba(10, 12, 15, 0.9);
+  stroke: rgba(100, 210, 255, 0.34);
+  stroke-width: 1;
+}
+
+.dag-window-label text {
+  fill: #c8f1ff;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0;
 }
 
 .dag-svg-node.completed {
@@ -981,6 +1010,18 @@ select {
   white-space: nowrap;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -1021,6 +1062,7 @@ select {
   .dag-page {
     grid-column: 1 / -1;
     min-height: 520px;
+    flex-basis: auto;
   }
 
   .header-meta {
@@ -1044,13 +1086,13 @@ select {
 @media (max-width: 760px) {
   .app-shell {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 460px auto 60px;
+    grid-template-rows: auto 460px 60px auto auto;
     grid-template-areas:
       "header"
-      "left"
       "viewport"
-      "right"
-      "timeline";
+      "timeline"
+      "left"
+      "right";
   }
 
   .header-bar,
@@ -1065,6 +1107,19 @@ select {
 
   .right-inspector-panel {
     display: block;
+  }
+
+  .left-control-panel,
+  .right-inspector-panel {
+    overflow: visible;
+  }
+
+  .dag-page {
+    min-height: 480px;
+  }
+
+  #dagPanel {
+    max-height: 360px;
   }
 
   .metric-grid {

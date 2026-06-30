@@ -36,6 +36,8 @@ def validate_trace(trace):
     locations = {particle["id"]: particle["initial_location"] for particle in trace["particles"]}
     busy_until = {}
     trap_busy_until = {}
+    segment_busy_until = {}
+    junction_busy_until = {}
     pending_transfers = []
     errors = []
     topology = trace.get("topology", {})
@@ -74,6 +76,12 @@ def validate_trace(trace):
         trap_location = _event_trap_resource(event)
         if trap_location and trap_busy_until.get(trap_location, 0) > event["start"]:
             errors.append(f"{trap_location} busy until {trap_busy_until[trap_location]} for event {event['id']}")
+        for segment_location in _event_segment_resources(event):
+            if segment_busy_until.get(segment_location, 0) > event["start"]:
+                errors.append(f"{segment_location} busy until {segment_busy_until[segment_location]} for event {event['id']}")
+        for junction_location in _event_junction_resources(event, topology_adjacency):
+            if junction_busy_until.get(junction_location, 0) > event["start"]:
+                errors.append(f"{junction_location} busy until {junction_busy_until[junction_location]} for event {event['id']}")
         for ion in event["ions"]:
             if busy_until.get(ion, 0) > event["start"]:
                 errors.append(f"ion {ion} busy until {busy_until[ion]} for event {event['id']}")
@@ -90,6 +98,10 @@ def validate_trace(trace):
             busy_until[ion] = max(busy_until.get(ion, 0), event["end"])
         if trap_location:
             trap_busy_until[trap_location] = max(trap_busy_until.get(trap_location, 0), event["end"])
+        for segment_location in _event_segment_resources(event):
+            segment_busy_until[segment_location] = max(segment_busy_until.get(segment_location, 0), event["end"])
+        for junction_location in _event_junction_resources(event, topology_adjacency):
+            junction_busy_until[junction_location] = max(junction_busy_until.get(junction_location, 0), event["end"])
     apply_completed_transfers(float("inf"))
     return {
         "valid": len(errors) == 0,
@@ -266,6 +278,33 @@ def _event_trap_resource(event):
     if event_type == "merge" and str(event.get("target", "")).startswith("trap:"):
         return event["target"]
     return None
+
+
+def _event_segment_resources(event):
+    event_type = event.get("type")
+    resources = []
+    if event_type == "split" and str(event.get("target", "")).startswith("segment:"):
+        resources.append(event["target"])
+    elif event_type == "merge" and str(event.get("source", "")).startswith("segment:"):
+        resources.append(event["source"])
+    elif event_type == "move":
+        for location in (event.get("source"), event.get("target")):
+            if str(location).startswith("segment:") and location not in resources:
+                resources.append(location)
+    return resources
+
+
+def _event_junction_resources(event, topology_adjacency):
+    if event.get("type") != "move":
+        return []
+    segment_endpoints = topology_adjacency["segment_endpoints"]
+    source_endpoints = segment_endpoints.get(event.get("source"), set())
+    target_endpoints = segment_endpoints.get(event.get("target"), set())
+    return sorted(
+        endpoint
+        for endpoint in source_endpoints & target_endpoints
+        if str(endpoint).startswith("junction:")
+    )
 
 
 def _run_config(result):

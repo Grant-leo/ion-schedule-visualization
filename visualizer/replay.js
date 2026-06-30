@@ -15,6 +15,8 @@ export function validateTrace(trace) {
   const sortedEvents = sortedTraceEvents(trace.events);
   const busyUntil = new Map();
   const trapBusyUntil = new Map();
+  const segmentBusyUntil = new Map();
+  const junctionBusyUntil = new Map();
   const pendingTransfers = [];
   const expectedEvents = trace.metrics?.event_count;
   if (expectedEvents !== undefined && expectedEvents !== trace.events.length) {
@@ -32,6 +34,16 @@ export function validateTrace(trace) {
     const trapResource = eventTrapResource(event);
     if (trapResource && (trapBusyUntil.get(trapResource) || 0) > event.start) {
       errors.push(`${trapResource} busy until ${trapBusyUntil.get(trapResource)} for event ${event.id}`);
+    }
+    for (const segmentResource of eventSegmentResources(event)) {
+      if ((segmentBusyUntil.get(segmentResource) || 0) > event.start) {
+        errors.push(`${segmentResource} busy until ${segmentBusyUntil.get(segmentResource)} for event ${event.id}`);
+      }
+    }
+    for (const junctionResource of eventJunctionResources(event, topologyInfo)) {
+      if ((junctionBusyUntil.get(junctionResource) || 0) > event.start) {
+        errors.push(`${junctionResource} busy until ${junctionBusyUntil.get(junctionResource)} for event ${event.id}`);
+      }
     }
     for (const ion of event.ions || []) {
       if ((busyUntil.get(ion) || 0) > event.start) {
@@ -61,6 +73,12 @@ export function validateTrace(trace) {
     if (trapResource) {
       trapBusyUntil.set(trapResource, Math.max(trapBusyUntil.get(trapResource) || 0, event.end));
     }
+    for (const segmentResource of eventSegmentResources(event)) {
+      segmentBusyUntil.set(segmentResource, Math.max(segmentBusyUntil.get(segmentResource) || 0, event.end));
+    }
+    for (const junctionResource of eventJunctionResources(event, topologyInfo)) {
+      junctionBusyUntil.set(junctionResource, Math.max(junctionBusyUntil.get(junctionResource) || 0, event.end));
+    }
   }
 
   applyCompletedTransfers(pendingTransfers, locations, Number.POSITIVE_INFINITY);
@@ -88,7 +106,8 @@ export function createReplay(trace, keyframeInterval = 100) {
 
   const events = sortedTraceEvents(trace.events);
   const initialLocations = new Map(trace.particles.map((particle) => [particle.id, particle.initial_location]));
-  const keyframes = buildKeyframes(events, initialLocations, keyframeInterval);
+  const initialTrapChains = buildInitialTrapChains(trace);
+  const keyframes = buildKeyframes(events, initialLocations, initialTrapChains, keyframeInterval);
   const finishTime = events.reduce((maxTime, event) => Math.max(maxTime, event.end), 0);
   const metrics = summarize(events);
 
@@ -100,15 +119,14 @@ export function createReplay(trace, keyframeInterval = 100) {
       const clampedTime = clamp(time, 0, finishTime);
       const keyframe = nearestKeyframe(keyframes, clampedTime);
       const locations = new Map(keyframe.locations);
+      const trapChains = cloneTrapChains(keyframe.trapChains);
       const activeEvents = [];
 
       for (let index = keyframe.eventIndex; index < events.length; index += 1) {
         const event = events[index];
         if (event.start > clampedTime) break;
         if (event.end <= clampedTime && event.type !== "gate") {
-          for (const ion of event.ions) {
-            locations.set(ion, event.target);
-          }
+          applyCompletedTransfer(event, locations, trapChains);
         }
         if (event.start <= clampedTime && clampedTime < event.end) {
           activeEvents.push(event);
@@ -119,7 +137,7 @@ export function createReplay(trace, keyframeInterval = 100) {
         time: clampedTime,
         locations,
         activeEvents,
-        trapChains: buildTrapChains(trace, locations, activeEvents),
+        trapChains: visibleTrapChains(trapChains, activeEvents),
         dagState: buildDagState(trace, events, activeEvents, clampedTime),
         metrics,
         progressMetrics: summarizeProgress(events, clampedTime, finishTime),
@@ -294,28 +312,61 @@ function locationKey(kind, id) {
   return `${kind}:${id}`;
 }
 
-function buildTrapChains(trace, locations, activeEvents) {
+function buildInitialTrapChains(trace) {
   const chains = new Map((trace.topology?.traps || []).map((trap) => [`trap:${trap.id}`, []]));
-  const activeDepartures = new Set();
-
-  for (const event of activeEvents) {
-    if (event.type === "split" && event.source?.startsWith("trap:")) {
-      for (const ion of event.ions || []) activeDepartures.add(`${event.source}:${ion}`);
-    }
-  }
-
   const particles = [...trace.particles].sort(
     (left, right) => (left.initial_slot ?? left.id) - (right.initial_slot ?? right.id) || left.id - right.id,
   );
   for (const particle of particles) {
-    const location = locations.get(particle.id) || particle.initial_location;
+    const location = particle.initial_location;
     if (!location?.startsWith("trap:")) continue;
-    if (activeDepartures.has(`${location}:${particle.id}`)) continue;
     if (!chains.has(location)) chains.set(location, []);
     chains.get(location).push(particle.id);
   }
-
   return chains;
+}
+
+function cloneTrapChains(trapChains) {
+  return new Map([...trapChains.entries()].map(([location, ions]) => [location, [...ions]]));
+}
+
+function visibleTrapChains(trapChains, activeEvents) {
+  const chains = cloneTrapChains(trapChains);
+  for (const event of activeEvents) {
+    if (event.type !== "split" || !event.source?.startsWith("trap:")) continue;
+    const chain = chains.get(event.source);
+    if (!chain) continue;
+    for (const ion of event.ions || []) removeIon(chain, ion);
+  }
+  return chains;
+}
+
+function applyCompletedTransfer(event, locations, trapChains) {
+  if (event.type === "split") {
+    const chain = trapChains.get(event.source);
+    if (chain) {
+      for (const ion of event.ions || []) removeIon(chain, ion);
+    }
+  } else if (event.type === "merge") {
+    const chain = trapChains.get(event.target) || [];
+    for (const ion of event.ions || []) removeIon(chain, ion);
+    const endpoint = event.metadata?.endpoint;
+    if (endpoint === "L") {
+      chain.splice(0, 0, ...(event.ions || []));
+    } else {
+      chain.push(...(event.ions || []));
+    }
+    trapChains.set(event.target, chain);
+  }
+
+  for (const ion of event.ions || []) {
+    locations.set(ion, event.target);
+  }
+}
+
+function removeIon(chain, ion) {
+  const index = chain.indexOf(ion);
+  if (index !== -1) chain.splice(index, 1);
 }
 
 function buildDagState(trace, events, activeEvents, time) {
@@ -352,10 +403,11 @@ function buildDagState(trace, events, activeEvents, time) {
   return { nodes, edges: dag.edges || [], completed, active };
 }
 
-function buildKeyframes(events, initialLocations, interval) {
+function buildKeyframes(events, initialLocations, initialTrapChains, interval) {
   const safeInterval = Math.max(1, Number(interval) || 1);
-  const keyframes = [{ time: 0, eventIndex: 0, locations: new Map(initialLocations) }];
+  const keyframes = [{ time: 0, eventIndex: 0, locations: new Map(initialLocations), trapChains: cloneTrapChains(initialTrapChains) }];
   const locations = new Map(initialLocations);
+  const trapChains = cloneTrapChains(initialTrapChains);
   const completedTransfers = events
     .filter((event) => event.type !== "gate")
     .sort((left, right) => left.end - right.end || left.start - right.start || left.id - right.id);
@@ -373,12 +425,15 @@ function buildKeyframes(events, initialLocations, interval) {
   for (const time of checkpointTimes) {
     while (transferIndex < completedTransfers.length && completedTransfers[transferIndex].end <= time) {
       const event = completedTransfers[transferIndex];
-      for (const ion of event.ions || []) {
-        locations.set(ion, event.target);
-      }
+      applyCompletedTransfer(event, locations, trapChains);
       transferIndex += 1;
     }
-    keyframes.push({ time, eventIndex: firstEventEndingAfter(events, time), locations: new Map(locations) });
+    keyframes.push({
+      time,
+      eventIndex: firstEventEndingAfter(events, time),
+      locations: new Map(locations),
+      trapChains: cloneTrapChains(trapChains),
+    });
   }
 
   return keyframes;
@@ -511,6 +566,29 @@ function eventTrapResource(event) {
   if (event.type === "split" && event.source?.startsWith("trap:")) return event.source;
   if (event.type === "merge" && event.target?.startsWith("trap:")) return event.target;
   return null;
+}
+
+function eventSegmentResources(event) {
+  const resources = [];
+  if (event.type === "split" && event.target?.startsWith("segment:")) {
+    resources.push(event.target);
+  } else if (event.type === "merge" && event.source?.startsWith("segment:")) {
+    resources.push(event.source);
+  } else if (event.type === "move") {
+    for (const location of [event.source, event.target]) {
+      if (location?.startsWith("segment:") && !resources.includes(location)) resources.push(location);
+    }
+  }
+  return resources;
+}
+
+function eventJunctionResources(event, topologyInfo) {
+  if (event.type !== "move") return [];
+  const sourceEndpoints = topologyInfo.segmentEndpoints.get(event.source) || new Set();
+  const targetEndpoints = topologyInfo.segmentEndpoints.get(event.target) || new Set();
+  return [...sourceEndpoints]
+    .filter((endpoint) => endpoint.startsWith("junction:") && targetEndpoints.has(endpoint))
+    .sort();
 }
 
 function clamp(value, min, max) {

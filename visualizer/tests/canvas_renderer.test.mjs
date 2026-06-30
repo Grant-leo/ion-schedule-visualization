@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   RENDER_SIZES,
+  cssColor,
   endpointSlotIndex,
   eventProgress,
   interpolatePoint,
@@ -13,6 +14,8 @@ import {
   junctionRenderSpec,
   motionPathPoints,
   pointAlongPolyline,
+  resetCssColorCache,
+  resizeCanvas,
   segmentRoutePoints,
   segmentDrawPoints,
   splitInternalSwapPoints,
@@ -22,6 +25,47 @@ import {
   trapRenderWidth,
   trapSlotPoint,
 } from "../canvas_renderer.js";
+
+test("resizeCanvas keeps layout dimensions in CSS pixels on high-DPI displays", () => {
+  const previousDpr = globalThis.devicePixelRatio;
+  globalThis.devicePixelRatio = 2;
+  const canvas = {
+    width: 0,
+    height: 0,
+    getBoundingClientRect: () => ({ width: 640, height: 360 }),
+  };
+
+  const viewport = resizeCanvas(canvas);
+  const stable = resizeCanvas(canvas);
+
+  assert.deepEqual(viewport, { width: 640, height: 360, dpr: 2, resized: true });
+  assert.deepEqual(stable, { width: 640, height: 360, dpr: 2, resized: false });
+  assert.equal(canvas.width, 1280);
+  assert.equal(canvas.height, 720);
+  globalThis.devicePixelRatio = previousDpr;
+});
+
+test("cssColor caches computed CSS variables during a render pass", () => {
+  const previousDocument = globalThis.document;
+  const previousGetComputedStyle = globalThis.getComputedStyle;
+  let reads = 0;
+  globalThis.document = { documentElement: {} };
+  globalThis.getComputedStyle = () => ({
+    getPropertyValue: (name) => {
+      reads += 1;
+      return name === "--color-move" ? " #64d2ff " : "";
+    },
+  });
+  resetCssColorCache();
+
+  assert.equal(cssColor("--color-move"), "#64d2ff");
+  assert.equal(cssColor("--color-move"), "#64d2ff");
+  assert.equal(reads, 1);
+
+  resetCssColorCache();
+  globalThis.document = previousDocument;
+  globalThis.getComputedStyle = previousGetComputedStyle;
+});
 
 test("hardware shuttle channels render wider than moving ions", () => {
   const movingIonDiameter = RENDER_SIZES.activeIonRadius * 2;

@@ -99,6 +99,32 @@ test("layoutDag wraps dense vertical DAG levels instead of overlapping nodes", (
   assert.ok(graph.height > 420);
 });
 
+test("layoutDag windows very large DAGs around the active frontier", () => {
+  const nodes = new Map(
+    Array.from({ length: 500 }, (_, id) => [
+      id,
+      {
+        id,
+        gate_name: id % 5 === 0 ? "cx" : "rz",
+        qubits: [id % 16],
+        state: id === 250 ? "active" : id < 250 ? "completed" : "blocked",
+      },
+    ]),
+  );
+  const edges = Array.from({ length: 499 }, (_, id) => ({ source: id, target: id + 1 }));
+
+  const graph = layoutDag({ nodes, edges }, { width: 420, height: 620, direction: "vertical", maxNodes: 80 });
+  const ids = new Set(graph.nodes.map((node) => node.id));
+
+  assert.ok(graph.nodes.length <= 80);
+  assert.equal(graph.totalNodeCount, 500);
+  assert.equal(graph.omittedNodeCount, 420);
+  assert.ok(ids.has(250));
+  assert.ok(ids.has(249));
+  assert.ok(ids.has(251));
+  assert.ok(graph.edges.every((edge) => ids.has(edge.source) && ids.has(edge.target)));
+});
+
 test("DAG stylesheet dims only executed dependency nodes", () => {
   const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
