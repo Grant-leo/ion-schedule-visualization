@@ -1,6 +1,6 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260629-junction19";
-import { renderDagSvg } from "./dag_renderer.js?v=20260629-junction19";
-import { createReplay, validateTrace } from "./replay.js?v=20260629-junction19";
+import { createRenderer } from "./canvas_renderer.js?v=20260629-dagfull2";
+import { renderDagSvg } from "./dag_renderer.js?v=20260629-dagfull2";
+import { createReplay, validateTrace } from "./replay.js?v=20260629-dagfull2";
 import {
   createHeadlineMetricCards,
   createMetricCards,
@@ -8,11 +8,10 @@ import {
   describeEvent,
   formatLocation,
   summarizeDag,
-} from "./ui_model.js?v=20260629-junction19";
+} from "./ui_model.js?v=20260629-dagfull2";
 
 const LIVE_PANEL_INTERVAL_MS = 160;
 const PERFORMANCE_PANEL_INTERVAL_MS = 250;
-const DAG_MAX_RENDERED_NODES = 260;
 const GENERATED_TRACE_LIMIT = 12;
 
 const elements = {
@@ -536,7 +535,7 @@ function draw(options = {}) {
 
   if (dagKey !== lastDagKey) {
     renderDagSummary(state.dagState);
-    renderDagSvg(elements.dagPanel, state.dagState, { direction: "vertical", maxNodes: DAG_MAX_RENDERED_NODES });
+    renderDagSvg(elements.dagPanel, state.dagState, { direction: "vertical" });
     focusDagViewport(elements.dagPanel);
     lastDagKey = dagKey;
   }

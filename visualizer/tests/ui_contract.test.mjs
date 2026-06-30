@@ -25,9 +25,10 @@ test("trace generation ignores stale responses and disables duplicate submission
   assert.match(appSource, /while\s*\(generatedTraces\.size\s*>\s*GENERATED_TRACE_LIMIT\)/);
 });
 
-test("large dependency DAGs are rendered with a bounded focus window", () => {
-  assert.match(appSource, /const DAG_MAX_RENDERED_NODES\s*=\s*260/);
-  assert.match(appSource, /renderDagSvg\(elements\.dagPanel,\s*state\.dagState,\s*\{\s*direction:\s*"vertical",\s*maxNodes:\s*DAG_MAX_RENDERED_NODES\s*\}\)/);
+test("large dependency DAGs are rendered without dropping nodes", () => {
+  assert.doesNotMatch(appSource, /DAG_MAX_RENDERED_NODES/);
+  assert.doesNotMatch(appSource, /maxNodes/);
+  assert.match(appSource, /renderDagSvg\(elements\.dagPanel,\s*state\.dagState,\s*\{\s*direction:\s*"vertical"\s*\}\)/);
 });
 
 test("mobile layout surfaces the animation before form controls", () => {

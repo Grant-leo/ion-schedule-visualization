@@ -99,7 +99,7 @@ test("layoutDag wraps dense vertical DAG levels instead of overlapping nodes", (
   assert.ok(graph.height > 420);
 });
 
-test("layoutDag windows very large DAGs around the active frontier", () => {
+test("layoutDag preserves every node and dependency for very large DAGs", () => {
   const nodes = new Map(
     Array.from({ length: 500 }, (_, id) => [
       id,
@@ -116,12 +116,13 @@ test("layoutDag windows very large DAGs around the active frontier", () => {
   const graph = layoutDag({ nodes, edges }, { width: 420, height: 620, direction: "vertical", maxNodes: 80 });
   const ids = new Set(graph.nodes.map((node) => node.id));
 
-  assert.ok(graph.nodes.length <= 80);
+  assert.equal(graph.nodes.length, 500);
   assert.equal(graph.totalNodeCount, 500);
-  assert.equal(graph.omittedNodeCount, 420);
+  assert.equal(graph.omittedNodeCount, 0);
   assert.ok(ids.has(250));
   assert.ok(ids.has(249));
   assert.ok(ids.has(251));
+  assert.equal(graph.edges.length, 499);
   assert.ok(graph.edges.every((edge) => ids.has(edge.source) && ids.has(edge.target)));
 });
 

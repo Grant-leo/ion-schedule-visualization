@@ -799,6 +799,12 @@ select {
   stroke-width: 1.35;
 }
 
+.dag-svg-compact .dag-edge {
+  stroke: rgba(167, 171, 179, 0.28);
+  stroke-width: 0.85;
+  vector-effect: non-scaling-stroke;
+}
+
 .dag-arrow {
   fill: rgba(167, 171, 179, 0.6);
 }
@@ -807,6 +813,10 @@ select {
   fill: rgba(31, 36, 43, 0.98);
   stroke: rgba(100, 210, 255, 0.44);
   stroke-width: 1.45;
+}
+
+.dag-svg-node.compact rect {
+  stroke-width: 0.9;
 }
 
 .dag-svg-node text {
@@ -838,6 +848,10 @@ select {
   opacity: 0.32;
 }
 
+.dag-svg-node.compact.completed {
+  opacity: 0.24;
+}
+
 .dag-svg-node.completed rect {
   fill: rgba(17, 18, 21, 0.9);
   stroke: rgba(255, 255, 255, 0.12);
@@ -849,10 +863,38 @@ select {
   stroke-width: 2.2;
 }
 
+.dag-svg-node.compact.active rect {
+  fill: rgba(158, 227, 125, 0.28);
+  stroke-width: 1.7;
+}
+
 .dag-svg-node.ready rect {
   fill: rgba(100, 210, 255, 0.14);
   stroke: var(--color-move);
   stroke-width: 1.7;
+}
+
+.dag-svg-node.compact.ready rect {
+  fill: rgba(100, 210, 255, 0.24);
+  stroke-width: 1.2;
+}
+
+.dag-highlight-label {
+  fill: var(--color-text);
+  stroke: rgba(12, 14, 17, 0.86);
+  stroke-width: 3;
+  paint-order: stroke;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0;
+}
+
+.dag-highlight-label.ready {
+  fill: #c8f1ff;
+}
+
+.dag-highlight-label.active {
+  fill: #c7f7a9;
 }
 
 .metric-grid {
