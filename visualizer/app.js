@@ -1,7 +1,7 @@
 import { createRenderer } from "./canvas_renderer.js?v=20260630-swap-smooth1";
 import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-circuit-parallel2";
 import { renderDagSvg } from "./dag_renderer.js?v=20260630-swap-circuit1";
-import { createReplay, validateTrace } from "./replay.js?v=20260630-fidelity1";
+import { createReplay, validateTrace } from "./replay.js?v=20260630-fidelity2";
 import {
   createHeadlineMetricCards,
   createMetricCards,
@@ -13,7 +13,7 @@ import {
   playbackDeltaCycles,
   playbackScaleSummary,
   summarizeDag,
-} from "./ui_model.js?v=20260630-fidelity1";
+} from "./ui_model.js?v=20260630-fidelity2";
 
 const LIVE_PANEL_INTERVAL_MS = 160;
 const PERFORMANCE_PANEL_INTERVAL_MS = 250;
@@ -116,6 +116,7 @@ let lastCircuitKey = "";
 let lastExpandedCircuitKey = "";
 let latestTimeDelta = null;
 let latestShuttleDelta = null;
+let latestFidelityDelta = null;
 
 init().catch((error) => {
   const message = formatErrorMessage(error);
@@ -338,6 +339,7 @@ function loadTraceData(nextTrace, { resetControlPanelScroll = true } = {}) {
   elements.timeline.value = "0";
   latestTimeDelta = null;
   latestShuttleDelta = null;
+  latestFidelityDelta = null;
   syncConfigControls(trace);
   applySourceModeAvailability();
   renderScenarioSummary(trace);
@@ -659,6 +661,7 @@ function restart() {
   playing = false;
   latestTimeDelta = null;
   latestShuttleDelta = null;
+  latestFidelityDelta = null;
   elements.playPauseButton.textContent = "Play";
   draw({ forcePanels: true });
 }
@@ -782,6 +785,8 @@ function buildMetricInput(metrics, replayMetrics, dagState) {
     latest_time_delta_key: latestTimeDelta?.key,
     latest_shuttle_delta: latestShuttleDelta?.text,
     latest_shuttle_delta_key: latestShuttleDelta?.key,
+    latest_fidelity_delta: latestFidelityDelta?.text,
+    latest_fidelity_delta_key: latestFidelityDelta?.key,
     event_count: metrics?.event_count ?? replayMetrics?.eventCount,
     finish_time: metrics?.finish_time ?? replayMetrics?.finishTime,
     fidelity: metrics?.fidelity ?? replayMetrics?.fidelity,
@@ -899,6 +904,7 @@ function emitCompletedTimeDelta(previousTime, nextTime) {
   const completedEvents = replay.events.filter((event) => event.end > previousTime && event.end <= nextTime);
   const event = completedEvents.at(-1);
   if (!event) return;
+  emitCompletedFidelityDelta(previousTime, nextTime, completedEvents);
   const key = `${event.id}:${event.end}:${performance.now().toFixed(1)}`;
   latestTimeDelta = { text: eventDurationMicroseconds(event, trace), key };
   lastHeadlineKey = "";
@@ -921,6 +927,28 @@ function emitCompletedTimeDelta(previousTime, nextTime) {
       draw({ forcePanels: true });
     }, 1300);
   }
+}
+
+function emitCompletedFidelityDelta(previousTime, nextTime, completedEvents) {
+  const previousFidelity = Number(replay.stateAt(previousTime).progressMetrics?.fidelity ?? 1);
+  const nextFidelity = Number(replay.stateAt(nextTime).progressMetrics?.fidelity ?? previousFidelity);
+  const dropPercent = Math.max(0, previousFidelity - nextFidelity) * 100;
+  if (dropPercent <= 0) return;
+  const key = `${completedEvents.map((item) => item.id).join(",")}:${nextTime}:${performance.now().toFixed(1)}`;
+  latestFidelityDelta = { text: `-${formatFidelityDropPercent(dropPercent)}%`, key };
+  lastHeadlineKey = "";
+  window.setTimeout(() => {
+    if (latestFidelityDelta?.key !== key) return;
+    latestFidelityDelta = null;
+    lastHeadlineKey = "";
+    draw({ forcePanels: true });
+  }, 1300);
+}
+
+function formatFidelityDropPercent(value) {
+  const numeric = Number(value || 0);
+  if (numeric >= 10) return numeric.toFixed(1);
+  return numeric.toFixed(2);
 }
 
 function isShuttlingUiEvent(event) {

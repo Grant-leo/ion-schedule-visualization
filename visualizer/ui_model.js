@@ -91,6 +91,9 @@ export function createHeadlineMetricCards(metrics = {}, previousMetrics = null) 
         unit: `/ ${formatFidelityPercent(current.fidelity)}`,
         total: formatFidelityPercent(current.fidelity),
         detail: "estimated from completed operations",
+        deltaPulse: metrics.latest_fidelity_delta
+          ? { text: metrics.latest_fidelity_delta, key: metrics.latest_fidelity_delta_key || metrics.latest_fidelity_delta }
+          : null,
         progress: ratio(progress.fidelity, 1),
       },
     ];

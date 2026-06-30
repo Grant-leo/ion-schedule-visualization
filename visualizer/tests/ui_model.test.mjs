@@ -240,6 +240,27 @@ test("live headline Shuttles card carries latest shuttle-count delta", () => {
   assert.deepEqual(shuttleCard.deltaPulse, { text: "+2", key: "shuttle-2" });
 });
 
+test("live headline Fidelity card carries latest fidelity-loss delta", () => {
+  const [, , fidelityCard] = createHeadlineMetricCards(
+    {
+      finish_time: 100,
+      fidelity: 0.9,
+      counts: { split: 1, move: 1, merge: 1 },
+      latest_fidelity_delta: "-0.82%",
+      latest_fidelity_delta_key: "fidelity-8",
+    },
+    {
+      elapsedTime: 20,
+      finishTime: 100,
+      fidelity: 0.96,
+      shuttlingOps: 3,
+      counts: { split: 1, move: 1, merge: 1 },
+    },
+  );
+
+  assert.deepEqual(fidelityCard.deltaPulse, { text: "-0.82%", key: "fidelity-8" });
+});
+
 test("describeEvent translates trace events into presentation-safe copy", () => {
   assert.equal(
     describeEvent({
