@@ -162,13 +162,7 @@ export function polylineLength(points) {
 }
 
 export function motionTravelProgress(event, time, path, speedPxPerCycle = 0) {
-  const length = polylineLength(path);
-  const speed = Number(speedPxPerCycle);
-  if (!Number.isFinite(speed) || speed <= 0 || length <= 0) {
-    return eventProgress(event, time);
-  }
-  const elapsed = Math.max(0, Number(time) - Number(event.start || 0));
-  return clamp((elapsed * speed) / length, 0, 1);
+  return eventProgress(event, time);
 }
 
 function motionTravelDistance(event, time, speedPxPerCycle = 0) {

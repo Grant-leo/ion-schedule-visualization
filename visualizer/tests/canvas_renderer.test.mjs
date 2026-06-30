@@ -91,7 +91,7 @@ test("eventProgress clamps time inside event duration", () => {
   assert.equal(eventProgress(event, 30), 1);
 });
 
-test("motionTravelProgress keeps visual ion speed constant across different path lengths", () => {
+test("motionTravelProgress uses the full hardware event duration to avoid early stalls", () => {
   const event = { start: 0, end: 100 };
   const shortPath = [
     { x: 0, y: 0 },
@@ -103,14 +103,14 @@ test("motionTravelProgress keeps visual ion speed constant across different path
   ];
   const speedPxPerCycle = 10;
 
-  const shortPoint = pointAlongPolyline(shortPath, motionTravelProgress(event, 5, shortPath, speedPxPerCycle));
-  const longPoint = pointAlongPolyline(longPath, motionTravelProgress(event, 5, longPath, speedPxPerCycle));
+  const shortPoint = pointAlongPolyline(shortPath, motionTravelProgress(event, 50, shortPath, speedPxPerCycle));
+  const longPoint = pointAlongPolyline(longPath, motionTravelProgress(event, 50, longPath, speedPxPerCycle));
 
   assert.deepEqual(shortPoint, { x: 50, y: 0 });
-  assert.deepEqual(longPoint, { x: 50, y: 0 });
+  assert.deepEqual(longPoint, { x: 150, y: 0 });
 });
 
-test("motionTravelProgress scales uniformly under playback speed multipliers", () => {
+test("motionTravelProgress stays continuous under playback speed multipliers", () => {
   const event = { start: 0, end: 100 };
   const path = [
     { x: 0, y: 0 },
@@ -124,7 +124,7 @@ test("motionTravelProgress scales uniformly under playback speed multipliers", (
     return point.x;
   });
 
-  assert.deepEqual(distances, [20, 80, 300]);
+  assert.deepEqual(distances, [15, 60, 300]);
 });
 
 test("interpolatePoint returns the in-flight particle position", () => {

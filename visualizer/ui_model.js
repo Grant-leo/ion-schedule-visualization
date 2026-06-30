@@ -60,7 +60,7 @@ export function createHeadlineMetricCards(metrics = {}, previousMetrics = null) 
     return [
       {
         kind: "time",
-        label: "Time",
+        label: "Total time",
         value: formatMicrosecondValue(toMicroseconds(progress.elapsedTime, current)),
         unit: `/ ${formatMicroseconds(current.finishTime, current)}`,
         badge: scaleBadge,
@@ -85,11 +85,11 @@ export function createHeadlineMetricCards(metrics = {}, previousMetrics = null) 
       },
       {
         kind: "shuttle-time",
-        label: "Motion time",
+        label: "Shuttle time",
         value: formatMicrosecondValue(toMicroseconds(progress.shuttlingTime, current)),
         unit: `/ ${formatMicroseconds(current.shuttlingTime, current)}`,
         total: formatNumber(current.shuttlingTime),
-        detail: "cumulative shuttle work",
+        detail: "cumulative shuttling work",
         progress: ratio(progress.shuttlingTime, current.shuttlingTime),
       },
     ];
@@ -98,7 +98,7 @@ export function createHeadlineMetricCards(metrics = {}, previousMetrics = null) 
   const previous = previousMetrics ? headlineMetrics(previousMetrics) : null;
   return [
     {
-      label: "Time",
+      label: "Total time",
       value: formatMicrosecondValue(toMicroseconds(current.finishTime, current)),
       unit: "μs",
       detail: "end-to-end schedule",
@@ -114,7 +114,7 @@ export function createHeadlineMetricCards(metrics = {}, previousMetrics = null) 
       delta: metricDelta(current.shuttlingOps, previous?.shuttlingOps),
     },
     {
-      label: "Motion time",
+      label: "Shuttle time",
       value: formatMicrosecondValue(toMicroseconds(current.shuttlingTime, current)),
       unit: "μs",
       detail: `${current.shuttlingRatio.toFixed(1)}% of schedule`,

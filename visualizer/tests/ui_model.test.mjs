@@ -64,7 +64,7 @@ test("createHeadlineMetricCards highlights execution and shuttling deltas", () =
     },
   );
 
-  assert.deepEqual(cards.map((card) => card.label), ["Time", "Shuttles", "Motion time"]);
+  assert.deepEqual(cards.map((card) => card.label), ["Total time", "Shuttles", "Shuttle time"]);
   assert.equal(cards[0].value, "920");
   assert.equal(cards[0].unit, "μs");
   assert.deepEqual(cards[0].delta, { text: "-80", tone: "good" });
@@ -103,7 +103,7 @@ test("createHeadlineMetricCards reports live schedule progress against final tot
   assert.equal(cards[1].progress, 3 / 14);
   assert.equal(cards[2].value, "12");
   assert.equal(cards[2].unit, "/ 50 μs");
-  assert.equal(cards[2].detail, "cumulative shuttle work");
+  assert.equal(cards[2].detail, "cumulative shuttling work");
   assert.equal(cards[2].progress, 0.24);
 });
 
