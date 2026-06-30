@@ -6,10 +6,11 @@ import {
   createHeadlineMetricCards,
   createMetricCards,
   createScenarioCopy,
+  createValidationSummary,
   describeEvent,
   formatLocation,
   summarizeDag,
-} from "./ui_model.js?v=20260630-swap-circuit1";
+} from "./ui_model.js?v=20260630-validation1";
 
 const LIVE_PANEL_INTERVAL_MS = 160;
 const PERFORMANCE_PANEL_INTERVAL_MS = 250;
@@ -79,6 +80,8 @@ const EXPERIMENT_CONFIG_ELEMENTS = [
   elements.loadConfigButton,
 ];
 
+const PLAYBACK_ELEMENTS = [elements.playPauseButton, elements.restartButton, elements.stepButton, elements.timeline];
+
 const renderer = createRenderer(elements.canvas);
 
 let replay = null;
@@ -102,6 +105,7 @@ let machineTrapCounts = new Map();
 let loadRequestId = 0;
 let activeLoadController = null;
 let generationLoading = false;
+let traceBlocked = true;
 let sourceMode = "experiment";
 let lastLivePanelRender = 0;
 let lastPerformancePanelRender = 0;
@@ -109,9 +113,11 @@ let lastCircuitKey = "";
 let lastExpandedCircuitKey = "";
 
 init().catch((error) => {
-  setStatus("Load failed", "invalid");
-  elements.eventPanel.textContent = formatErrorMessage(error);
-  showConfigError(formatErrorMessage(error));
+  const message = formatErrorMessage(error);
+  setStatus("Load failed", "invalid", message);
+  setReplayBlocked(true);
+  elements.eventPanel.textContent = message;
+  showConfigError(message);
 });
 
 async function init() {
@@ -129,7 +135,8 @@ async function init() {
   } else if (manifestEntries.length > 0) {
     await loadTrace(manifestEntries[0].path);
   } else {
-    elements.validationPanel.textContent = "No traces";
+    setStatus("Schedule blocked", "invalid", "No traces are available.");
+    setReplayBlocked(true);
   }
 
   requestAnimationFrame(loop);
@@ -245,7 +252,7 @@ function wireControls() {
   elements.restartButton.addEventListener("click", restart);
   elements.stepButton.addEventListener("click", stepToNextEvent);
   elements.timeline.addEventListener("input", () => {
-    if (generationLoading) return;
+    if (generationLoading || traceBlocked) return;
     currentTime = Number(elements.timeline.value);
     draw({ forcePanels: true });
   });
@@ -265,9 +272,11 @@ async function loadTrace(path) {
     loadTraceData(nextTrace);
   } catch (error) {
     if (isAbortError(error) || requestId !== loadRequestId) return;
-    setStatus("Load failed", "invalid");
-    elements.eventPanel.textContent = formatErrorMessage(error);
-    showConfigError(formatErrorMessage(error));
+    const message = formatErrorMessage(error);
+    setStatus("Load failed", "invalid", message);
+    setReplayBlocked(true);
+    elements.eventPanel.textContent = message;
+    showConfigError(message);
   }
 }
 
@@ -294,13 +303,14 @@ function loadTraceData(nextTrace, { resetControlPanelScroll = true } = {}) {
   const backendValidation = nextTrace.validation || { valid: true, errors: [] };
   const validationErrors = [...(frontendValidation.errors || []), ...(backendValidation.errors || [])];
   const valid = frontendValidation.valid && backendValidation.valid;
+  renderValidationPanel({ valid, errors: validationErrors });
   if (!valid) {
     playing = false;
     elements.playPauseButton.textContent = "Play";
-    setStatus("Trace invalid", "invalid");
     const message = validationErrors.join("; ") || "Trace validation failed.";
     elements.eventPanel.textContent = formatErrorMessage(message);
-    showConfigError(validationErrors.join("; "));
+    setReplayBlocked(true);
+    showConfigError(message);
     return false;
   }
 
@@ -308,6 +318,7 @@ function loadTraceData(nextTrace, { resetControlPanelScroll = true } = {}) {
   previousTraceMetrics = trace?.metrics || null;
   trace = nextTrace;
   replay = nextReplay;
+  setReplayBlocked(false);
   renderer.setTrace(nextTrace);
   clearConfigError();
 
@@ -343,7 +354,8 @@ async function loadSelectedConfig({ preserveControlScroll = true } = {}) {
   const feasibility = selectedCapacityFeasibility({ program, machine, capacity });
   clearConfigError();
   if (!feasibility.valid) {
-    setStatus("Capacity too small", "invalid");
+    setStatus("Capacity too small", "invalid", feasibility.message);
+    setReplayBlocked(true);
     elements.eventPanel.textContent = feasibility.message;
     showConfigError(feasibility.message);
     renderSelectedBenchmark();
@@ -379,8 +391,10 @@ async function loadSelectedConfig({ preserveControlScroll = true } = {}) {
         programIdFromPath(entry.program || entry.path || entry.id) === program,
     );
     if (!match) {
-      setStatus("Config trace missing", "invalid");
-      showConfigError("No pre-generated trace matches the selected circuit, architecture, mapper, and scheduler.");
+      const message = "No pre-generated trace matches the selected circuit, architecture, mapper, and scheduler.";
+      setStatus("Config trace missing", "invalid", message);
+      setReplayBlocked(true);
+      showConfigError(message);
       return;
     }
     elements.traceSelect.value = match.path;
@@ -390,9 +404,11 @@ async function loadSelectedConfig({ preserveControlScroll = true } = {}) {
     restoreControlScrollTop(controlScrollTop);
   } catch (error) {
     if (isAbortError(error) || requestId !== loadRequestId) return;
-    setStatus("Generation failed", "invalid");
-    elements.eventPanel.textContent = formatErrorMessage(error);
-    showConfigError(formatErrorMessage(error));
+    const message = formatErrorMessage(error);
+    setStatus("Generation failed", "invalid", message);
+    setReplayBlocked(true);
+    elements.eventPanel.textContent = message;
+    showConfigError(message);
   } finally {
     if (requestId === loadRequestId) {
       setGenerationLoading(false);
@@ -525,11 +541,50 @@ function renderScenarioSummary(nextTrace) {
   elements.scenarioDescription.textContent = copy.description;
 }
 
-function setStatus(message, state) {
-  elements.validationPanel.textContent = message;
-  elements.validationPanel.classList.toggle("is-valid", state === "valid");
-  elements.validationPanel.classList.toggle("is-invalid", state === "invalid");
-  elements.validationPanel.classList.toggle("is-loading", state === "loading");
+function renderValidationPanel({ valid, errors = [] }) {
+  const validationErrors = errors;
+  const summary = createValidationSummary({ valid, errors: validationErrors });
+  renderStatusPanel(summary);
+}
+
+function setStatus(message, state, detail = "") {
+  renderStatusPanel({
+    state: state === "invalid" ? "blocked" : state,
+    title: message,
+    detail,
+  });
+}
+
+function renderStatusPanel(summary) {
+  elements.validationPanel.replaceChildren();
+  const title = document.createElement("strong");
+  title.textContent = summary.title;
+  elements.validationPanel.appendChild(title);
+  if (summary.detail) {
+    const detail = document.createElement("span");
+    detail.textContent = summary.detail;
+    elements.validationPanel.appendChild(detail);
+  }
+  elements.validationPanel.setAttribute(
+    "aria-label",
+    summary.detail ? `${summary.title}: ${summary.detail}` : summary.title,
+  );
+  elements.validationPanel.hidden = summary.state !== "blocked";
+  elements.validationPanel.classList.toggle("is-valid", summary.state === "valid");
+  elements.validationPanel.classList.toggle("is-invalid", summary.state === "blocked");
+  elements.validationPanel.classList.toggle("is-loading", summary.state === "loading");
+}
+
+function setReplayBlocked(isBlocked) {
+  traceBlocked = isBlocked;
+  updatePlaybackAvailability();
+}
+
+function updatePlaybackAvailability() {
+  const disabled = generationLoading || traceBlocked || !replay;
+  for (const element of PLAYBACK_ELEMENTS) {
+    element.disabled = disabled;
+  }
 }
 
 function setGenerationLoading(isLoading) {
@@ -538,12 +593,11 @@ function setGenerationLoading(isLoading) {
     playing = false;
     elements.playPauseButton.textContent = "Play";
   }
-  elements.playPauseButton.disabled = isLoading;
-  elements.timeline.disabled = isLoading;
   elements.loadConfigButton.textContent = isLoading ? "Generating..." : "Generate Schedule";
   for (const element of GENERATION_LOCKED_ELEMENTS) {
     element.disabled = isLoading;
   }
+  updatePlaybackAvailability();
   applySourceModeAvailability();
   updateSchedulerModeButtons();
 }
@@ -583,13 +637,13 @@ function clearConfigError() {
 }
 
 function togglePlayback() {
-  if (!replay || generationLoading) return;
+  if (!replay || generationLoading || traceBlocked) return;
   playing = !playing;
   elements.playPauseButton.textContent = playing ? "Pause" : "Play";
 }
 
 function restart() {
-  if (generationLoading) return;
+  if (generationLoading || traceBlocked) return;
   currentTime = 0;
   playing = false;
   elements.playPauseButton.textContent = "Play";
@@ -597,7 +651,7 @@ function restart() {
 }
 
 function stepToNextEvent() {
-  if (!replay || generationLoading) return;
+  if (!replay || generationLoading || traceBlocked) return;
   currentTime = replay.nextEventTime(currentTime);
   draw({ forcePanels: true });
 }

@@ -35,8 +35,9 @@ test("trace generation ignores stale responses and disables duplicate submission
   assert.match(appSource, /function setGenerationLoading\(isLoading\)/);
   assert.match(appSource, /elements\.loadConfigButton\.disabled\s*=\s*generationLoading\s*\|\|\s*sourceMode\s*!==\s*"experiment"/);
   assert.match(appSource, /const GENERATION_LOCKED_ELEMENTS\s*=\s*\[/);
-  assert.match(appSource, /elements\.playPauseButton\.disabled\s*=\s*isLoading/);
-  assert.match(appSource, /elements\.timeline\.disabled\s*=\s*isLoading/);
+  assert.match(appSource, /const PLAYBACK_ELEMENTS\s*=\s*\[/);
+  assert.match(appSource, /function updatePlaybackAvailability\(\)/);
+  assert.match(appSource, /const disabled\s*=\s*generationLoading\s*\|\|\s*traceBlocked\s*\|\|\s*!replay/);
   assert.match(appSource, /playing\s*=\s*false/);
   assert.doesNotMatch(appSource, /generatedTraces/);
   assert.doesNotMatch(appSource, /upsertTraceOption/);
@@ -49,7 +50,20 @@ test("invalid traces are rejected before replay installation", () => {
   assert.ok(validIndex !== -1, "loadTraceData computes merged validation");
   assert.ok(guardIndex > validIndex, "loadTraceData checks merged validation");
   assert.ok(replayIndex > guardIndex, "createReplay runs only after invalid trace guard");
-  assert.match(appSource, /showConfigError\(validationErrors\.join\("; "\)\)/);
+  assert.match(appSource, /createValidationSummary\(\{\s*valid,\s*errors:\s*validationErrors\s*\}\)/);
+  assert.match(appSource, /setReplayBlocked\(true\)/);
+  assert.match(appSource, /showConfigError\(message\)/);
+});
+
+test("invalid schedule reasons are visible on the hardware stage", () => {
+  assert.match(indexSource, /id="validationPanel"\s+class="validation-panel"\s+aria-live="polite"\s+hidden/);
+  assert.doesNotMatch(indexSource, /id="validationPanel"\s+class="sr-only"/);
+  assert.match(cssSource, /\.validation-panel\s*{[\s\S]*position:\s*absolute/);
+  assert.match(cssSource, /\.validation-panel\.is-invalid\s*{[\s\S]*border-color:\s*rgba\(255,\s*107,\s*118/);
+  assert.match(cssSource, /button:disabled,[\s\S]*select:disabled,[\s\S]*input:disabled\s*{[\s\S]*cursor:\s*not-allowed/);
+  assert.match(appSource, /function renderValidationPanel\(\{\s*valid,\s*errors\s*=\s*\[\]\s*\}\)/);
+  assert.match(appSource, /elements\.validationPanel\.setAttribute\(\s*"aria-label"/);
+  assert.match(appSource, /elements\.validationPanel\.hidden\s*=\s*summary\.state\s*!==\s*"blocked"/);
 });
 
 test("large dependency DAGs are rendered without dropping nodes", () => {

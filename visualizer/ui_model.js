@@ -127,6 +127,28 @@ export function createScenarioCopy({ run = {}, program = null } = {}) {
   };
 }
 
+export function createValidationSummary(validation = {}) {
+  const errors = Array.isArray(validation.errors) ? validation.errors.filter(Boolean) : [];
+  if (validation.valid !== false && errors.length === 0) {
+    return {
+      state: "valid",
+      title: "Schedule verified",
+      detail: "Trace passes topology, dependency, capacity, resource, and endpoint checks.",
+      errors: [],
+    };
+  }
+
+  const visibleErrors = errors.slice(0, 3);
+  const overflow = errors.length > visibleErrors.length ? `; +${errors.length - visibleErrors.length} more` : "";
+  const detail = visibleErrors.length > 0 ? `${visibleErrors.join("; ")}${overflow}` : "Trace validation failed.";
+  return {
+    state: "blocked",
+    title: "Schedule blocked",
+    detail,
+    errors,
+  };
+}
+
 export function describeEvent(event) {
   if (!event) return "No active hardware operation";
   const duration = Math.max(0, Number(event.end ?? 0) - Number(event.start ?? 0));

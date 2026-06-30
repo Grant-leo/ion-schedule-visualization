@@ -1,7 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createHeadlineMetricCards, createMetricCards, createScenarioCopy, describeEvent, summarizeDag } from "../ui_model.js";
+import {
+  createHeadlineMetricCards,
+  createMetricCards,
+  createScenarioCopy,
+  createValidationSummary,
+  describeEvent,
+  summarizeDag,
+} from "../ui_model.js";
 
 test("createMetricCards derives shuttling burden and gate mix for executive metrics", () => {
   const cards = createMetricCards({
@@ -123,6 +130,34 @@ test("createScenarioCopy falls back to a readable program id", () => {
   });
 
   assert.equal(copy.title, "Cat State N22 on L6");
+});
+
+test("createValidationSummary reports invalid schedules as blocked with concise reasons", () => {
+  const summary = createValidationSummary({
+    valid: false,
+    errors: [
+      "event 17 source trap:2 not adjacent to segment:9",
+      "ion 4 busy until 230 for event 18",
+      "trap:1 occupancy 3 exceeds capacity 2 after event 19",
+      "dag node 22 starts before dependency 21 completes",
+    ],
+  });
+
+  assert.equal(summary.state, "blocked");
+  assert.equal(summary.title, "Schedule blocked");
+  assert.equal(
+    summary.detail,
+    "event 17 source trap:2 not adjacent to segment:9; ion 4 busy until 230 for event 18; trap:1 occupancy 3 exceeds capacity 2 after event 19; +1 more",
+  );
+});
+
+test("createValidationSummary keeps valid schedules non-intrusive", () => {
+  assert.deepEqual(createValidationSummary({ valid: true, errors: [] }), {
+    state: "valid",
+    title: "Schedule verified",
+    detail: "Trace passes topology, dependency, capacity, resource, and endpoint checks.",
+    errors: [],
+  });
 });
 
 test("describeEvent translates trace events into presentation-safe copy", () => {
