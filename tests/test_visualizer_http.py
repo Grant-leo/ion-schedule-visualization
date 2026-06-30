@@ -67,6 +67,9 @@ def test_visualizer_html_uses_cache_busted_core_assets():
     assert 'id="benchmarkMetaPanel"' in html
     assert 'id="runConfigPanel"' in html
     assert 'id="configErrorPanel"' in html
+    assert 'id="circuitPanel"' in html
+    assert 'data-source-mode="experiment"' in html
+    assert 'data-source-mode="trace"' in html
     assert 'id="vizSummary"' in html
 
 
@@ -82,9 +85,10 @@ def test_visualizer_desktop_dag_inspector_keeps_dag_large_without_hiding_timelin
     css = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
 
     assert "grid-template-areas:\n    \"header header right\"\n    \"left viewport right\"\n    \"timeline timeline right\"" in css
-    assert "height: 100vh;\n  overflow: auto;" in css
-    assert "min-height: min(650px, calc(100vh - 180px));" in css
-    assert "flex: 0 0 min(650px, calc(100vh - 180px));" in css
+    assert "grid-template-rows: minmax(0, 1fr);" in css
+    assert "overflow: hidden;\n  display: grid;" in css
+    assert "height: 100%;" in css
+    assert "grid-template-rows: 112px minmax(0, 1fr);" in css
     assert "grid-template-areas:\n      \"header\"\n      \"viewport\"\n      \"timeline\"\n      \"left\"\n      \"right\";" in css
 
 

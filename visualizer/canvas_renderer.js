@@ -872,12 +872,19 @@ function eventEndpointPoint(layout, event, location) {
   return trapSlotPoint(trapPoint, endpointSlotIndex(trap, otherLocation), trap.capacity);
 }
 
+export function gateLaserTargets(layout, state, event) {
+  return (event.ions || [])
+    .map((ion) => {
+      const particle = { id: ion, initial_slot: 0 };
+      const point = particlePoint(layout, { topology: { traps: layout.traceTrapsFallback || [] } }, state, particle, event.target);
+      return point ? { ion, point } : null;
+    })
+    .filter(Boolean);
+}
+
 function drawGateLaser(context, layout, state, event) {
   context.save();
-  for (const ion of event.ions || []) {
-    const particle = { id: ion, initial_slot: 0 };
-    const point = particlePoint(layout, { topology: { traps: layout.traceTrapsFallback || [] } }, state, particle, event.target);
-    if (!point) continue;
+  for (const { point } of gateLaserTargets(layout, state, event)) {
     context.shadowColor = cssColor("--color-gate");
     context.shadowBlur = 18;
     context.strokeStyle = "rgba(158, 227, 125, 0.52)";

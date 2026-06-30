@@ -53,12 +53,12 @@ test("createHeadlineMetricCards highlights execution and shuttling deltas", () =
     },
   );
 
-  assert.deepEqual(cards.map((card) => card.label), ["Execution time", "Shuttling ops", "Shuttling time"]);
+  assert.deepEqual(cards.map((card) => card.label), ["Time", "Shuttles", "Motion time"]);
   assert.equal(cards[0].value, "920");
-  assert.equal(cards[0].unit, "cycles");
+  assert.equal(cards[0].unit, "cy");
   assert.deepEqual(cards[0].delta, { text: "-80", tone: "good" });
   assert.equal(cards[1].value, "28");
-  assert.equal(cards[1].detail, "8 split, 12 move, 8 merge");
+  assert.equal(cards[1].detail, "8 split | 12 move | 8 merge");
   assert.deepEqual(cards[1].delta, { text: "+7", tone: "bad" });
   assert.equal(cards[2].detail, "28.3% of schedule");
   assert.deepEqual(cards[2].delta, { text: "+50", tone: "bad" });
@@ -82,14 +82,17 @@ test("createHeadlineMetricCards reports live schedule progress against final tot
   );
 
   assert.equal(cards[0].value, "25");
-  assert.equal(cards[0].detail, "25 / 100 cycles elapsed");
+  assert.equal(cards[0].unit, "/ 100 cy");
+  assert.equal(cards[0].detail, "live execution");
   assert.equal(cards[0].progress, 0.25);
   assert.equal(cards[1].value, "3");
-  assert.equal(cards[1].detail, "3 / 14 ops started, 1 active");
-  assert.equal(cards[1].subdetail, "1 split, 2 move, 0 merge");
+  assert.equal(cards[1].unit, "/ 14 ops");
+  assert.equal(cards[1].detail, "1 active now");
+  assert.equal(cards[1].subdetail, "1 split | 2 move | 0 merge");
   assert.equal(cards[1].progress, 3 / 14);
   assert.equal(cards[2].value, "12");
-  assert.equal(cards[2].detail, "12 / 50 shuttle cycles");
+  assert.equal(cards[2].unit, "/ 50 cy");
+  assert.equal(cards[2].detail, "cumulative shuttle work");
   assert.equal(cards[2].progress, 0.24);
 });
 

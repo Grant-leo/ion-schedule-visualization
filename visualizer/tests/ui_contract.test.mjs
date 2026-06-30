@@ -19,15 +19,14 @@ test("trace generation ignores stale responses and disables duplicate submission
   assert.match(appSource, /function beginLoadRequest\(\)\s*{[\s\S]*?loadRequestId\s*\+=\s*1/);
   assert.match(appSource, /requestId\s*!==\s*loadRequestId/);
   assert.match(appSource, /async function loadTrace\(path\)\s*{[\s\S]*?const\s+\{\s*requestId,\s*signal\s*\}\s*=\s*beginLoadRequest\(\)[\s\S]*?loadTraceData\(nextTrace\)/);
-  assert.match(appSource, /generatedTraces\.has\(value\)[\s\S]*?beginLoadRequest\(\)[\s\S]*?loadTraceData\(generatedTraces\.get\(value\)\)/);
   assert.match(appSource, /function setGenerationLoading\(isLoading\)/);
-  assert.match(appSource, /elements\.loadConfigButton\.disabled\s*=\s*isLoading/);
+  assert.match(appSource, /elements\.loadConfigButton\.disabled\s*=\s*generationLoading\s*\|\|\s*sourceMode\s*!==\s*"experiment"/);
   assert.match(appSource, /const GENERATION_LOCKED_ELEMENTS\s*=\s*\[/);
   assert.match(appSource, /elements\.playPauseButton\.disabled\s*=\s*isLoading/);
   assert.match(appSource, /elements\.timeline\.disabled\s*=\s*isLoading/);
   assert.match(appSource, /playing\s*=\s*false/);
-  assert.match(appSource, /const GENERATED_TRACE_LIMIT\s*=\s*12/);
-  assert.match(appSource, /while\s*\(generatedTraces\.size\s*>\s*GENERATED_TRACE_LIMIT\)/);
+  assert.doesNotMatch(appSource, /generatedTraces/);
+  assert.doesNotMatch(appSource, /upsertTraceOption/);
 });
 
 test("invalid traces are rejected before replay installation", () => {
@@ -54,6 +53,31 @@ test("responsive DAG panel stays scroll-contained near the desktop breakpoint", 
 test("primary playback controls appear before advanced experiment configuration", () => {
   assert.ok(indexSource.indexOf('class="playback-grid"') < indexSource.indexOf('class="advanced-config"'));
   assert.ok(indexSource.indexOf('for="speedSelect"') < indexSource.indexOf('class="advanced-config"'));
+});
+
+test("verified trace and generated experiment are explicit mutually exclusive replay sources", () => {
+  assert.match(indexSource, /class="source-mode-toggle"/);
+  assert.match(indexSource, /data-source-mode="trace"/);
+  assert.match(indexSource, /data-source-mode="experiment"/);
+  assert.match(appSource, /let\s+sourceMode\s*=\s*"experiment"/);
+  assert.match(appSource, /function setSourceMode\(mode/);
+  assert.match(appSource, /elements\.traceSelect\.disabled\s*=\s*generationLoading\s*\|\|\s*sourceMode\s*!==\s*"trace"/);
+  assert.match(appSource, /elements\.loadConfigButton\.disabled\s*=\s*generationLoading\s*\|\|\s*sourceMode\s*!==\s*"experiment"/);
+});
+
+test("main hardware viewport contains a synchronized TikZ-style circuit strip above the canvas", () => {
+  assert.ok(indexSource.indexOf('id="circuitPanel"') < indexSource.indexOf('id="vizCanvas"'));
+  assert.match(appSource, /import\s+\{\s*renderCircuitSvg\s*\}\s+from\s+"\.\/circuit_renderer\.js/);
+  assert.match(appSource, /renderCircuitSvg\(elements\.circuitPanel,\s*state\.dagState/);
+  assert.match(cssSource, /\.circuit-strip/);
+  assert.match(cssSource, /\.circuit-svg/);
+});
+
+test("right inspector is dedicated to the full-height dependency DAG", () => {
+  assert.doesNotMatch(indexSource, /Timeline focus/);
+  assert.doesNotMatch(indexSource, /Schedule metrics/);
+  assert.doesNotMatch(indexSource, /Initial ion chains/);
+  assert.match(cssSource, /\.right-inspector-panel\s*{[\s\S]*grid-template-rows:\s*minmax\(0,\s*1fr\)/);
 });
 
 test("mobile layout surfaces the animation before form controls", () => {

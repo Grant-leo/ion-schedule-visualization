@@ -56,36 +56,32 @@ export function createHeadlineMetricCards(metrics = {}, previousMetrics = null) 
     return [
       {
         kind: "time",
-        label: "Execution time",
+        label: "Time",
         value: formatNumber(progress.elapsedTime),
-        unit: "cycles",
+        unit: `/ ${formatNumber(current.finishTime)} cy`,
         total: formatNumber(current.finishTime),
-        detail: `${formatNumber(progress.elapsedTime)} / ${formatNumber(current.finishTime)} cycles elapsed`,
-        subdetail: "live playback clock",
+        detail: "live execution",
         progress: ratio(progress.elapsedTime, current.finishTime),
       },
       {
         kind: "motion",
-        label: "Shuttling ops",
+        label: "Shuttles",
         value: formatNumber(progress.shuttlingOps),
-        unit: "ops",
+        unit: `/ ${formatNumber(current.shuttlingOps)} ops`,
         total: formatNumber(current.shuttlingOps),
-        detail: `${formatNumber(progress.shuttlingOps)} / ${formatNumber(
-          current.shuttlingOps,
-        )} ops started, ${formatNumber(progress.activeShuttlingOps)} active`,
-        subdetail: `${formatNumber(progress.splitCount)} split, ${formatNumber(progress.moveCount)} move, ${formatNumber(
+        detail: `${formatNumber(progress.activeShuttlingOps)} active now`,
+        subdetail: `${formatNumber(progress.splitCount)} split | ${formatNumber(progress.moveCount)} move | ${formatNumber(
           progress.mergeCount,
         )} merge`,
         progress: ratio(progress.shuttlingOps, current.shuttlingOps),
       },
       {
         kind: "shuttle-time",
-        label: "Shuttling time",
+        label: "Motion time",
         value: formatNumber(progress.shuttlingTime),
-        unit: "cycles",
+        unit: `/ ${formatNumber(current.shuttlingTime)} cy`,
         total: formatNumber(current.shuttlingTime),
-        detail: `${formatNumber(progress.shuttlingTime)} / ${formatNumber(current.shuttlingTime)} shuttle cycles`,
-        subdetail: "cumulative motion work",
+        detail: "cumulative shuttle work",
         progress: ratio(progress.shuttlingTime, current.shuttlingTime),
       },
     ];
@@ -94,25 +90,25 @@ export function createHeadlineMetricCards(metrics = {}, previousMetrics = null) 
   const previous = previousMetrics ? headlineMetrics(previousMetrics) : null;
   return [
     {
-      label: "Execution time",
+      label: "Time",
       value: formatNumber(current.finishTime),
-      unit: "cycles",
+      unit: "cy",
       detail: "end-to-end schedule",
       delta: metricDelta(current.finishTime, previous?.finishTime),
     },
     {
-      label: "Shuttling ops",
+      label: "Shuttles",
       value: formatNumber(current.shuttlingOps),
       unit: "ops",
-      detail: `${formatNumber(current.splitCount)} split, ${formatNumber(current.moveCount)} move, ${formatNumber(
+      detail: `${formatNumber(current.splitCount)} split | ${formatNumber(current.moveCount)} move | ${formatNumber(
         current.mergeCount,
       )} merge`,
       delta: metricDelta(current.shuttlingOps, previous?.shuttlingOps),
     },
     {
-      label: "Shuttling time",
+      label: "Motion time",
       value: formatNumber(current.shuttlingTime),
-      unit: "cycles",
+      unit: "cy",
       detail: `${current.shuttlingRatio.toFixed(1)}% of schedule`,
       delta: metricDelta(current.shuttlingTime, previous?.shuttlingTime),
     },

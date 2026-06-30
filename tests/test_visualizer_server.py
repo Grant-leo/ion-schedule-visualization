@@ -94,6 +94,17 @@ def test_initial_ordering_changes_greedy_initial_chain_layout():
     assert naive_layout != fidelity_layout
 
 
+def test_mapper_selection_changes_initial_chain_layout_for_same_experiment():
+    layouts = {}
+    for mapper in ["PO", "Greedy", "SABRE"]:
+        trace = generate_trace("adder_n10", "L6", 3, mapper, "Naive", "EJF")
+        layouts[mapper] = sorted((p["id"], p["initial_location"], p["initial_slot"]) for p in trace["particles"])
+
+    assert layouts["PO"] != layouts["Greedy"]
+    assert layouts["PO"] != layouts["SABRE"]
+    assert layouts["Greedy"] != layouts["SABRE"]
+
+
 def test_generate_trace_rejects_infeasible_capacity_before_running_scheduler():
     with pytest.raises(ValueError, match="requires 10 logical qubits"):
         generate_trace("adder_n10", "L6", 1, "Greedy")

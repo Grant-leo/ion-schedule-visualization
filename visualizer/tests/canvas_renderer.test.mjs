@@ -6,6 +6,7 @@ import {
   cssColor,
   endpointSlotIndex,
   eventProgress,
+  gateLaserTargets,
   interpolatePoint,
   ionLabelSpec,
   ionRenderPoint,
@@ -361,6 +362,29 @@ test("ion labels are centered inside the rendered ion sphere", () => {
     yOffset: 0,
     fontSize: 7,
   });
+});
+
+test("gate laser targets the actual ion slots from the live trap chain", () => {
+  const layout = {
+    traps: new Map([["trap:2", { x: 100, y: 60, width: 80 }]]),
+    junctions: new Map(),
+    segments: new Map(),
+    traceTrapsFallback: [{ id: 2, capacity: 4, orientation: {} }],
+  };
+  const state = {
+    trapChains: new Map([["trap:2", [7, 3, 5, 9]]]),
+    locations: new Map([
+      [3, "trap:2"],
+      [5, "trap:2"],
+    ]),
+  };
+
+  const targets = gateLaserTargets(layout, state, { target: "trap:2", ions: [3, 5] });
+
+  assert.deepEqual(targets, [
+    { ion: 3, point: trapSlotPoint({ x: 100, y: 60, width: 80 }, 1, 4) },
+    { ion: 5, point: trapSlotPoint({ x: 100, y: 60, width: 80 }, 2, 4) },
+  ]);
 });
 
 test("junctionRenderSpec preserves QCCDSim junction degree types", () => {

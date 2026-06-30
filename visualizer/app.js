@@ -1,6 +1,7 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260630-audit4";
-import { renderDagSvg } from "./dag_renderer.js?v=20260630-audit4";
-import { createReplay, validateTrace } from "./replay.js?v=20260630-audit4";
+import { createRenderer } from "./canvas_renderer.js?v=20260630-source-circuit1";
+import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-source-circuit1";
+import { renderDagSvg } from "./dag_renderer.js?v=20260630-source-circuit1";
+import { createReplay, validateTrace } from "./replay.js?v=20260630-source-circuit1";
 import {
   createHeadlineMetricCards,
   createMetricCards,
@@ -8,15 +9,15 @@ import {
   describeEvent,
   formatLocation,
   summarizeDag,
-} from "./ui_model.js?v=20260630-audit4";
+} from "./ui_model.js?v=20260630-source-circuit1";
 
 const LIVE_PANEL_INTERVAL_MS = 160;
 const PERFORMANCE_PANEL_INTERVAL_MS = 250;
-const GENERATED_TRACE_LIMIT = 12;
 
 const elements = {
   controlPanel: document.getElementById("controlPanel"),
   traceSelect: document.getElementById("traceSelect"),
+  sourceModeButtons: [...document.querySelectorAll("[data-source-mode]")],
   scenarioTitle: document.getElementById("scenarioTitle"),
   scenarioDescription: document.getElementById("scenarioDescription"),
   programSelect: document.getElementById("programSelect"),
@@ -34,6 +35,7 @@ const elements = {
   speedSelect: document.getElementById("speedSelect"),
   timeline: document.getElementById("timeline"),
   canvas: document.getElementById("vizCanvas"),
+  circuitPanel: document.getElementById("circuitPanel"),
   headlineMetricsPanel: document.getElementById("headlineMetricsPanel"),
   metricsPanel: document.getElementById("metricsPanel"),
   initialLayoutPanel: document.getElementById("initialLayoutPanel"),
@@ -62,6 +64,16 @@ const GENERATION_LOCKED_ELEMENTS = [
   elements.timeline,
 ];
 
+const EXPERIMENT_CONFIG_ELEMENTS = [
+  elements.programSelect,
+  elements.architectureSelect,
+  elements.capacitySelect,
+  elements.mapperSelect,
+  elements.orderingSelect,
+  elements.schedulerSelect,
+  elements.loadConfigButton,
+];
+
 const renderer = createRenderer(elements.canvas);
 
 let replay = null;
@@ -71,7 +83,6 @@ let playing = false;
 let lastFrame = performance.now();
 let frameTimes = [];
 let manifestEntries = [];
-let generatedTraces = new Map();
 let apiOptions = null;
 let apiAvailable = false;
 let previousTraceMetrics = null;
@@ -86,8 +97,10 @@ let machineTrapCounts = new Map();
 let loadRequestId = 0;
 let activeLoadController = null;
 let generationLoading = false;
+let sourceMode = "experiment";
 let lastLivePanelRender = 0;
 let lastPerformancePanelRender = 0;
+let lastCircuitKey = "";
 
 init().catch((error) => {
   setStatus("Load failed", "invalid");
@@ -102,6 +115,7 @@ async function init() {
   populateTraceSelector(manifestEntries);
   populateConfigControls(apiOptions || configOptionsFromManifest(manifestEntries));
   wireControls();
+  setSourceMode(apiAvailable ? "experiment" : "trace");
 
   if (apiAvailable) {
     applyDefaultConfig(apiOptions.defaults);
@@ -171,23 +185,43 @@ function configOptionsFromManifest(manifest) {
 
 function wireControls() {
   elements.traceSelect.addEventListener("change", () => {
-    const value = elements.traceSelect.value;
-    if (generatedTraces.has(value)) {
-      beginLoadRequest();
-      loadTraceData(generatedTraces.get(value));
-    } else {
-      loadTrace(value);
-    }
+    setSourceMode("trace");
+    loadTrace(elements.traceSelect.value);
   });
   elements.loadConfigButton.addEventListener("click", loadSelectedConfig);
-  elements.programSelect.addEventListener("change", renderSelectedBenchmark);
-  elements.architectureSelect.addEventListener("change", renderSelectedBenchmark);
-  elements.capacitySelect.addEventListener("change", renderSelectedBenchmark);
-  elements.schedulerSelect.addEventListener("change", updateSchedulerModeButtons);
+  for (const button of elements.sourceModeButtons) {
+    button.addEventListener("click", async () => {
+      const mode = button.dataset.sourceMode;
+      if (!mode || button.disabled || mode === sourceMode) return;
+      setSourceMode(mode);
+      if (mode === "trace" && elements.traceSelect.value) {
+        await loadTrace(elements.traceSelect.value);
+      }
+    });
+  }
+  elements.programSelect.addEventListener("change", () => {
+    setSourceMode("experiment");
+    renderSelectedBenchmark();
+  });
+  elements.architectureSelect.addEventListener("change", () => {
+    setSourceMode("experiment");
+    renderSelectedBenchmark();
+  });
+  elements.capacitySelect.addEventListener("change", () => {
+    setSourceMode("experiment");
+    renderSelectedBenchmark();
+  });
+  elements.mapperSelect.addEventListener("change", () => setSourceMode("experiment"));
+  elements.orderingSelect.addEventListener("change", () => setSourceMode("experiment"));
+  elements.schedulerSelect.addEventListener("change", () => {
+    setSourceMode("experiment");
+    updateSchedulerModeButtons();
+  });
   for (const button of elements.schedulerModeButtons) {
     button.addEventListener("click", async () => {
       const scheduler = button.dataset.schedulerMode;
       if (!scheduler || button.disabled) return;
+      setSourceMode("experiment");
       setSelectValue(elements.schedulerSelect, scheduler);
       updateSchedulerModeButtons();
       await loadSelectedConfig();
@@ -256,6 +290,7 @@ function loadTraceData(nextTrace) {
   elements.timeline.max = String(Math.max(1, replay.finishTime));
   elements.timeline.value = "0";
   syncConfigControls(trace);
+  applySourceModeAvailability();
   renderScenarioSummary(trace);
   renderRunConfig(trace);
   resetInspectorRenderCache();
@@ -267,6 +302,7 @@ function loadTraceData(nextTrace) {
 }
 
 async function loadSelectedConfig() {
+  setSourceMode("experiment");
   const { requestId, signal } = beginLoadRequest();
   const program = elements.programSelect.value;
   const machine = elements.architectureSelect.value;
@@ -298,14 +334,7 @@ async function loadSelectedConfig() {
       });
       const nextTrace = await fetchJson(`api/trace?${params.toString()}`, { signal });
       if (requestId !== loadRequestId) return;
-      const key = `generated:${program}:${machine}:${capacity}:${mapper}:${ordering}:${scheduler}`;
       if (!loadTraceData(nextTrace)) return;
-      rememberGeneratedTrace(key, nextTrace);
-      upsertTraceOption(
-        key,
-        `${programLabelFromId(program)} | ${machine} | cap ${capacity} | ${mapper} | ${ordering} | ${scheduler}`,
-      );
-      elements.traceSelect.value = key;
       return;
     }
 
@@ -339,17 +368,6 @@ async function loadSelectedConfig() {
   }
 }
 
-function rememberGeneratedTrace(key, nextTrace) {
-  if (generatedTraces.has(key)) generatedTraces.delete(key);
-  generatedTraces.set(key, nextTrace);
-  while (generatedTraces.size > GENERATED_TRACE_LIMIT) {
-    const oldestKey = generatedTraces.keys().next().value;
-    generatedTraces.delete(oldestKey);
-    const option = [...elements.traceSelect.options].find((item) => item.value === oldestKey);
-    if (option) option.remove();
-  }
-}
-
 function syncConfigControls(nextTrace) {
   const run = nextTrace.run || {};
   setSelectValue(elements.programSelect, programIdFromPath(run.program));
@@ -379,16 +397,6 @@ function applyDefaultConfig(defaults = {}) {
   setSelectValue(elements.schedulerSelect, defaults.scheduler);
   updateSchedulerModeButtons();
   renderSelectedBenchmark();
-}
-
-function upsertTraceOption(value, label) {
-  let option = [...elements.traceSelect.options].find((item) => item.value === value);
-  if (!option) {
-    option = document.createElement("option");
-    option.value = value;
-    elements.traceSelect.prepend(option);
-  }
-  option.textContent = label;
 }
 
 function uniqueValues(items, key) {
@@ -487,14 +495,38 @@ function setGenerationLoading(isLoading) {
     playing = false;
     elements.playPauseButton.textContent = "Play";
   }
-  elements.loadConfigButton.disabled = isLoading;
   elements.playPauseButton.disabled = isLoading;
   elements.timeline.disabled = isLoading;
   elements.loadConfigButton.textContent = isLoading ? "Generating..." : "Generate Schedule";
   for (const element of GENERATION_LOCKED_ELEMENTS) {
     element.disabled = isLoading;
   }
+  applySourceModeAvailability();
   updateSchedulerModeButtons();
+}
+
+function setSourceMode(mode) {
+  sourceMode = mode === "trace" ? "trace" : "experiment";
+  for (const button of elements.sourceModeButtons) {
+    const active = button.dataset.sourceMode === sourceMode;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
+    button.disabled = generationLoading;
+  }
+  applySourceModeAvailability();
+  updateSchedulerModeButtons();
+}
+
+function applySourceModeAvailability() {
+  for (const button of elements.sourceModeButtons) {
+    button.disabled = generationLoading;
+  }
+  elements.traceSelect.disabled = generationLoading || sourceMode !== "trace";
+  const experimentDisabled = generationLoading || sourceMode !== "experiment";
+  elements.loadConfigButton.disabled = generationLoading || sourceMode !== "experiment";
+  for (const element of EXPERIMENT_CONFIG_ELEMENTS) {
+    element.disabled = experimentDisabled;
+  }
 }
 
 function showConfigError(message) {
@@ -577,6 +609,12 @@ function draw(options = {}) {
     renderDagSvg(elements.dagPanel, state.dagState, { direction: "vertical" });
     focusDagViewport(elements.dagPanel);
     lastDagKey = dagKey;
+  }
+
+  const circuitKey = `${dagKey}|${trace?.particles?.length ?? 0}`;
+  if (circuitKey !== lastCircuitKey) {
+    renderCircuitSvg(elements.circuitPanel, state.dagState, { qubitCount: trace.particles.length });
+    lastCircuitKey = circuitKey;
   }
 
   const eventKey = activeEventKey(state.activeEvents);
@@ -693,7 +731,7 @@ function updateSchedulerModeButtons() {
     const active = elements.schedulerSelect.value === scheduler;
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-pressed", String(active));
-    button.disabled = generationLoading || !availableSchedulers.has(scheduler);
+    button.disabled = generationLoading || sourceMode !== "experiment" || !availableSchedulers.has(scheduler);
   }
 }
 
@@ -808,6 +846,7 @@ function resetInspectorRenderCache() {
   lastHeadlineKey = "";
   lastInitialLayoutKey = "";
   lastDagKey = "";
+  lastCircuitKey = "";
   lastEventKey = "";
   lastLivePanelRender = 0;
   lastPerformancePanelRender = 0;
