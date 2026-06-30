@@ -96,6 +96,7 @@ test("responsive DAG panel stays scroll-contained near the desktop breakpoint", 
 test("primary playback controls appear before advanced experiment configuration", () => {
   assert.ok(indexSource.indexOf('class="playback-grid"') < indexSource.indexOf('class="advanced-config"'));
   assert.ok(indexSource.indexOf('for="speedSelect"') < indexSource.indexOf('class="advanced-config"'));
+  assert.match(cssSource, /\.playback-section\s+\.playback-grid\s*{[\s\S]*margin-top:\s*var\(--space-3\)/);
 });
 
 test("left control shell stays fixed while experiment configuration scrolls internally", () => {

@@ -719,6 +719,10 @@ select {
   gap: var(--space-2);
 }
 
+.playback-section .playback-grid {
+  margin-top: var(--space-3);
+}
+
 .playback-grid .primary-action {
   grid-column: span 2;
   min-height: 42px;
