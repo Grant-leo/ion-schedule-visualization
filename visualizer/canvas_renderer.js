@@ -393,7 +393,14 @@ function computeLayout(viewport, trace) {
     segmentEndpoints.set(key, { start, end, from: segment.from, to: segment.to, route });
   }
 
-  const layout = { traps, junctions, segments, segmentEndpoints, traceTrapsFallback: trace.topology.traps };
+  const layout = {
+    traps,
+    junctions,
+    segments,
+    segmentEndpoints,
+    traceEventsFallback: trace.events || [],
+    traceTrapsFallback: trace.topology.traps,
+  };
   layout.motionSpeedPxPerCycle = traceMotionSpeed(layout, trace);
   return layout;
 }
@@ -949,7 +956,7 @@ export function activeJunctionActivity(trace, layout, state = {}) {
   const activity = new Map();
   for (const event of state.activeEvents || []) {
     if (!MOTION_TYPES.has(event.type)) continue;
-    const path = motionPathPoints(layout, event, state);
+    const path = activeMotionPathPoints(layout, event, state);
     const junctions = eventJunctionLocations(trace, layout, event, path);
     if (!junctions.length) continue;
     const point = motionPoint(layout, event, state.time, state);
@@ -1069,7 +1076,7 @@ function normalizedDirection(from, to) {
 function drawActiveEvents(context, layout, state) {
   for (const event of state.activeEvents) {
     if (MOTION_TYPES.has(event.type)) {
-      const path = motionPathPoints(layout, event, state);
+      const path = activeMotionPathPoints(layout, event, state);
       const point = motionPoint(layout, event, state.time, state);
       if (!point) continue;
       drawMotionPath(context, path);
@@ -1143,9 +1150,68 @@ function drawIons(context, trace, layout, state) {
   }
 }
 
-function motionPoint(layout, event, time, state = null) {
-  const path = isSplitSwapEvent(event) ? splitPrimaryMotionPathPoints(layout, event, state) : motionPathPoints(layout, event, state);
+export function motionPoint(layout, event, time, state = null) {
+  const group = continuousMotionGroup(layout, event, state);
+  if (group) {
+    return pointAlongPolyline(group.path, eventProgress({ start: group.start, end: group.end }, time));
+  }
+  const path = eventMotionPathPoints(layout, event, state);
   return pointAlongPolyline(path, motionTravelProgress(event, time, path, layout.motionSpeedPxPerCycle));
+}
+
+function activeMotionPathPoints(layout, event, state = null) {
+  return continuousMotionGroup(layout, event, state)?.path || eventMotionPathPoints(layout, event, state);
+}
+
+function eventMotionPathPoints(layout, event, state = null) {
+  return isSplitSwapEvent(event) ? splitPrimaryMotionPathPoints(layout, event, state) : motionPathPoints(layout, event, state);
+}
+
+function continuousMotionGroup(layout, event, state = null) {
+  if (!MOTION_TYPES.has(event?.type)) return null;
+  const groupEvents = consecutiveMotionEvents(layout, event);
+  if (groupEvents.length <= 1) return null;
+  const path = compactPath(groupEvents.flatMap((item) => eventMotionPathPoints(layout, item, state)));
+  if (path.length < 2 || polylineLength(path) <= 0) return null;
+  return {
+    events: groupEvents,
+    path,
+    start: groupEvents[0].start,
+    end: groupEvents[groupEvents.length - 1].end,
+  };
+}
+
+function consecutiveMotionEvents(layout, event) {
+  const ion = event?.ions?.[0];
+  if (ion === undefined || ion === null) return [event].filter(Boolean);
+  const motionEvents = (layout.traceEventsFallback || [])
+    .filter((item) => MOTION_TYPES.has(item.type) && (item.ions || []).includes(ion))
+    .sort((left, right) => Number(left.start || 0) - Number(right.start || 0) || Number(left.id || 0) - Number(right.id || 0));
+  const index = motionEvents.findIndex((item) => item.id === event.id);
+  if (index < 0) return [event];
+
+  let first = index;
+  while (first > 0 && areConsecutiveMotionEvents(motionEvents[first - 1], motionEvents[first], ion)) {
+    first -= 1;
+  }
+
+  let last = index;
+  while (last < motionEvents.length - 1 && areConsecutiveMotionEvents(motionEvents[last], motionEvents[last + 1], ion)) {
+    last += 1;
+  }
+
+  return motionEvents.slice(first, last + 1);
+}
+
+function areConsecutiveMotionEvents(left, right, ion) {
+  return (
+    left &&
+    right &&
+    (left.ions || []).includes(ion) &&
+    (right.ions || []).includes(ion) &&
+    left.target === right.source &&
+    Math.abs(Number(left.end || 0) - Number(right.start || 0)) < 0.001
+  );
 }
 
 function activeSplitSwapOverride(layout, state, ionId) {

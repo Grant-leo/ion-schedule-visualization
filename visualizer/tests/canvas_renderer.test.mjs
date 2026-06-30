@@ -16,6 +16,7 @@ import {
   alignTrapPortsToFixedJunctions,
   junctionDirections,
   junctionRenderSpec,
+  motionPoint,
   motionTravelProgress,
   motionPathPoints,
   normalizeTraceLayoutForRendering,
@@ -735,6 +736,36 @@ test("motionPathPoints routes segment moves through the shared junction", () => 
     { x: 100, y: 0 },
     { x: 100, y: 50 },
   ]);
+});
+
+test("motionPoint keeps one visual speed across consecutive junction moves", () => {
+  const events = [
+    { id: 1, type: "move", ions: [0], start: 0, end: 100, source: "segment:0", target: "segment:1" },
+    { id: 2, type: "move", ions: [0], start: 100, end: 200, source: "segment:1", target: "segment:2" },
+  ];
+  const layout = {
+    traceEventsFallback: events,
+    segments: new Map([
+      ["segment:0", { x: 20, y: 0 }],
+      ["segment:1", { x: 120, y: 0 }],
+      ["segment:2", { x: 280, y: 0 }],
+    ]),
+    segmentEndpoints: new Map([
+      ["segment:0", { start: { x: 0, y: 0 }, end: { x: 40, y: 0 } }],
+      ["segment:1", { start: { x: 40, y: 0 }, end: { x: 200, y: 0 } }],
+      ["segment:2", { start: { x: 200, y: 0 }, end: { x: 360, y: 0 } }],
+    ]),
+    traps: new Map(),
+    junctions: new Map(),
+  };
+
+  const beforeBoundary = motionPoint(layout, events[0], 90, { time: 90, activeEvents: [events[0]] });
+  const atBoundary = motionPoint(layout, events[1], 100, { time: 100, activeEvents: [events[1]] });
+  const afterBoundary = motionPoint(layout, events[1], 110, { time: 110, activeEvents: [events[1]] });
+
+  const beforeDistance = Math.hypot(atBoundary.x - beforeBoundary.x, atBoundary.y - beforeBoundary.y);
+  const afterDistance = Math.hypot(afterBoundary.x - atBoundary.x, afterBoundary.y - atBoundary.y);
+  assert.ok(Math.abs(beforeDistance - afterDistance) < 0.001, `${beforeDistance} vs ${afterDistance}`);
 });
 
 test("activeJunctionActivity highlights the shared junction while an ion is crossing it", () => {
