@@ -72,8 +72,10 @@ test("renderCircuitSvg updates node state classes without omitting DAG gates", (
   assert.match(svg, /circuit-gate completed/);
   assert.match(svg, /circuit-gate active/);
   assert.match(svg, /circuit-gate blocked/);
-  assert.match(svg, /q_0/);
-  assert.match(svg, /q_1/);
+  assert.doesNotMatch(svg, /q_0/);
+  assert.doesNotMatch(svg, /q_1/);
+  assert.match(svg, />q<tspan class="circuit-qubit-subscript" baseline-shift="sub" font-size="70%">0<\/tspan></);
+  assert.match(svg, />q<tspan class="circuit-qubit-subscript" baseline-shift="sub" font-size="70%">1<\/tspan></);
 });
 
 test("renderCircuitSvg marks the active gate with a visible focus band and label", () => {

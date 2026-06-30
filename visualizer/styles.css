@@ -726,6 +726,10 @@ select {
   font-weight: 650;
 }
 
+.circuit-qubit-subscript {
+  font-weight: 720;
+}
+
 .circuit-focus-band {
   fill: rgba(158, 227, 125, 0.16);
   stroke: rgba(219, 255, 205, 0.78);

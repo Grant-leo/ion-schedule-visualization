@@ -72,7 +72,7 @@ function circuitSvgMarkup(layout) {
     .map((qubit) => {
       const y = layout.yByQubit.get(qubit);
       return [
-        `<text class="circuit-qubit-label" x="8" y="${y + 3}">q_${qubit}</text>`,
+        qubitLabelMarkup(qubit, y + 3),
         `<line class="circuit-wire" x1="${wireStart}" y1="${y}" x2="${wireEnd}" y2="${y}" />`,
       ].join("");
     })
@@ -87,6 +87,11 @@ function circuitSvgMarkup(layout) {
     gates,
     "</svg>",
   ].join("");
+}
+
+function qubitLabelMarkup(qubit, y) {
+  const index = escapeText(String(qubit));
+  return `<text class="circuit-qubit-label" x="8" y="${y}">q<tspan class="circuit-qubit-subscript" baseline-shift="sub" font-size="70%">${index}</tspan></text>`;
 }
 
 function activeFocusGate(layout) {
