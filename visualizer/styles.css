@@ -257,7 +257,7 @@ select {
   background: var(--color-junction);
 }
 
-.headline-shuttle-time::before {
+.headline-fidelity::before {
   background: var(--color-gate);
 }
 
@@ -391,7 +391,7 @@ select {
   background: linear-gradient(90deg, rgba(240, 196, 92, 0.95), rgba(100, 210, 255, 0.95));
 }
 
-.headline-shuttle-time .headline-progress span {
+.headline-fidelity .headline-progress span {
   background: linear-gradient(90deg, rgba(158, 227, 125, 0.95), rgba(100, 210, 255, 0.95));
 }
 

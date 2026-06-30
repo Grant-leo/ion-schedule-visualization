@@ -14,7 +14,7 @@ import {
   summarizeDag,
 } from "../ui_model.js";
 
-test("createMetricCards derives shuttling burden and gate mix for executive metrics", () => {
+test("createMetricCards derives motion burden and gate mix for executive metrics", () => {
   const cards = createMetricCards({
     finish_time: 1000,
     event_count: 42,
@@ -43,36 +43,40 @@ test("createMetricCards derives shuttling burden and gate mix for executive metr
   assert.equal(cards[1].value, "4");
   assert.equal(cards[2].value, "9 / 5");
   assert.equal(cards[3].value, "4 / 6 / 4");
-  assert.equal(cards[3].detail, "split / move / merge, 25.0% shuttle time");
+  assert.equal(cards[3].detail, "split / move / merge events");
   assert.equal(cards[4].value, "3");
   assert.equal(cards[4].detail, "7 swap hops, 11 ion hops");
   assert.equal(cards[5].value, "18");
   assert.equal(cards[5].detail, "blocked DAG ops, 2 ready");
 });
 
-test("createHeadlineMetricCards highlights execution and shuttling deltas", () => {
+test("createHeadlineMetricCards highlights execution, shuttles, and fidelity", () => {
   const cards = createHeadlineMetricCards(
     {
       finish_time: 920,
       shuttling_time: 260,
+      fidelity: 0.98765,
       counts: { split: 8, move: 12, merge: 8 },
     },
     {
       finish_time: 1000,
       shuttling_time: 210,
+      fidelity: 0.982,
       counts: { split: 6, move: 9, merge: 6 },
     },
   );
 
-  assert.deepEqual(cards.map((card) => card.label), ["Total time", "Shuttles", "Shuttle time"]);
+  assert.deepEqual(cards.map((card) => card.label), ["Total time", "Shuttles", "Fidelity"]);
   assert.equal(cards[0].value, "920");
   assert.equal(cards[0].unit, "μs");
   assert.deepEqual(cards[0].delta, { text: "-80", tone: "good" });
   assert.equal(cards[1].value, "28");
   assert.equal(cards[1].detail, "8 split | 12 move | 8 merge");
   assert.deepEqual(cards[1].delta, { text: "+7", tone: "bad" });
-  assert.equal(cards[2].detail, "28.3% of schedule");
-  assert.deepEqual(cards[2].delta, { text: "+50", tone: "bad" });
+  assert.equal(cards[2].value, "98.77");
+  assert.equal(cards[2].unit, "%");
+  assert.equal(cards[2].detail, "estimated end-to-end success");
+  assert.deepEqual(cards[2].delta, { text: "+0.57%", tone: "good" });
 });
 
 test("createHeadlineMetricCards reports live schedule progress against final totals", () => {
@@ -80,12 +84,14 @@ test("createHeadlineMetricCards reports live schedule progress against final tot
     {
       finish_time: 100,
       shuttling_time: 50,
+      fidelity: 0.87,
       counts: { split: 4, move: 6, merge: 4 },
     },
     {
       elapsedTime: 25,
       finishTime: 100,
       shuttlingTime: 12,
+      fidelity: 0.95,
       shuttlingOps: 3,
       activeShuttlingOps: 1,
       counts: { split: 1, move: 2, merge: 0 },
@@ -101,10 +107,10 @@ test("createHeadlineMetricCards reports live schedule progress against final tot
   assert.equal(cards[1].detail, "1 active now");
   assert.equal(cards[1].subdetail, "1 split | 2 move | 0 merge");
   assert.equal(cards[1].progress, 3 / 14);
-  assert.equal(cards[2].value, "12");
-  assert.equal(cards[2].unit, "/ 50 μs");
-  assert.equal(cards[2].detail, "cumulative shuttling work");
-  assert.equal(cards[2].progress, 0.24);
+  assert.equal(cards[2].value, "95.00");
+  assert.equal(cards[2].unit, "/ 87.00%");
+  assert.equal(cards[2].detail, "estimated from completed operations");
+  assert.equal(cards[2].progress, 0.95);
 });
 
 test("createScenarioCopy reflects the active generated trace", () => {
@@ -211,6 +217,27 @@ test("live headline Time card carries magnification and latest operation delta",
   assert.equal(timeCard.badge, "500x");
   assert.equal(timeCard.detail, "500x demo magnification");
   assert.deepEqual(timeCard.deltaPulse, { text: "+80 μs", key: "event-7" });
+});
+
+test("live headline Shuttles card carries latest shuttle-count delta", () => {
+  const [, shuttleCard] = createHeadlineMetricCards(
+    {
+      finish_time: 100,
+      fidelity: 0.98,
+      counts: { split: 2, move: 2, merge: 2 },
+      latest_shuttle_delta: "+2",
+      latest_shuttle_delta_key: "shuttle-2",
+    },
+    {
+      elapsedTime: 20,
+      finishTime: 100,
+      fidelity: 0.99,
+      shuttlingOps: 3,
+      counts: { split: 1, move: 1, merge: 1 },
+    },
+  );
+
+  assert.deepEqual(shuttleCard.deltaPulse, { text: "+2", key: "shuttle-2" });
 });
 
 test("describeEvent translates trace events into presentation-safe copy", () => {

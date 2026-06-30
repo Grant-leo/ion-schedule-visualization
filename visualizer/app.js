@@ -1,7 +1,7 @@
 import { createRenderer } from "./canvas_renderer.js?v=20260630-swap-smooth1";
 import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-circuit-parallel2";
 import { renderDagSvg } from "./dag_renderer.js?v=20260630-swap-circuit1";
-import { createReplay, validateTrace } from "./replay.js?v=20260630-swap-circuit1";
+import { createReplay, validateTrace } from "./replay.js?v=20260630-fidelity1";
 import {
   createHeadlineMetricCards,
   createMetricCards,
@@ -13,7 +13,7 @@ import {
   playbackDeltaCycles,
   playbackScaleSummary,
   summarizeDag,
-} from "./ui_model.js?v=20260630-motion-continuous1";
+} from "./ui_model.js?v=20260630-fidelity1";
 
 const LIVE_PANEL_INTERVAL_MS = 160;
 const PERFORMANCE_PANEL_INTERVAL_MS = 250;
@@ -115,6 +115,7 @@ let lastPerformancePanelRender = 0;
 let lastCircuitKey = "";
 let lastExpandedCircuitKey = "";
 let latestTimeDelta = null;
+let latestShuttleDelta = null;
 
 init().catch((error) => {
   const message = formatErrorMessage(error);
@@ -336,6 +337,7 @@ function loadTraceData(nextTrace, { resetControlPanelScroll = true } = {}) {
   elements.timeline.max = String(Math.max(1, replay.finishTime));
   elements.timeline.value = "0";
   latestTimeDelta = null;
+  latestShuttleDelta = null;
   syncConfigControls(trace);
   applySourceModeAvailability();
   renderScenarioSummary(trace);
@@ -655,6 +657,8 @@ function restart() {
   if (generationLoading || traceBlocked) return;
   currentTime = 0;
   playing = false;
+  latestTimeDelta = null;
+  latestShuttleDelta = null;
   elements.playPauseButton.textContent = "Play";
   draw({ forcePanels: true });
 }
@@ -776,8 +780,11 @@ function buildMetricInput(metrics, replayMetrics, dagState) {
     playback_scale_detail: scaleSummary.detail,
     latest_time_delta: latestTimeDelta?.text,
     latest_time_delta_key: latestTimeDelta?.key,
+    latest_shuttle_delta: latestShuttleDelta?.text,
+    latest_shuttle_delta_key: latestShuttleDelta?.key,
     event_count: metrics?.event_count ?? replayMetrics?.eventCount,
     finish_time: metrics?.finish_time ?? replayMetrics?.finishTime,
+    fidelity: metrics?.fidelity ?? replayMetrics?.fidelity,
     counts: metrics?.counts ?? replayMetrics?.counts,
     times: metrics?.times ?? replayMetrics?.times,
     one_qubit_gates: metrics?.one_qubit_gates ?? replayMetrics?.oneQubitGates,
@@ -901,6 +908,23 @@ function emitCompletedTimeDelta(previousTime, nextTime) {
     lastHeadlineKey = "";
     draw({ forcePanels: true });
   }, 1300);
+
+  const completedShuttles = completedEvents.filter(isShuttlingUiEvent);
+  if (completedShuttles.length > 0) {
+    const shuttleKey = `${completedShuttles.map((item) => item.id).join(",")}:${nextTime}:${performance.now().toFixed(1)}`;
+    latestShuttleDelta = { text: `+${completedShuttles.length}`, key: shuttleKey };
+    lastHeadlineKey = "";
+    window.setTimeout(() => {
+      if (latestShuttleDelta?.key !== shuttleKey) return;
+      latestShuttleDelta = null;
+      lastHeadlineKey = "";
+      draw({ forcePanels: true });
+    }, 1300);
+  }
+}
+
+function isShuttlingUiEvent(event) {
+  return event?.type === "split" || event?.type === "move" || event?.type === "merge";
 }
 
 function updateSchedulerModeButtons() {

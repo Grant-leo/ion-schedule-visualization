@@ -188,6 +188,56 @@ test("replay reports live cumulative schedule progress at the current time", () 
   assert.deepEqual(progress.times, { gate: 5, split: 10, move: 0, merge: 5 });
 });
 
+test("replay estimates total and completed-operation fidelity from gate events", () => {
+  const fidelityTrace = structuredClone(trace);
+  fidelityTrace.run = {
+    single_qubit_gate_fidelity: 0.999,
+    two_qubit_gate_fidelity: 0.992,
+  };
+  fidelityTrace.particles = [
+    { id: 0, initial_location: "trap:0", initial_slot: 0 },
+    { id: 1, initial_location: "trap:0", initial_slot: 1 },
+  ];
+  fidelityTrace.dag = {
+    nodes: [
+      { id: 0, gate_name: "h", qubits: [0], arity: 1 },
+      { id: 1, gate_name: "cx", qubits: [0, 1], arity: 2 },
+    ],
+    edges: [{ source: 0, target: 1 }],
+  };
+  fidelityTrace.events = [
+    {
+      id: 0,
+      type: "gate",
+      start: 0,
+      end: 10,
+      ions: [0],
+      source: "trap:0",
+      target: "trap:0",
+      metadata: { gate_id: 0, gate_name: "h", arity: 1 },
+    },
+    {
+      id: 1,
+      type: "gate",
+      start: 10,
+      end: 20,
+      ions: [0, 1],
+      source: "trap:0",
+      target: "trap:0",
+      metadata: { gate_id: 1, gate_name: "cx", arity: 2 },
+    },
+  ];
+  fidelityTrace.metrics = { event_count: 2 };
+
+  const replay = createReplay(fidelityTrace, 1);
+  const firstGateFidelity = 0.999 - 10 / 1_000_000;
+  const secondGateFidelity = 0.992 - 10 / 1_000_000;
+
+  assert.equal(replay.stateAt(0).metrics.fidelity, firstGateFidelity * secondGateFidelity);
+  assert.equal(replay.stateAt(15).progressMetrics.fidelity, firstGateFidelity);
+  assert.equal(replay.stateAt(20).progressMetrics.fidelity, firstGateFidelity * secondGateFidelity);
+});
+
 test("validateTrace rejects motion from a stale source", () => {
   const badTrace = structuredClone(trace);
   badTrace.events[1] = {

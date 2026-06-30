@@ -1,6 +1,5 @@
 export function createMetricCards(metrics = {}) {
   const finishTime = Number(metrics.finish_time ?? metrics.finishTime ?? 0);
-  const shuttlingTime = Number(metrics.shuttling_time ?? metrics.shuttlingTime ?? 0);
   const eventCount = Number(metrics.event_count ?? metrics.eventCount ?? 0);
   const counts = metrics.counts || {};
   const splitCount = Number(counts.split ?? metrics.split_count ?? metrics.splitCount ?? 0);
@@ -14,7 +13,6 @@ export function createMetricCards(metrics = {}) {
   const ionHops = Number(metrics.ion_hops ?? metrics.ionHops ?? 0);
   const blockedOps = Number(metrics.blocked_ops ?? metrics.blockedOps ?? 0);
   const readyOps = Number(metrics.ready_ops ?? metrics.readyOps ?? 0);
-  const ratio = finishTime > 0 ? (shuttlingTime / finishTime) * 100 : 0;
   return [
     {
       label: "Finish time",
@@ -34,7 +32,7 @@ export function createMetricCards(metrics = {}) {
     {
       label: "Motion ops",
       value: `${formatNumber(splitCount)} / ${formatNumber(moveCount)} / ${formatNumber(mergeCount)}`,
-      detail: `split / move / merge, ${ratio.toFixed(1)}% shuttle time`,
+      detail: "split / move / merge events",
     },
     {
       label: "Swap work",
@@ -81,16 +79,19 @@ export function createHeadlineMetricCards(metrics = {}, previousMetrics = null) 
         subdetail: `${formatNumber(progress.splitCount)} split | ${formatNumber(progress.moveCount)} move | ${formatNumber(
           progress.mergeCount,
         )} merge`,
+        deltaPulse: metrics.latest_shuttle_delta
+          ? { text: metrics.latest_shuttle_delta, key: metrics.latest_shuttle_delta_key || metrics.latest_shuttle_delta }
+          : null,
         progress: ratio(progress.shuttlingOps, current.shuttlingOps),
       },
       {
-        kind: "shuttle-time",
-        label: "Shuttle time",
-        value: formatMicrosecondValue(toMicroseconds(progress.shuttlingTime, current)),
-        unit: `/ ${formatMicroseconds(current.shuttlingTime, current)}`,
-        total: formatNumber(current.shuttlingTime),
-        detail: "cumulative shuttling work",
-        progress: ratio(progress.shuttlingTime, current.shuttlingTime),
+        kind: "fidelity",
+        label: "Fidelity",
+        value: formatFidelityValue(progress.fidelity),
+        unit: `/ ${formatFidelityPercent(current.fidelity)}`,
+        total: formatFidelityPercent(current.fidelity),
+        detail: "estimated from completed operations",
+        progress: ratio(progress.fidelity, 1),
       },
     ];
   }
@@ -114,11 +115,11 @@ export function createHeadlineMetricCards(metrics = {}, previousMetrics = null) 
       delta: metricDelta(current.shuttlingOps, previous?.shuttlingOps),
     },
     {
-      label: "Shuttle time",
-      value: formatMicrosecondValue(toMicroseconds(current.shuttlingTime, current)),
-      unit: "μs",
-      detail: `${current.shuttlingRatio.toFixed(1)}% of schedule`,
-      delta: metricDelta(current.shuttlingTime, previous?.shuttlingTime),
+      label: "Fidelity",
+      value: formatFidelityValue(current.fidelity),
+      unit: "%",
+      detail: "estimated end-to-end success",
+      delta: fidelityDelta(current.fidelity, previous?.fidelity),
     },
   ];
 }
@@ -276,6 +277,14 @@ function formatMicrosecondValue(value) {
   return numeric.toFixed(Math.abs(numeric) >= 10 ? 1 : 2).replace(/\.?0+$/, "");
 }
 
+function formatFidelityValue(value) {
+  return (boundedRatio(value) * 100).toFixed(2);
+}
+
+function formatFidelityPercent(value) {
+  return `${formatFidelityValue(value)}%`;
+}
+
 function formatScale(value) {
   const numeric = Number(value || 0);
   if (numeric >= 100 || Number.isInteger(numeric)) return `${Math.round(numeric)}x`;
@@ -286,6 +295,7 @@ function headlineMetrics(metrics = {}) {
   const counts = metrics.counts || {};
   const finishTime = Number(metrics.finish_time ?? metrics.finishTime ?? 0);
   const shuttlingTime = Number(metrics.shuttling_time ?? metrics.shuttlingTime ?? 0);
+  const fidelity = metricFidelity(metrics);
   const cycleTimeUs = traceCycleTimeUs(metrics);
   const displayUs = displayUsPerMs(metrics);
   const playbackSpeed = Number(metrics.playback_speed ?? metrics.playbackSpeed ?? 1);
@@ -303,6 +313,7 @@ function headlineMetrics(metrics = {}) {
     mergeCount,
     shuttlingOps: splitCount + moveCount + mergeCount,
     shuttlingRatio: finishTime > 0 ? (shuttlingTime / finishTime) * 100 : 0,
+    fidelity,
   };
 }
 
@@ -317,9 +328,11 @@ function headlineProgress(metrics = {}, totals = {}) {
   const mergeCount = Number(counts.merge ?? metrics.merge_count ?? metrics.mergeCount ?? 0);
   const elapsedTime = Number(metrics.elapsedTime ?? metrics.elapsed_time ?? metrics.finishTime ?? 0);
   const shuttlingTime = Number(metrics.shuttling_time ?? metrics.shuttlingTime ?? 0);
+  const fidelity = metricFidelity(metrics, totals.fidelity ?? 1);
   return {
     elapsedTime,
     shuttlingTime,
+    fidelity,
     splitCount,
     moveCount,
     mergeCount,
@@ -336,6 +349,16 @@ function ratio(current, total) {
   return Math.min(1, Math.max(0, Number(current || 0) / denominator));
 }
 
+function boundedRatio(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 1;
+  return Math.min(1, Math.max(0, numeric));
+}
+
+function metricFidelity(metrics = {}, fallback = 1) {
+  return boundedRatio(metrics.fidelity ?? metrics.estimated_fidelity ?? metrics.estimatedFidelity ?? fallback);
+}
+
 function metricDelta(current, previous) {
   if (previous === undefined || previous === null || Number.isNaN(previous)) {
     return { text: "baseline", tone: "neutral" };
@@ -344,6 +367,18 @@ function metricDelta(current, previous) {
   const text = delta > 0 ? `+${formatNumber(delta)}` : formatNumber(delta);
   if (delta < 0) return { text, tone: "good" };
   if (delta > 0) return { text, tone: "bad" };
+  return { text, tone: "neutral" };
+}
+
+function fidelityDelta(current, previous) {
+  if (previous === undefined || previous === null || Number.isNaN(previous)) {
+    return { text: "baseline", tone: "neutral" };
+  }
+  const deltaPercent = (boundedRatio(current) - boundedRatio(previous)) * 100;
+  const prefix = deltaPercent > 0 ? "+" : "";
+  const text = `${prefix}${deltaPercent.toFixed(2)}%`;
+  if (deltaPercent > 0) return { text, tone: "good" };
+  if (deltaPercent < 0) return { text, tone: "bad" };
   return { text, tone: "neutral" };
 }
 

@@ -24,7 +24,7 @@ This project is intended to grow from a schedule replay demo into a QCCD algorit
 - Laser highlighting for active gate execution.
 - A TikZ-style circuit strip synchronized with playback, plus an expanded circuit view.
 - A full-height dependency DAG where active gates are emphasized and completed nodes dim.
-- Live headline metrics for gate progress, shuttling operations, and shuttling time.
+- Live headline metrics for gate progress, shuttling operations, and estimated fidelity.
 
 ## Quick Start
 
@@ -103,7 +103,7 @@ The browser does not read raw QASM directly. It consumes the exported trace JSON
 - `events`: scheduled `gate`, `split`, `move`, and `merge` events with start/end cycles.
 - `events[].metadata`: gate ids, gate names, endpoint side, swap counts, swap hops, ion hops, and reported `swap_ions`.
 - `dag.nodes` and `dag.edges`: the Qiskit-derived dependency graph.
-- `metrics`: finish time, operation counts, shuttling time, swap count, swap hops, ion hops, and gate parallelism.
+- `metrics`: finish time, operation counts, shuttling work, swap count, swap hops, ion hops, gate parallelism, and replay-estimated fidelity.
 - `run`: benchmark, machine, mapper, capacity, ordering, scheduler, gate model, and swap model.
 
 The main canvas is driven by `events`, `particles`, and `topology`. The circuit strip and DAG are driven by `dag` plus live gate-completion state. The headline metrics are derived from `metrics` and replay progress.

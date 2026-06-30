@@ -121,7 +121,7 @@ export function createReplay(trace, keyframeInterval = 100) {
   const initialTrapChains = buildInitialTrapChains(trace);
   const keyframes = buildKeyframes(events, initialLocations, initialTrapChains, keyframeInterval);
   const finishTime = events.reduce((maxTime, event) => Math.max(maxTime, event.end), 0);
-  const metrics = summarize(events);
+  const metrics = summarize(events, trace);
 
   return {
     trace,
@@ -153,7 +153,7 @@ export function createReplay(trace, keyframeInterval = 100) {
         trapChains: visibleTrapChains(trapChains, activeEvents),
         dagState: buildDagState(trace, events, activeEvents, clampedTime),
         metrics,
-        progressMetrics: summarizeProgress(events, clampedTime, finishTime),
+        progressMetrics: summarizeProgress(events, clampedTime, finishTime, trace),
       };
     },
     nextEventTime(time) {
@@ -598,7 +598,7 @@ function nearestKeyframe(keyframes, time) {
   return selected;
 }
 
-function summarize(events) {
+function summarize(events, trace = {}) {
   const counts = { gate: 0, split: 0, move: 0, merge: 0 };
   const times = { gate: 0, split: 0, move: 0, merge: 0 };
   let swapCount = 0;
@@ -606,10 +606,12 @@ function summarize(events) {
   let ionHops = 0;
   let oneQubitGates = 0;
   let twoQubitGates = 0;
+  let logFidelity = 0;
 
   for (const event of events) {
     counts[event.type] = (counts[event.type] || 0) + 1;
     times[event.type] = (times[event.type] || 0) + Math.max(0, event.end - event.start);
+    logFidelity += Math.log(eventFidelityFactor(event, trace));
     if (event.type === "gate") {
       if (Number(event.metadata?.arity ?? event.ions?.length ?? 0) === 1) {
         oneQubitGates += 1;
@@ -631,6 +633,7 @@ function summarize(events) {
     eventCount: events.length,
     finishTime: events.reduce((maxTime, event) => Math.max(maxTime, event.end), 0),
     shuttlingTime: times.split + times.move + times.merge,
+    fidelity: Math.exp(logFidelity),
     oneQubitGates,
     twoQubitGates,
     swapCount,
@@ -640,10 +643,11 @@ function summarize(events) {
   };
 }
 
-function summarizeProgress(events, time, finishTime) {
+function summarizeProgress(events, time, finishTime, trace = {}) {
   const counts = { gate: 0, split: 0, move: 0, merge: 0 };
   const times = { gate: 0, split: 0, move: 0, merge: 0 };
   let activeShuttlingOps = 0;
+  let logFidelity = 0;
 
   for (const event of events) {
     const type = event.type;
@@ -659,6 +663,10 @@ function summarizeProgress(events, time, finishTime) {
     if (isShuttlingEvent(event) && event.start <= time && time < event.end) {
       activeShuttlingOps += 1;
     }
+
+    if (event.end <= time) {
+      logFidelity += Math.log(eventFidelityFactor(event, trace));
+    }
   }
 
   const shuttlingTime = times.split + times.move + times.merge;
@@ -671,6 +679,7 @@ function summarizeProgress(events, time, finishTime) {
     shuttlingTime,
     shuttlingOps,
     activeShuttlingOps,
+    fidelity: Math.exp(logFidelity),
   };
 }
 
@@ -701,6 +710,46 @@ function summarizeGateParallelism(events) {
 
 function isShuttlingEvent(event) {
   return event.type === "split" || event.type === "move" || event.type === "merge";
+}
+
+function eventFidelityFactor(event, trace = {}) {
+  const metadataFidelity = boundedFidelity(event.metadata?.fidelity);
+  if (metadataFidelity !== null) return metadataFidelity;
+
+  const run = trace.run || {};
+  if (event.type === "gate") {
+    const arity = Number(event.metadata?.arity ?? event.ions?.length ?? 1);
+    const base = arity === 1
+      ? boundedFidelity(run.single_qubit_gate_fidelity ?? 0.999)
+      : boundedFidelity(run.two_qubit_gate_fidelity ?? 0.992);
+    const durationPenalty = Math.max(0, Number(event.end || 0) - Number(event.start || 0)) / 1_000_000;
+    return Math.max(0.0001, (base ?? 1) - durationPenalty);
+  }
+
+  if (event.type === "split") {
+    const swapCount = Number(event.metadata?.swap_count || 0);
+    if (swapCount > 0) {
+      const swapGateFidelity = boundedFidelity(run.two_qubit_gate_fidelity ?? 0.992) ?? 1;
+      return Math.pow(swapGateFidelity, swapCount * 3);
+    }
+    return boundedFidelity(run.split_fidelity ?? run.shuttle_fidelity) ?? 1;
+  }
+
+  if (event.type === "move") {
+    return boundedFidelity(run.move_fidelity ?? run.shuttle_fidelity) ?? 1;
+  }
+
+  if (event.type === "merge") {
+    return boundedFidelity(run.merge_fidelity ?? run.shuttle_fidelity) ?? 1;
+  }
+
+  return 1;
+}
+
+function boundedFidelity(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.min(1, Math.max(0.0001, numeric));
 }
 
 function eventTrapResource(event) {
