@@ -162,6 +162,23 @@ def test_curated_g9_visualizer_trace_keeps_traps_outside_junction_grid():
         assert distance >= 0.7
 
 
+def test_curated_l6_visualizer_traces_keep_j2_on_trap_chain_axis():
+    for trace_path in (ROOT / "visualizer" / "traces").glob("*_l6_*.json"):
+        trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        if trace["run"]["machine"] != "L6":
+            continue
+        layout = trace["topology"]["layout"]
+        junctions = {f"junction:{junction['id']}": junction for junction in trace["topology"]["junctions"]}
+        for segment in trace["topology"]["segments"]:
+            endpoints = {segment["from"], segment["to"]}
+            trap = next((item for item in endpoints if item.startswith("trap:")), None)
+            junction = next((item for item in endpoints if item.startswith("junction:")), None)
+            if not trap or not junction:
+                continue
+            assert junctions[junction]["junction_type"] == "J2"
+            assert layout[junction]["y"] == layout[trap]["y"], trace_path.name
+
+
 def test_validate_trace_rejects_gate_when_ions_are_not_colocated():
     bad_trace = {
         "schema_version": "1.0",

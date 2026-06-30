@@ -406,10 +406,42 @@ function computeLayout(viewport, trace) {
 
 export function normalizeTraceLayoutForRendering(trace) {
   const rawLayout = trace?.topology?.layout || {};
+  if (trace?.run?.machine === "L6") {
+    return repairLinearJunctionLayout(trace, rawLayout);
+  }
   if (trace?.run?.machine !== "G9" || !g9TraceLayoutNeedsExteriorRepair(trace, rawLayout)) {
     return rawLayout;
   }
   return repairG9ExteriorTrapLayout(trace, rawLayout);
+}
+
+function repairLinearJunctionLayout(trace, rawLayout) {
+  const repaired = {};
+  for (const [location, point] of Object.entries(rawLayout)) {
+    repaired[location] = { ...point };
+  }
+
+  for (const junction of trace?.topology?.junctions || []) {
+    const junctionLocation = `junction:${junction.id}`;
+    const connectedTrapYs = [];
+    for (const segment of trace?.topology?.segments || []) {
+      const trapLocation = segment.from?.startsWith("trap:")
+        ? segment.from
+        : segment.to?.startsWith("trap:")
+          ? segment.to
+          : null;
+      if (!trapLocation || (segment.from !== junctionLocation && segment.to !== junctionLocation)) continue;
+      const trapPoint = repaired[trapLocation];
+      if (trapPoint) connectedTrapYs.push(trapPoint.y);
+    }
+    if (!connectedTrapYs.length || !repaired[junctionLocation]) continue;
+    repaired[junctionLocation] = {
+      ...repaired[junctionLocation],
+      y: average(connectedTrapYs),
+    };
+  }
+
+  return repaired;
 }
 
 function g9TraceLayoutNeedsExteriorRepair(trace, rawLayout) {

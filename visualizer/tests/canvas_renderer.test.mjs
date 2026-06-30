@@ -280,6 +280,32 @@ test("normalizeTraceLayoutForRendering moves stale G9 trap coordinates outside t
   assert.ok(Math.abs(layout["trap:3"].x - 2) + Math.abs(layout["trap:3"].y) >= 0.7);
 });
 
+test("normalizeTraceLayoutForRendering keeps L6 J2 junctions on the trap chain axis", () => {
+  const trace = {
+    run: { machine: "L6" },
+    topology: {
+      traps: [
+        { id: 0, capacity: 2, orientation: { 0: "R" } },
+        { id: 1, capacity: 2, orientation: { 1: "L" } },
+      ],
+      segments: [
+        { id: 0, from: "trap:0", to: "junction:0" },
+        { id: 1, from: "trap:1", to: "junction:0" },
+      ],
+      junctions: [{ id: 0, degree: 2, junction_type: "J2" }],
+      layout: {
+        "trap:0": { x: 0, y: 1 },
+        "trap:1": { x: 1, y: 1 },
+        "junction:0": { x: 0.5, y: 0 },
+      },
+    },
+  };
+
+  const layout = normalizeTraceLayoutForRendering(trace);
+
+  assert.deepEqual(layout["junction:0"], { x: 0.5, y: 1 });
+});
+
 test("segmentDrawPoints uses orthogonal channel routes from trap ports", () => {
   const layout = {
     traps: new Map([["trap:0", { x: 100, y: 40, width: 80 }]]),

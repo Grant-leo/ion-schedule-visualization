@@ -1,4 +1,4 @@
-import { createRenderer } from "./canvas_renderer.js?v=20260630-g9-layout1";
+import { createRenderer } from "./canvas_renderer.js?v=20260630-l6-j2-axis1";
 import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-circuit-subscript1";
 import { renderDagSvg } from "./dag_renderer.js?v=20260630-swap-circuit1";
 import { createReplay, validateTrace } from "./replay.js?v=20260630-swap-circuit1";

@@ -549,7 +549,7 @@ def _linear_layout(machine):
     for trap in machine.traps:
         layout[location_key("trap", trap.id)] = {"x": trap.id, "y": 1.0}
     for junction in machine.junctions:
-        layout[location_key("junction", junction.id)] = {"x": junction.id + 0.5, "y": 0.0}
+        layout[location_key("junction", junction.id)] = {"x": junction.id + 0.5, "y": 1.0}
     return layout
 
 
