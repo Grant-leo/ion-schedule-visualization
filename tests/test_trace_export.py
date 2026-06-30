@@ -76,6 +76,11 @@ def test_export_trace_contains_topology_events_metrics_and_validation():
     gate_events = [event for event in trace["events"] if event["type"] == "gate"]
     assert all(isinstance(event["metadata"]["gate_id"], int) for event in gate_events)
     assert trace["metrics"]["event_count"] == len(trace["events"])
+    assert trace["timing"]["unit"] == "us"
+    assert trace["timing"]["cycle_time_us"] == 1
+    assert trace["timing"]["parameters"]["split_merge_time"] == 80
+    assert trace["timing"]["parameters"]["shuttle_time"] == 5
+    assert trace["timing"]["parameters"]["single_qubit_gate_time"] == 7
     assert trace["validation"]["valid"] is True
     assert trace["validation"]["errors"] == []
 

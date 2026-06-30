@@ -25,6 +25,22 @@ test("bottom timeline reports gate progress instead of raw cycle time", () => {
   assert.doesNotMatch(appSource, /timeReadout\.textContent\s*=\s*`\$\{Math\.floor\(state\.time\)\}/);
 });
 
+test("operation completion time deltas are shown inside the headline Time metric", () => {
+  assert.doesNotMatch(indexSource, /timeScalePanel|timeDeltaLayer/);
+  assert.doesNotMatch(appSource, /timeScalePanel:\s*document\.getElementById|timeDeltaLayer:\s*document\.getElementById/);
+  assert.match(appSource, /playbackScaleSummary\(elements\.speedSelect\.value,\s*trace\)/);
+  assert.match(appSource, /eventDurationMicroseconds\(event,\s*trace\)/);
+  assert.match(appSource, /function emitCompletedTimeDelta\(previousTime,\s*nextTime\)/);
+  assert.match(appSource, /latestTimeDelta/);
+  assert.match(appSource, /card\.deltaPulse/);
+  assert.match(cssSource, /\.headline-time-delta\s*{/);
+  assert.match(cssSource, /@keyframes\s+headlineDeltaFlash/);
+  assert.match(
+    cssSource,
+    /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*\.headline-time-delta\s*{[\s\S]*animation:\s*none !important;[\s\S]*opacity:\s*1/,
+  );
+});
+
 test("trace generation ignores stale responses and disables duplicate submissions", () => {
   assert.match(appSource, /let\s+loadRequestId\s*=\s*0/);
   assert.match(appSource, /let\s+activeLoadController\s*=\s*null/);
@@ -87,6 +103,7 @@ test("left control shell stays fixed while experiment configuration scrolls inte
   assert.match(indexSource, /id="controlScrollRegion"\s+class="left-scroll-region"/);
   assert.match(cssSource, /\.left-control-panel\s*{[\s\S]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)[\s\S]*overflow:\s*hidden/);
   assert.match(cssSource, /\.left-scroll-region\s*{[\s\S]*overflow:\s*auto/);
+  assert.match(cssSource, /@media\s*\(max-width:\s*1240px\)[\s\S]*\.header-bar\s*{[\s\S]*position:\s*sticky;[\s\S]*top:\s*0/);
 });
 
 test("hardware canvas omits decorative trap endpoint overlays", () => {
@@ -218,11 +235,8 @@ test("window resize and circuit panel dimensions invalidate the circuit render c
   assert.match(appSource, /const circuitKey\s*=\s*`\$\{dagKey\}\|\$\{trace\?\.particles\?\.length \?\? 0\}\|\$\{circuitSizeKey\}`/);
 });
 
-test("playback speed is a uniform multiplier without active-motion-dependent rescaling", () => {
+test("playback speed is a uniform multiplier over trace microsecond timing", () => {
   assert.doesNotMatch(appSource, /playbackMotionScale/);
   assert.doesNotMatch(appSource, /MIN_MOTION_DISPLAY_CYCLES/);
-  assert.match(
-    appSource,
-    /currentTime\s*=\s*Math\.min\(replay\.finishTime,\s*currentTime\s*\+\s*delta\s*\*\s*Number\(elements\.speedSelect\.value\)\)/,
-  );
+  assert.match(appSource, /playbackDeltaCycles\(delta,\s*Number\(elements\.speedSelect\.value\),\s*trace\)/);
 });

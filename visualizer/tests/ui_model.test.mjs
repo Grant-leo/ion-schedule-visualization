@@ -7,6 +7,10 @@ import {
   createScenarioCopy,
   createValidationSummary,
   describeEvent,
+  eventDurationMicroseconds,
+  formatMicroseconds,
+  playbackDeltaCycles,
+  playbackScaleSummary,
   summarizeDag,
 } from "../ui_model.js";
 
@@ -62,7 +66,7 @@ test("createHeadlineMetricCards highlights execution and shuttling deltas", () =
 
   assert.deepEqual(cards.map((card) => card.label), ["Time", "Shuttles", "Motion time"]);
   assert.equal(cards[0].value, "920");
-  assert.equal(cards[0].unit, "cy");
+  assert.equal(cards[0].unit, "μs");
   assert.deepEqual(cards[0].delta, { text: "-80", tone: "good" });
   assert.equal(cards[1].value, "28");
   assert.equal(cards[1].detail, "8 split | 12 move | 8 merge");
@@ -89,8 +93,8 @@ test("createHeadlineMetricCards reports live schedule progress against final tot
   );
 
   assert.equal(cards[0].value, "25");
-  assert.equal(cards[0].unit, "/ 100 cy");
-  assert.equal(cards[0].detail, "live execution");
+  assert.equal(cards[0].unit, "/ 100 μs");
+  assert.equal(cards[0].detail, "1000x demo magnification");
   assert.equal(cards[0].progress, 0.25);
   assert.equal(cards[1].value, "3");
   assert.equal(cards[1].unit, "/ 14 ops");
@@ -98,7 +102,7 @@ test("createHeadlineMetricCards reports live schedule progress against final tot
   assert.equal(cards[1].subdetail, "1 split | 2 move | 0 merge");
   assert.equal(cards[1].progress, 3 / 14);
   assert.equal(cards[2].value, "12");
-  assert.equal(cards[2].unit, "/ 50 cy");
+  assert.equal(cards[2].unit, "/ 50 μs");
   assert.equal(cards[2].detail, "cumulative shuttle work");
   assert.equal(cards[2].progress, 0.24);
 });
@@ -158,6 +162,55 @@ test("createValidationSummary keeps valid schedules non-intrusive", () => {
     detail: "Trace passes topology, dependency, capacity, resource, and endpoint checks.",
     errors: [],
   });
+});
+
+test("time formatting converts trace cycles to microseconds", () => {
+  const timing = { cycle_time_us: 0.5 };
+  assert.equal(formatMicroseconds(80, timing), "40 μs");
+  assert.equal(formatMicroseconds(80, timing, { signed: true }), "+40 μs");
+  assert.equal(
+    eventDurationMicroseconds({ start: 10, end: 90 }, { timing }),
+    "+40 μs",
+  );
+});
+
+test("playbackDeltaCycles preserves real-time ratios through cycle_time_us", () => {
+  assert.equal(playbackDeltaCycles(16, 2, { timing: { cycle_time_us: 0.5, display_us_per_ms: 1 } }), 64);
+  assert.equal(playbackDeltaCycles(16, 0.5, { timing: { cycle_time_us: 2, display_us_per_ms: 1 } }), 4);
+});
+
+test("playbackScaleSummary exposes the demo time magnification", () => {
+  assert.deepEqual(playbackScaleSummary(1, { timing: { display_us_per_ms: 1 } }), {
+    label: "Time magnification 1000x",
+    detail: "1 ms display = 1 μs hardware",
+    magnification: 1000,
+  });
+  assert.equal(playbackScaleSummary(10, { timing: { display_us_per_ms: 1 } }).label, "Time magnification 100x");
+});
+
+test("live headline Time card carries magnification and latest operation delta", () => {
+  const [timeCard] = createHeadlineMetricCards(
+    {
+      finish_time: 100,
+      shuttling_time: 50,
+      counts: { split: 1, move: 0, merge: 1 },
+      playback_speed: 2,
+      latest_time_delta: "+80 μs",
+      latest_time_delta_key: "event-7",
+      timing: { cycle_time_us: 1, display_us_per_ms: 1 },
+    },
+    {
+      elapsedTime: 20,
+      finishTime: 100,
+      shuttlingTime: 8,
+      shuttlingOps: 1,
+      counts: { split: 1, move: 0, merge: 0 },
+    },
+  );
+
+  assert.equal(timeCard.badge, "500x");
+  assert.equal(timeCard.detail, "500x demo magnification");
+  assert.deepEqual(timeCard.deltaPulse, { text: "+80 μs", key: "event-7" });
 });
 
 test("describeEvent translates trace events into presentation-safe copy", () => {

@@ -51,16 +51,24 @@ export function createMetricCards(metrics = {}) {
 
 export function createHeadlineMetricCards(metrics = {}, previousMetrics = null) {
   const current = headlineMetrics(metrics);
+  const scaleBadge = (metrics.playback_scale_label || playbackScaleSummary(current.playback_speed, current).label).replace(
+    "Time magnification ",
+    "",
+  );
   if (isProgressMetrics(previousMetrics)) {
     const progress = headlineProgress(previousMetrics, current);
     return [
       {
         kind: "time",
         label: "Time",
-        value: formatNumber(progress.elapsedTime),
-        unit: `/ ${formatNumber(current.finishTime)} cy`,
+        value: formatMicrosecondValue(toMicroseconds(progress.elapsedTime, current)),
+        unit: `/ ${formatMicroseconds(current.finishTime, current)}`,
+        badge: scaleBadge,
         total: formatNumber(current.finishTime),
-        detail: "live execution",
+        detail: `${scaleBadge} demo magnification`,
+        deltaPulse: metrics.latest_time_delta
+          ? { text: metrics.latest_time_delta, key: metrics.latest_time_delta_key || metrics.latest_time_delta }
+          : null,
         progress: ratio(progress.elapsedTime, current.finishTime),
       },
       {
@@ -78,8 +86,8 @@ export function createHeadlineMetricCards(metrics = {}, previousMetrics = null) 
       {
         kind: "shuttle-time",
         label: "Motion time",
-        value: formatNumber(progress.shuttlingTime),
-        unit: `/ ${formatNumber(current.shuttlingTime)} cy`,
+        value: formatMicrosecondValue(toMicroseconds(progress.shuttlingTime, current)),
+        unit: `/ ${formatMicroseconds(current.shuttlingTime, current)}`,
         total: formatNumber(current.shuttlingTime),
         detail: "cumulative shuttle work",
         progress: ratio(progress.shuttlingTime, current.shuttlingTime),
@@ -91,8 +99,8 @@ export function createHeadlineMetricCards(metrics = {}, previousMetrics = null) 
   return [
     {
       label: "Time",
-      value: formatNumber(current.finishTime),
-      unit: "cy",
+      value: formatMicrosecondValue(toMicroseconds(current.finishTime, current)),
+      unit: "μs",
       detail: "end-to-end schedule",
       delta: metricDelta(current.finishTime, previous?.finishTime),
     },
@@ -107,8 +115,8 @@ export function createHeadlineMetricCards(metrics = {}, previousMetrics = null) 
     },
     {
       label: "Motion time",
-      value: formatNumber(current.shuttlingTime),
-      unit: "cy",
+      value: formatMicrosecondValue(toMicroseconds(current.shuttlingTime, current)),
+      unit: "μs",
       detail: `${current.shuttlingRatio.toFixed(1)}% of schedule`,
       delta: metricDelta(current.shuttlingTime, previous?.shuttlingTime),
     },
@@ -147,6 +155,46 @@ export function createValidationSummary(validation = {}) {
     detail,
     errors,
   };
+}
+
+export function traceCycleTimeUs(source = {}) {
+  const value = Number(source?.timing?.cycle_time_us ?? source?.cycle_time_us ?? source?.run?.cycle_time_us ?? 1);
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+export function displayUsPerMs(source = {}) {
+  const value = Number(source?.timing?.display_us_per_ms ?? source?.display_us_per_ms ?? 1);
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+export function playbackDeltaCycles(deltaMs, speedMultiplier = 1, timingSource = {}) {
+  const speed = Number(speedMultiplier);
+  const effectiveSpeed = Number.isFinite(speed) && speed > 0 ? speed : 1;
+  const hardwareUs = Math.max(0, Number(deltaMs) || 0) * effectiveSpeed * displayUsPerMs(timingSource);
+  return hardwareUs / traceCycleTimeUs(timingSource);
+}
+
+export function playbackScaleSummary(speedMultiplier = 1, timingSource = {}) {
+  const speed = Number(speedMultiplier);
+  const effectiveSpeed = Number.isFinite(speed) && speed > 0 ? speed : 1;
+  const hardwareUsPerDisplayMs = effectiveSpeed * displayUsPerMs(timingSource);
+  const magnification = hardwareUsPerDisplayMs > 0 ? 1000 / hardwareUsPerDisplayMs : 1;
+  return {
+    label: `Time magnification ${formatScale(magnification)}`,
+    detail: `1 ms display = ${formatMicrosecondValue(hardwareUsPerDisplayMs)} μs hardware`,
+    magnification,
+  };
+}
+
+export function formatMicroseconds(cycles, timingSource = {}, { signed = false } = {}) {
+  const value = toMicroseconds(cycles, timingSource);
+  const prefix = signed && value >= 0 ? "+" : "";
+  return `${prefix}${formatMicrosecondValue(value)} μs`;
+}
+
+export function eventDurationMicroseconds(event = {}, timingSource = {}) {
+  const duration = Math.max(0, Number(event.end ?? 0) - Number(event.start ?? 0));
+  return formatMicroseconds(duration, timingSource, { signed: true });
 }
 
 export function describeEvent(event) {
@@ -216,16 +264,40 @@ function formatNumber(value) {
   return String(Math.floor(Number(value || 0)));
 }
 
+function toMicroseconds(cycles, timingSource = {}) {
+  return Number(cycles || 0) * traceCycleTimeUs(timingSource);
+}
+
+function formatMicrosecondValue(value) {
+  const numeric = Number(value || 0);
+  if (Math.abs(numeric) >= 100 || Number.isInteger(numeric)) {
+    return String(Math.round(numeric));
+  }
+  return numeric.toFixed(Math.abs(numeric) >= 10 ? 1 : 2).replace(/\.?0+$/, "");
+}
+
+function formatScale(value) {
+  const numeric = Number(value || 0);
+  if (numeric >= 100 || Number.isInteger(numeric)) return `${Math.round(numeric)}x`;
+  return `${numeric.toFixed(numeric >= 10 ? 1 : 2).replace(/\.?0+$/, "")}x`;
+}
+
 function headlineMetrics(metrics = {}) {
   const counts = metrics.counts || {};
   const finishTime = Number(metrics.finish_time ?? metrics.finishTime ?? 0);
   const shuttlingTime = Number(metrics.shuttling_time ?? metrics.shuttlingTime ?? 0);
+  const cycleTimeUs = traceCycleTimeUs(metrics);
+  const displayUs = displayUsPerMs(metrics);
+  const playbackSpeed = Number(metrics.playback_speed ?? metrics.playbackSpeed ?? 1);
   const splitCount = Number(counts.split ?? metrics.split_count ?? metrics.splitCount ?? 0);
   const moveCount = Number(counts.move ?? metrics.move_count ?? metrics.moveCount ?? 0);
   const mergeCount = Number(counts.merge ?? metrics.merge_count ?? metrics.mergeCount ?? 0);
   return {
     finishTime,
     shuttlingTime,
+    cycle_time_us: cycleTimeUs,
+    display_us_per_ms: displayUs,
+    playback_speed: Number.isFinite(playbackSpeed) && playbackSpeed > 0 ? playbackSpeed : 1,
     splitCount,
     moveCount,
     mergeCount,
@@ -254,6 +326,7 @@ function headlineProgress(metrics = {}, totals = {}) {
     shuttlingOps: Number(metrics.shuttlingOps ?? splitCount + moveCount + mergeCount),
     activeShuttlingOps: Number(metrics.activeShuttlingOps ?? metrics.active_shuttling_ops ?? 0),
     finishTime: Number(metrics.finish_time ?? metrics.finishTime ?? totals.finishTime ?? 0),
+    cycle_time_us: traceCycleTimeUs(metrics.cycle_time_us ? metrics : totals),
   };
 }
 

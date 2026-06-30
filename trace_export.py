@@ -19,6 +19,7 @@ def export_trace(result):
         "device_type": "ion_trap",
         "run": _run_config(result),
         "topology": _topology(result.machine, result.config.machine),
+        "timing": _timing(result.machine),
         "dag": _dag(result.parser),
         "particles": _particles(result.initial_layout),
         "events": [_event_to_trace(event, result.machine) for event in result.scheduler.schedule.events],
@@ -487,6 +488,24 @@ def _run_config(result):
         "swap_type": config.swap_type,
         "single_qubit_gate_time": config.single_qubit_gate_time,
         "single_qubit_gate_fidelity": config.single_qubit_gate_fidelity,
+    }
+
+
+def _timing(machine):
+    params = machine.mparams
+    return {
+        "unit": "us",
+        "cycle_time_us": 1,
+        "display_us_per_ms": 1,
+        "parameters": {
+            "split_merge_time": params.split_merge_time,
+            "shuttle_time": params.shuttle_time,
+            "junction2_cross_time": params.junction2_cross_time,
+            "junction3_cross_time": params.junction3_cross_time,
+            "junction4_cross_time": params.junction4_cross_time,
+            "ion_swap_time": params.ion_swap_time,
+            "single_qubit_gate_time": params.single_qubit_gate_time,
+        },
     }
 
 

@@ -8,9 +8,12 @@ import {
   createScenarioCopy,
   createValidationSummary,
   describeEvent,
+  eventDurationMicroseconds,
   formatLocation,
+  playbackDeltaCycles,
+  playbackScaleSummary,
   summarizeDag,
-} from "./ui_model.js?v=20260630-validation1";
+} from "./ui_model.js?v=20260630-time4";
 
 const LIVE_PANEL_INTERVAL_MS = 160;
 const PERFORMANCE_PANEL_INTERVAL_MS = 250;
@@ -111,6 +114,7 @@ let lastLivePanelRender = 0;
 let lastPerformancePanelRender = 0;
 let lastCircuitKey = "";
 let lastExpandedCircuitKey = "";
+let latestTimeDelta = null;
 
 init().catch((error) => {
   const message = formatErrorMessage(error);
@@ -251,6 +255,10 @@ function wireControls() {
   elements.playPauseButton.addEventListener("click", togglePlayback);
   elements.restartButton.addEventListener("click", restart);
   elements.stepButton.addEventListener("click", stepToNextEvent);
+  elements.speedSelect.addEventListener("change", () => {
+    lastHeadlineKey = "";
+    draw({ forcePanels: true });
+  });
   elements.timeline.addEventListener("input", () => {
     if (generationLoading || traceBlocked) return;
     currentTime = Number(elements.timeline.value);
@@ -327,6 +335,7 @@ function loadTraceData(nextTrace, { resetControlPanelScroll = true } = {}) {
   elements.playPauseButton.textContent = "Play";
   elements.timeline.max = String(Math.max(1, replay.finishTime));
   elements.timeline.value = "0";
+  latestTimeDelta = null;
   syncConfigControls(trace);
   applySourceModeAvailability();
   renderScenarioSummary(trace);
@@ -661,7 +670,12 @@ function loop(now) {
   lastFrame = now;
 
   if (playing && replay) {
-    currentTime = Math.min(replay.finishTime, currentTime + delta * Number(elements.speedSelect.value));
+    const previousTime = currentTime;
+    currentTime = Math.min(
+      replay.finishTime,
+      currentTime + playbackDeltaCycles(delta, Number(elements.speedSelect.value), trace),
+    );
+    emitCompletedTimeDelta(previousTime, currentTime);
     if (currentTime >= replay.finishTime) {
       playing = false;
       elements.playPauseButton.textContent = "Play";
@@ -753,7 +767,15 @@ function renderExpandedCircuit(state, dagKey) {
 
 function buildMetricInput(metrics, replayMetrics, dagState) {
   const dagSummary = summarizeDag(dagState);
+  const scaleSummary = playbackScaleSummary(elements.speedSelect.value, trace);
   return {
+    timing: trace?.timing,
+    cycle_time_us: trace?.timing?.cycle_time_us,
+    playback_speed: Number(elements.speedSelect.value),
+    playback_scale_label: scaleSummary.label,
+    playback_scale_detail: scaleSummary.detail,
+    latest_time_delta: latestTimeDelta?.text,
+    latest_time_delta_key: latestTimeDelta?.key,
     event_count: metrics?.event_count ?? replayMetrics?.eventCount,
     finish_time: metrics?.finish_time ?? replayMetrics?.finishTime,
     counts: metrics?.counts ?? replayMetrics?.counts,
@@ -797,7 +819,12 @@ function renderMetrics(metricInput) {
 function renderHeadlineMetrics(metricInput, progressMetrics = null) {
   const cards = createHeadlineMetricCards(metricInput, progressMetrics || previousTraceMetrics);
   const headlineKey = cards
-    .map((card) => `${card.label}:${card.value}:${card.detail}:${card.subdetail || ""}:${card.progress ?? ""}`)
+    .map(
+      (card) =>
+        `${card.label}:${card.value}:${card.detail}:${card.subdetail || ""}:${card.progress ?? ""}:${card.badge || ""}:${
+          card.deltaPulse?.key || ""
+        }`,
+    )
     .join("|");
   if (headlineKey === lastHeadlineKey) return;
   lastHeadlineKey = headlineKey;
@@ -811,10 +838,19 @@ function renderHeadlineMetrics(metricInput, progressMetrics = null) {
     const label = document.createElement("span");
     label.className = "headline-metric-label";
     label.textContent = card.label;
+    const labelCluster = document.createElement("span");
+    labelCluster.className = "headline-label-cluster";
+    labelCluster.appendChild(label);
+    if (card.deltaPulse) {
+      const deltaPulse = document.createElement("span");
+      deltaPulse.className = "headline-time-delta";
+      deltaPulse.textContent = card.deltaPulse.text;
+      labelCluster.appendChild(deltaPulse);
+    }
     const badge = document.createElement("span");
     badge.className = "headline-live-badge";
-    badge.textContent = card.progress === undefined ? "TOTAL" : "LIVE";
-    topLine.append(label, badge);
+    badge.textContent = card.badge || (card.progress === undefined ? "TOTAL" : "LIVE");
+    topLine.append(labelCluster, badge);
 
     const valueRow = document.createElement("div");
     valueRow.className = "headline-metric-value-row";
@@ -849,6 +885,22 @@ function renderHeadlineMetrics(metricInput, progressMetrics = null) {
     fragment.appendChild(item);
   }
   elements.headlineMetricsPanel.replaceChildren(fragment);
+}
+
+function emitCompletedTimeDelta(previousTime, nextTime) {
+  if (!trace || !replay || nextTime <= previousTime) return;
+  const completedEvents = replay.events.filter((event) => event.end > previousTime && event.end <= nextTime);
+  const event = completedEvents.at(-1);
+  if (!event) return;
+  const key = `${event.id}:${event.end}:${performance.now().toFixed(1)}`;
+  latestTimeDelta = { text: eventDurationMicroseconds(event, trace), key };
+  lastHeadlineKey = "";
+  window.setTimeout(() => {
+    if (latestTimeDelta?.key !== key) return;
+    latestTimeDelta = null;
+    lastHeadlineKey = "";
+    draw({ forcePanels: true });
+  }, 1300);
 }
 
 function updateSchedulerModeButtons() {
