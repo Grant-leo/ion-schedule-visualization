@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createMetricCards, createScenarioCopy, describeEvent, summarizeDag } from "../ui_model.js";
+import { createHeadlineMetricCards, createMetricCards, createScenarioCopy, describeEvent, summarizeDag } from "../ui_model.js";
 
 test("createMetricCards derives shuttling burden and gate mix for executive metrics", () => {
   const cards = createMetricCards({
@@ -10,20 +10,90 @@ test("createMetricCards derives shuttling burden and gate mix for executive metr
     one_qubit_gates: 9,
     two_qubit_gates: 5,
     shuttling_time: 250,
+    swap_count: 3,
+    swap_hops: 7,
+    ion_hops: 11,
+    max_parallel_gates: 4,
+    blocked_ops: 18,
+    ready_ops: 2,
     counts: { gate: 14, split: 4, move: 6, merge: 4 },
     times: { gate: 500, split: 80, move: 120, merge: 50 },
   });
 
   assert.deepEqual(cards.map((card) => card.label), [
     "Finish time",
-    "Schedule events",
+    "Parallel gates",
     "Gate mix",
-    "Shuttling burden",
+    "Motion ops",
+    "Swap work",
+    "DAG pressure",
   ]);
   assert.equal(cards[0].value, "1000");
+  assert.equal(cards[1].value, "4");
   assert.equal(cards[2].value, "9 / 5");
-  assert.equal(cards[3].value, "250");
-  assert.equal(cards[3].detail, "aggregate cycles, 25.0% of makespan");
+  assert.equal(cards[3].value, "4 / 6 / 4");
+  assert.equal(cards[3].detail, "split / move / merge, 25.0% shuttle time");
+  assert.equal(cards[4].value, "3");
+  assert.equal(cards[4].detail, "7 swap hops, 11 ion hops");
+  assert.equal(cards[5].value, "18");
+  assert.equal(cards[5].detail, "blocked DAG ops, 2 ready");
+});
+
+test("createHeadlineMetricCards highlights execution and shuttling deltas", () => {
+  const cards = createHeadlineMetricCards(
+    {
+      finish_time: 920,
+      shuttling_time: 260,
+      counts: { split: 8, move: 12, merge: 8 },
+    },
+    {
+      finish_time: 1000,
+      shuttling_time: 210,
+      counts: { split: 6, move: 9, merge: 6 },
+    },
+  );
+
+  assert.deepEqual(cards.map((card) => card.label), ["Time", "Shuttles", "Motion time"]);
+  assert.equal(cards[0].value, "920");
+  assert.equal(cards[0].unit, "cy");
+  assert.deepEqual(cards[0].delta, { text: "-80", tone: "good" });
+  assert.equal(cards[1].value, "28");
+  assert.equal(cards[1].detail, "8 split | 12 move | 8 merge");
+  assert.deepEqual(cards[1].delta, { text: "+7", tone: "bad" });
+  assert.equal(cards[2].detail, "28.3% of schedule");
+  assert.deepEqual(cards[2].delta, { text: "+50", tone: "bad" });
+});
+
+test("createHeadlineMetricCards reports live schedule progress against final totals", () => {
+  const cards = createHeadlineMetricCards(
+    {
+      finish_time: 100,
+      shuttling_time: 50,
+      counts: { split: 4, move: 6, merge: 4 },
+    },
+    {
+      elapsedTime: 25,
+      finishTime: 100,
+      shuttlingTime: 12,
+      shuttlingOps: 3,
+      activeShuttlingOps: 1,
+      counts: { split: 1, move: 2, merge: 0 },
+    },
+  );
+
+  assert.equal(cards[0].value, "25");
+  assert.equal(cards[0].unit, "/ 100 cy");
+  assert.equal(cards[0].detail, "live execution");
+  assert.equal(cards[0].progress, 0.25);
+  assert.equal(cards[1].value, "3");
+  assert.equal(cards[1].unit, "/ 14 ops");
+  assert.equal(cards[1].detail, "1 active now");
+  assert.equal(cards[1].subdetail, "1 split | 2 move | 0 merge");
+  assert.equal(cards[1].progress, 3 / 14);
+  assert.equal(cards[2].value, "12");
+  assert.equal(cards[2].unit, "/ 50 cy");
+  assert.equal(cards[2].detail, "cumulative shuttle work");
+  assert.equal(cards[2].progress, 0.24);
 });
 
 test("createScenarioCopy reflects the active generated trace", () => {

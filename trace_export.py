@@ -6,6 +6,9 @@ from schedule import Schedule
 from simulation import SCHEDULER_POLICIES, effective_scheduler_flags
 
 
+VALID_EVENT_TYPES = {"gate", "split", "move", "merge"}
+
+
 def location_key(kind, idx):
     return f"{kind}:{idx}"
 
@@ -35,36 +38,64 @@ def write_trace(trace, output_path):
 def validate_trace(trace):
     locations = {particle["id"]: particle["initial_location"] for particle in trace["particles"]}
     busy_until = {}
+    trap_busy_until = {}
+    segment_busy_until = {}
+    junction_busy_until = {}
     pending_transfers = []
     errors = []
-    known_locations = _validate_topology(trace.get("topology", {}), errors)
-    _validate_initial_particles(trace.get("particles", []), trace.get("topology", {}), known_locations, errors)
-    trap_segment_orientation = _trap_segment_orientation(trace.get("topology", {}))
+    topology = trace.get("topology", {})
+    known_locations = _validate_topology(topology, errors)
+    topology_adjacency = _topology_adjacency(topology)
+    trap_capacity = _trap_capacity(topology)
+    occupancy = _validate_initial_particles(trace.get("particles", []), known_locations, trap_capacity, errors)
+    trap_chains = _initial_trap_chains(trace.get("particles", []), topology)
+    trap_segment_orientation = _trap_segment_orientation(topology)
     expected_events = trace.get("metrics", {}).get("event_count")
     if expected_events is not None and expected_events != len(trace["events"]):
         errors.append(f"metrics event_count {expected_events} does not match {len(trace['events'])} events")
+    _validate_dag_events(trace, errors)
 
     def apply_completed_transfers(time):
         remaining = []
+        chain_events_applied = set()
         for transfer in pending_transfers:
             if transfer["end"] <= time:
                 locations[transfer["ion"]] = transfer["target"]
+                if transfer["target"] in trap_capacity:
+                    _increment_trap_occupancy(occupancy, trap_capacity, transfer["target"], transfer["event"], errors)
+                    event_id = transfer["event"].get("id")
+                    if event_id not in chain_events_applied:
+                        _apply_merge_to_trap_chains(transfer["event"], trap_chains)
+                        chain_events_applied.add(event_id)
             else:
                 remaining.append(transfer)
         pending_transfers[:] = remaining
 
     for event in sorted(trace["events"], key=lambda item: (item["start"], item["id"])):
         apply_completed_transfers(event["start"])
+        if not _validate_event_shape(event, errors):
+            continue
         target = event["target"]
         source = event["source"]
         if source not in known_locations:
             errors.append(f"event {event['id']} unknown source {source}")
         if target not in known_locations:
             errors.append(f"event {event['id']} unknown target {target}")
+        _validate_event_topology(event, topology_adjacency, errors)
         _validate_event_endpoint(event, trap_segment_orientation, errors)
+        _validate_split_endpoint_ion(event, trap_chains, errors)
         if event["end"] < event["start"]:
             errors.append(f"event {event['id']} ends before it starts")
-        for ion in event["ions"]:
+        trap_location = _event_trap_resource(event)
+        if trap_location and trap_busy_until.get(trap_location, 0) > event["start"]:
+            errors.append(f"{trap_location} busy until {trap_busy_until[trap_location]} for event {event['id']}")
+        for segment_location in _event_segment_resources(event):
+            if segment_busy_until.get(segment_location, 0) > event["start"]:
+                errors.append(f"{segment_location} busy until {segment_busy_until[segment_location]} for event {event['id']}")
+        for junction_location in _event_junction_resources(event, topology_adjacency):
+            if junction_busy_until.get(junction_location, 0) > event["start"]:
+                errors.append(f"{junction_location} busy until {junction_busy_until[junction_location]} for event {event['id']}")
+        for ion in event.get("ions", []):
             if busy_until.get(ion, 0) > event["start"]:
                 errors.append(f"ion {ion} busy until {busy_until[ion]} for event {event['id']}")
             current = locations.get(ion)
@@ -73,9 +104,18 @@ def validate_trace(trace):
                     errors.append(f"ion {ion} not at {target} for gate {event['id']}; current={current}")
             elif current != source:
                 errors.append(f"ion {ion} not at {source} for {event['type']} {event['id']}; current={current}")
+            if event["type"] == "split" and source in trap_capacity:
+                _decrement_trap_occupancy(occupancy, source, event, errors)
+                _remove_ion_from_trap_chain(trap_chains, source, ion)
             if event["type"] != "gate":
-                pending_transfers.append({"end": event["end"], "ion": ion, "target": target})
+                pending_transfers.append({"end": event["end"], "ion": ion, "target": target, "event": event})
             busy_until[ion] = max(busy_until.get(ion, 0), event["end"])
+        if trap_location:
+            trap_busy_until[trap_location] = max(trap_busy_until.get(trap_location, 0), event["end"])
+        for segment_location in _event_segment_resources(event):
+            segment_busy_until[segment_location] = max(segment_busy_until.get(segment_location, 0), event["end"])
+        for junction_location in _event_junction_resources(event, topology_adjacency):
+            junction_busy_until[junction_location] = max(junction_busy_until.get(junction_location, 0), event["end"])
     apply_completed_transfers(float("inf"))
     return {
         "valid": len(errors) == 0,
@@ -119,13 +159,26 @@ def _validate_topology(topology, errors):
     return known_locations
 
 
-def _validate_initial_particles(particles, topology, known_locations, errors):
-    particle_ids = set()
-    trap_capacity = {
+def _topology_adjacency(topology):
+    segment_endpoints = {}
+    for segment in topology.get("segments", []):
+        segment_endpoints[location_key("segment", segment.get("id"))] = {
+            segment.get("from"),
+            segment.get("to"),
+        }
+    return {"segment_endpoints": segment_endpoints}
+
+
+def _trap_capacity(topology):
+    return {
         location_key("trap", trap.get("id")): trap.get("capacity")
         for trap in topology.get("traps", [])
         if trap.get("capacity") is not None
     }
+
+
+def _validate_initial_particles(particles, known_locations, trap_capacity, errors):
+    particle_ids = set()
     occupancy = {}
 
     for particle in particles:
@@ -143,6 +196,157 @@ def _validate_initial_particles(particles, topology, known_locations, errors):
         capacity = trap_capacity[location]
         if count > capacity:
             errors.append(f"{location} initial occupancy {count} exceeds capacity {capacity}")
+
+    return occupancy
+
+
+def _initial_trap_chains(particles, topology):
+    chains = {location_key("trap", trap.get("id")): [] for trap in topology.get("traps", [])}
+    for particle in sorted(particles, key=lambda item: (item.get("initial_slot", item.get("id")), item.get("id"))):
+        location = particle.get("initial_location")
+        if not str(location).startswith("trap:"):
+            continue
+        chains.setdefault(location, []).append(particle.get("id"))
+    return chains
+
+
+def _validate_event_topology(event, topology_adjacency, errors):
+    event_type = event.get("type")
+    source = event.get("source")
+    target = event.get("target")
+    segment_endpoints = topology_adjacency["segment_endpoints"]
+
+    if event_type == "split":
+        if not str(source).startswith("trap:") or not str(target).startswith("segment:"):
+            errors.append(f"event {event.get('id')} split must move from trap to segment")
+            return
+        if source not in segment_endpoints.get(target, set()):
+            errors.append(f"event {event.get('id')} source {source} not adjacent to {target}")
+        return
+
+    if event_type == "merge":
+        if not str(source).startswith("segment:") or not str(target).startswith("trap:"):
+            errors.append(f"event {event.get('id')} merge must move from segment to trap")
+            return
+        if target not in segment_endpoints.get(source, set()):
+            errors.append(f"event {event.get('id')} source {source} not adjacent to {target}")
+        return
+
+    if event_type == "move":
+        if not str(source).startswith("segment:") or not str(target).startswith("segment:"):
+            errors.append(f"event {event.get('id')} move must stay between channel segments")
+            return
+        source_endpoints = segment_endpoints.get(source, set())
+        target_endpoints = segment_endpoints.get(target, set())
+        shared_junction = any(
+            str(endpoint).startswith("junction:") and endpoint in target_endpoints
+            for endpoint in source_endpoints
+        )
+        if not shared_junction:
+            errors.append(f"event {event.get('id')} source {source} not adjacent to {target}")
+
+
+def _validate_event_shape(event, errors):
+    event_id = event.get("id")
+    event_type = event.get("type")
+    if event_type not in VALID_EVENT_TYPES:
+        errors.append(f"unsupported event type {event_type} for event {event_id}")
+        return False
+
+    ions = event.get("ions")
+    if not isinstance(ions, list) or len(ions) == 0:
+        errors.append(f"event {event_id} must reference at least one ion")
+
+    metadata = event.get("metadata") or {}
+    if event_type == "gate":
+        source = event.get("source")
+        target = event.get("target")
+        if source != target or not str(target).startswith("trap:"):
+            errors.append(f"gate event {event_id} must execute inside one trap")
+        gate_id = metadata.get("gate_id")
+        if not _is_int(gate_id):
+            errors.append(f"gate event {event_id} must include integer metadata.gate_id")
+        arity = metadata.get("arity")
+        if _is_int(arity) and isinstance(ions, list) and arity != len(ions):
+            errors.append(f"gate event {event_id} arity {arity} does not match {len(ions)} ions")
+
+    return True
+
+
+def _validate_dag_events(trace, errors):
+    dag = trace.get("dag") or {}
+    nodes = dag.get("nodes") or []
+    edges = dag.get("edges") or []
+    if not nodes and not edges:
+        return
+
+    dag_nodes = {}
+    for node in nodes:
+        node_id = node.get("id")
+        if not _is_int(node_id):
+            errors.append(f"dag node has non-integer id {node_id}")
+            continue
+        if node_id in dag_nodes:
+            errors.append(f"duplicate dag node id {node_id}")
+        dag_nodes[node_id] = node
+
+    gate_events_by_id = {}
+    for event in trace.get("events", []):
+        if event.get("type") != "gate":
+            continue
+        gate_id = (event.get("metadata") or {}).get("gate_id")
+        if not _is_int(gate_id):
+            continue
+        if gate_id not in dag_nodes:
+            errors.append(f"gate event {event.get('id')} references unknown dag node {gate_id}")
+            continue
+        if gate_id in gate_events_by_id:
+            errors.append(f"dag node {gate_id} has multiple matching gate events")
+            continue
+        gate_events_by_id[gate_id] = event
+
+    for node_id in sorted(dag_nodes):
+        if node_id not in gate_events_by_id:
+            errors.append(f"dag node {node_id} has no matching gate event")
+
+    for edge in edges:
+        source = edge.get("source")
+        target = edge.get("target")
+        if source not in dag_nodes:
+            errors.append(f"dag edge {source}->{target} references unknown source")
+            continue
+        if target not in dag_nodes:
+            errors.append(f"dag edge {source}->{target} references unknown target")
+            continue
+        source_event = gate_events_by_id.get(source)
+        target_event = gate_events_by_id.get(target)
+        if source_event is None or target_event is None:
+            continue
+        if source_event.get("end", 0) > target_event.get("start", 0):
+            errors.append(
+                f"dag edge {source}->{target} violates event order: "
+                f"source ends at {source_event.get('end')} but target starts at {target_event.get('start')}"
+            )
+
+
+def _is_int(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _decrement_trap_occupancy(occupancy, location, event, errors):
+    occupancy[location] = occupancy.get(location, 0) - 1
+    if occupancy[location] < 0:
+        errors.append(f"{location} occupancy {occupancy[location]} below zero after event {event.get('id')}")
+
+
+def _increment_trap_occupancy(occupancy, trap_capacity, location, event, errors):
+    occupancy[location] = occupancy.get(location, 0) + 1
+    capacity = trap_capacity.get(location)
+    if capacity is not None and occupancy[location] > capacity:
+        errors.append(
+            f"{location} occupancy {occupancy[location]} exceeds capacity {capacity} "
+            f"after event {event.get('id')}"
+        )
 
 
 def _trap_segment_orientation(topology):
@@ -176,6 +380,96 @@ def _validate_event_endpoint(event, trap_segment_orientation, errors):
         )
 
 
+def _validate_split_endpoint_ion(event, trap_chains, errors):
+    if event.get("type") != "split" or not str(event.get("source", "")).startswith("trap:"):
+        return
+    metadata = event.get("metadata") or {}
+    endpoint = metadata.get("endpoint")
+    if endpoint not in {"L", "R"}:
+        return
+    chain = trap_chains.get(event.get("source"), [])
+    for ion in event.get("ions", []):
+        try:
+            slot = chain.index(ion)
+        except ValueError:
+            errors.append(f"event {event.get('id')} split ion {ion} is not in {event.get('source')} chain")
+            continue
+        endpoint_slot = 0 if endpoint == "L" else len(chain) - 1
+        needed_hops = abs(slot - endpoint_slot)
+        if needed_hops == 0:
+            continue
+        swap_hops = int(metadata.get("swap_hops") or 0)
+        swap_count = int(metadata.get("swap_count") or 0)
+        if swap_count <= 0 or swap_hops < needed_hops:
+            errors.append(
+                f"event {event.get('id')} split ion {ion} is not at {endpoint} endpoint of {event.get('source')}; "
+                f"slot {slot}, endpoint slot {endpoint_slot}, needs {needed_hops} swap hops but metadata has {swap_hops}"
+            )
+
+
+def _event_trap_resource(event):
+    event_type = event.get("type")
+    if event_type == "gate" and str(event.get("target", "")).startswith("trap:"):
+        return event["target"]
+    if event_type == "split" and str(event.get("source", "")).startswith("trap:"):
+        return event["source"]
+    if event_type == "merge" and str(event.get("target", "")).startswith("trap:"):
+        return event["target"]
+    return None
+
+
+def _event_segment_resources(event):
+    event_type = event.get("type")
+    resources = []
+    if event_type == "split" and str(event.get("target", "")).startswith("segment:"):
+        resources.append(event["target"])
+    elif event_type == "merge" and str(event.get("source", "")).startswith("segment:"):
+        resources.append(event["source"])
+    elif event_type == "move":
+        for location in (event.get("source"), event.get("target")):
+            if str(location).startswith("segment:") and location not in resources:
+                resources.append(location)
+    return resources
+
+
+def _event_junction_resources(event, topology_adjacency):
+    if event.get("type") != "move":
+        return []
+    segment_endpoints = topology_adjacency["segment_endpoints"]
+    source_endpoints = segment_endpoints.get(event.get("source"), set())
+    target_endpoints = segment_endpoints.get(event.get("target"), set())
+    return sorted(
+        endpoint
+        for endpoint in source_endpoints & target_endpoints
+        if str(endpoint).startswith("junction:")
+    )
+
+
+def _remove_ion_from_trap_chain(trap_chains, location, ion):
+    chain = trap_chains.get(location)
+    if chain is None:
+        return
+    try:
+        chain.remove(ion)
+    except ValueError:
+        pass
+
+
+def _apply_merge_to_trap_chains(event, trap_chains):
+    if event.get("type") != "merge" or not str(event.get("target", "")).startswith("trap:"):
+        return
+    chain = trap_chains.setdefault(event.get("target"), [])
+    for ion in event.get("ions", []):
+        try:
+            chain.remove(ion)
+        except ValueError:
+            pass
+    if (event.get("metadata") or {}).get("endpoint") == "L":
+        chain[0:0] = event.get("ions", [])
+    else:
+        chain.extend(event.get("ions", []))
+
+
 def _run_config(result):
     config = result.config
     serial_trap_ops, serial_comm, serial_all = effective_scheduler_flags(config)
@@ -186,9 +480,9 @@ def _run_config(result):
         "mapper": config.mapper,
         "reorder": config.reorder,
         "scheduler_policy": config.scheduler_policy or _scheduler_policy_name(serial_trap_ops, serial_comm, serial_all),
-        "serial_trap_ops": serial_trap_ops,
-        "serial_comm": serial_comm,
-        "serial_all": serial_all,
+        "serial_trap_ops": bool(serial_trap_ops),
+        "serial_comm": bool(serial_comm),
+        "serial_all": bool(serial_all),
         "gate_type": config.gate_type,
         "swap_type": config.swap_type,
         "single_qubit_gate_time": config.single_qubit_gate_time,
@@ -223,8 +517,18 @@ def _topology(machine, machine_name):
             for trap in machine.traps
         ],
         "segments": sorted(segments, key=lambda item: item["id"]),
-        "junctions": [{"id": junction.id} for junction in machine.junctions],
+        "junctions": [_junction_to_trace(machine, junction) for junction in machine.junctions],
         "layout": _layout(machine, machine_name),
+    }
+
+
+def _junction_to_trace(machine, junction):
+    degree = machine.graph.degree(junction)
+    return {
+        "id": junction.id,
+        "degree": degree,
+        "junction_type": f"J{degree}",
+        "cross_time": machine.junction_cross_time(junction),
     }
 
 
@@ -265,6 +569,8 @@ def _paired_trap_layout(machine):
 
 
 def _grid_layout(machine):
+    if len(machine.junctions) == 9:
+        return _g9_grid_layout(machine)
     layout = {}
     trap_columns = 3
     for trap in machine.traps:
@@ -278,6 +584,68 @@ def _grid_layout(machine):
             col = junction.id % 3
         layout[location_key("junction", junction.id)] = {"x": col, "y": row}
     return layout
+
+
+def _g9_grid_layout(machine):
+    layout = {}
+    junction_points = {}
+    for junction in machine.junctions:
+        point = {"x": junction.id % 3, "y": junction.id // 3}
+        junction_points[junction] = point
+        layout[location_key("junction", junction.id)] = point
+
+    traps_by_junction = {}
+    for trap in sorted(machine.traps, key=lambda item: item.id):
+        connected = [obj for obj in machine.graph.neighbors(trap) if isinstance(obj, Junction)]
+        if not connected:
+            layout[location_key("trap", trap.id)] = {"x": trap.id % 3, "y": trap.id // 3}
+            continue
+        traps_by_junction.setdefault(connected[0], []).append(trap)
+
+    for junction, traps in traps_by_junction.items():
+        base = junction_points[junction]
+        free_ports = _junction_free_grid_ports(machine, junction, junction_points)
+        for index, trap in enumerate(traps):
+            direction = free_ports[index % len(free_ports)]
+            spacing = 0.72 + 0.16 * (index // len(free_ports))
+            layout[location_key("trap", trap.id)] = {
+                "x": base["x"] + direction[0] * spacing,
+                "y": base["y"] + direction[1] * spacing,
+            }
+    return layout
+
+
+def _junction_free_grid_ports(machine, junction, junction_points):
+    base = junction_points[junction]
+    used = set()
+    for neighbor in machine.graph.neighbors(junction):
+        if not isinstance(neighbor, Junction):
+            continue
+        neighbor_point = junction_points[neighbor]
+        dx = neighbor_point["x"] - base["x"]
+        dy = neighbor_point["y"] - base["y"]
+        if abs(dx) >= abs(dy):
+            used.add((1 if dx > 0 else -1, 0))
+        else:
+            used.add((0, 1 if dy > 0 else -1))
+
+    preferences = []
+    if base["y"] == 0:
+        preferences.append((0, -1))
+    if base["x"] == 2:
+        preferences.append((1, 0))
+    if base["y"] == 2:
+        preferences.append((0, 1))
+    if base["x"] == 0:
+        preferences.append((-1, 0))
+    preferences.extend([(0, -1), (1, 0), (0, 1), (-1, 0)])
+
+    free_ports = []
+    for direction in preferences:
+        if direction in used or direction in free_ports:
+            continue
+        free_ports.append(direction)
+    return free_ports or [(0, -1)]
 
 
 def _circle_layout(machine):
@@ -387,6 +755,9 @@ def _metrics(schedule):
     time_by_type = {"gate": 0, "split": 0, "move": 0, "merge": 0}
     one_q = 0
     two_q = 0
+    swap_count = 0
+    swap_hops = 0
+    ion_hops = 0
     for event in events:
         event_type = event[1]
         duration = event[3] - event[2]
@@ -400,12 +771,16 @@ def _metrics(schedule):
         elif event_type == Schedule.Split:
             by_type["split"] += 1
             time_by_type["split"] += duration
+            swap_count += int(event[4].get("swap_cnt", 0) or 0)
+            swap_hops += int(event[4].get("swap_hops", 0) or 0)
+            ion_hops += int(event[4].get("ion_hops", 0) or 0)
         elif event_type == Schedule.Move:
             by_type["move"] += 1
             time_by_type["move"] += duration
         elif event_type == Schedule.Merge:
             by_type["merge"] += 1
             time_by_type["merge"] += duration
+    parallel = _gate_parallel_metrics(events)
     return {
         "event_count": len(events),
         "finish_time": max((event[3] for event in events), default=0),
@@ -414,4 +789,37 @@ def _metrics(schedule):
         "one_qubit_gates": one_q,
         "two_qubit_gates": two_q,
         "shuttling_time": time_by_type["split"] + time_by_type["move"] + time_by_type["merge"],
+        "swap_count": swap_count,
+        "swap_hops": swap_hops,
+        "ion_hops": ion_hops,
+        **parallel,
+    }
+
+
+def _gate_parallel_metrics(events):
+    gates = [event for event in events if event[1] == Schedule.Gate]
+    max_parallel = 0
+    cross_trap_parallel = 0
+    same_trap_overlaps = 0
+
+    for index, left in enumerate(gates):
+        active_at_start = [
+            gate
+            for gate in gates
+            if gate[2] <= left[2] < gate[3]
+        ]
+        max_parallel = max(max_parallel, len(active_at_start))
+        if len({gate[4]["trap"] for gate in active_at_start}) > 1:
+            cross_trap_parallel += 1
+
+        for right in gates[index + 1 :]:
+            if left[4]["trap"] != right[4]["trap"]:
+                continue
+            if left[2] < right[3] and right[2] < left[3]:
+                same_trap_overlaps += 1
+
+    return {
+        "max_parallel_gates": max_parallel,
+        "cross_trap_parallel_gates": cross_trap_parallel,
+        "same_trap_gate_overlaps": same_trap_overlaps,
     }

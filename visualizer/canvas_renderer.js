@@ -1,5 +1,6 @@
 const FALLBACK_COLORS = {
   "--color-bg": "#101216",
+  "--color-canvas": "#050607",
   "--color-panel": "#181c22",
   "--color-border": "#2f3742",
   "--color-text": "#eef2f7",
@@ -13,46 +14,69 @@ const FALLBACK_COLORS = {
 };
 
 const MOTION_TYPES = new Set(["split", "move", "merge"]);
+const cssColorCache = new Map();
+const SPLIT_SWAP_PHASE_FRACTION = 0.34;
 
 export const RENDER_SIZES = Object.freeze({
-  ionRadius: 6,
-  activeIonRadius: 7,
-  segmentWidth: 18,
-  activeSegmentWidth: 24,
-  segmentOuterWidth: 24,
-  activeSegmentOuterWidth: 30,
-  motionPathWidth: 22,
-  trapHeight: 26,
+  ionRadius: 8,
+  activeIonRadius: 9,
+  segmentWidth: 20,
+  activeSegmentWidth: 26,
+  segmentOuterWidth: 28,
+  activeSegmentOuterWidth: 36,
+  motionPathWidth: 28,
+  trapHeight: 28,
   trapPortGap: 14,
   trapPortRadius: 5,
+  couplerWidth: 20,
+  couplerLength: 16,
+  junctionRadius: 10,
 });
 
 export function createRenderer(canvas) {
   const context = canvas.getContext("2d", { alpha: false });
   let trace = null;
   let layout = null;
+  let viewport = null;
 
   return {
     setTrace(nextTrace) {
       trace = nextTrace;
-      resizeCanvas(canvas);
-      layout = computeLayout(canvas, trace);
+      viewport = resizeCanvas(canvas);
+      layout = computeLayout(viewport, trace);
     },
     draw(state) {
       if (!trace || !layout) return;
-      const resized = resizeCanvas(canvas);
-      if (resized) layout = computeLayout(canvas, trace);
+      viewport = resizeCanvas(canvas);
+      if (viewport.resized) layout = computeLayout(viewport, trace);
 
-      context.clearRect(0, 0, canvas.width, canvas.height);
-      drawBackground(context, canvas);
+      context.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
+      context.clearRect(0, 0, viewport.width, viewport.height);
+      drawBackground(context, viewport);
       drawSegments(context, trace, layout, state);
+      drawChannelTerminals(context, trace, layout, state);
       drawTraps(context, trace, layout);
       drawTrapPorts(context, trace, layout);
-      drawJunctions(context, trace, layout);
+      drawJunctions(context, trace, layout, state);
       drawActiveEvents(context, layout, state);
       drawIons(context, trace, layout, state);
     },
   };
+}
+
+export function resizeCanvas(canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.max(1, Number(globalThis.devicePixelRatio) || 1);
+  const width = Math.max(320, Math.floor(rect.width || 0));
+  const height = Math.max(240, Math.floor(rect.height || 0));
+  const pixelWidth = Math.floor(width * dpr);
+  const pixelHeight = Math.floor(height * dpr);
+  const resized = canvas.width !== pixelWidth || canvas.height !== pixelHeight;
+  if (resized) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+  }
+  return { width, height, dpr, resized };
 }
 
 export function eventProgress(event, time) {
@@ -81,16 +105,23 @@ export function trapSlotPoint(trapPoint, slotIndex, capacity) {
   return { x: left + step * slotIndex, y: trapPoint.y };
 }
 
-export function trapConnectionPoint(trap, trapPoint, segmentLocation) {
-  const side = trapEndpointSide(trap, segmentLocation);
-  return trapPortPoints(trapPoint)[side];
+export function trapRenderWidth(trap) {
+  const highCapacityAllowance = Math.max(0, trap.capacity - 6) * 6;
+  const readableChainWidth =
+    trap.capacity <= 1
+      ? 68
+      : ((trap.capacity - 1) * (RENDER_SIZES.activeIonRadius * 2 + 5)) / 0.8 + 24;
+  return Math.max(68, Math.min(240, Math.max(15 * trap.capacity + 14 + highCapacityAllowance, readableChainWidth)));
 }
 
-export function trapPortPoints(trapPoint) {
-  const offset = trapPoint.width / 2 + RENDER_SIZES.trapPortGap;
+export function trapConnectionPoint(trap, trapPoint, segmentLocation) {
+  return trapSlotPoint(trapPoint, endpointSlotIndex(trap, segmentLocation), trap.capacity);
+}
+
+export function trapPortPoints(trapPoint, capacity = 5) {
   return {
-    L: { x: trapPoint.x - offset, y: trapPoint.y },
-    R: { x: trapPoint.x + offset, y: trapPoint.y },
+    L: trapSlotPoint(trapPoint, 0, capacity),
+    R: trapSlotPoint(trapPoint, Math.max(0, capacity - 1), capacity),
   };
 }
 
@@ -132,7 +163,7 @@ export function pointAlongPolyline(points, progress) {
   return points[points.length - 1];
 }
 
-export function motionPathPoints(layout, event) {
+export function motionPathPoints(layout, event, state = null) {
   const start = eventEndpointPoint(layout, event, event.source) || resolveLocationPoint(layout, event.source);
   const end = eventEndpointPoint(layout, event, event.target) || resolveLocationPoint(layout, event.target);
   if (!start || !end) return [start || end].filter(Boolean);
@@ -149,7 +180,7 @@ export function motionPathPoints(layout, event) {
   }
 
   if (event.source?.startsWith("trap:") && event.target?.startsWith("segment:")) {
-    const swapPath = splitInternalSwapPoints(layout, event);
+    const swapPath = splitInternalSwapPoints(layout, event, state);
     const exitPath = segmentEndpointToCenterPath(layout, event.target, event.source);
     return compactPath([...(swapPath.length ? swapPath : [start]), ...exitPath]);
   }
@@ -161,7 +192,7 @@ export function motionPathPoints(layout, event) {
   return compactPath([start, end]);
 }
 
-export function splitInternalSwapPoints(layout, event) {
+export function splitInternalSwapPoints(layout, event, state = null) {
   const swapHops = Number(event.metadata?.swap_hops || 0);
   const swapCount = Number(event.metadata?.swap_count || 0);
   if (event.type !== "split" || swapCount <= 0 || swapHops <= 0 || !event.source?.startsWith("trap:")) {
@@ -171,14 +202,70 @@ export function splitInternalSwapPoints(layout, event) {
   const trapPoint = layout.traps.get(event.source);
   if (!trap || !trapPoint) return [];
   const endpointSlot = endpointSlotIndex(trap, event.target);
-  const startSlot =
+  const liveSlot = liveTrapChainSlot(event, state);
+  const startSlot = liveSlot ?? (
     event.metadata?.endpoint === "R"
       ? Math.max(0, endpointSlot - swapHops)
-      : Math.min(trap.capacity - 1, endpointSlot + swapHops);
-  return [
-    trapSlotPoint(trapPoint, startSlot, trap.capacity),
-    trapSlotPoint(trapPoint, endpointSlot, trap.capacity),
-  ];
+      : Math.min(trap.capacity - 1, endpointSlot + swapHops)
+  );
+  if (startSlot === endpointSlot) return [];
+  return slotWalkPoints(trapPoint, trap.capacity, startSlot, endpointSlot);
+}
+
+function liveTrapChainSlot(event, state) {
+  const chain = state?.motionTrapChains?.get(event.source) || state?.trapChains?.get(event.source);
+  if (!chain || !(event.ions || []).length) return null;
+  const index = chain.indexOf(event.ions[0]);
+  return index >= 0 ? index : null;
+}
+
+export function activeSplitSwapPoint(layout, event, state = {}, ionId) {
+  const info = splitSwapInfo(layout, event, state);
+  if (!info) return null;
+  const ion = Number(ionId);
+  if (ion !== info.firstIon && ion !== info.secondIon) return null;
+  const progress = eventProgress(event, state.time ?? event.start);
+  const swapProgress = clamp(progress / SPLIT_SWAP_PHASE_FRACTION, 0, 1);
+  const firstPoint = trapSlotPoint(info.trapPoint, info.firstSlot, info.trap.capacity);
+  const secondPoint = trapSlotPoint(info.trapPoint, info.secondSlot, info.trap.capacity);
+
+  if (ion === info.firstIon) {
+    if (progress >= SPLIT_SWAP_PHASE_FRACTION) return null;
+    return interpolatePoint(firstPoint, secondPoint, swapProgress);
+  }
+  return interpolatePoint(secondPoint, firstPoint, swapProgress);
+}
+
+function splitSwapInfo(layout, event, state = {}) {
+  const swapIons = (event.metadata?.swap_ions || []).map((ion) => Number(ion));
+  if (
+    event.type !== "split" ||
+    Number(event.metadata?.swap_count || 0) <= 0 ||
+    swapIons.length !== 2 ||
+    !event.source?.startsWith("trap:")
+  ) {
+    return null;
+  }
+  const trap = (layout.traceTrapsFallback || []).find((item) => `trap:${item.id}` === event.source);
+  const trapPoint = layout.traps.get(event.source);
+  const chain = state?.motionTrapChains?.get(event.source) || state?.trapChains?.get(event.source);
+  if (!trap || !trapPoint || !chain) return null;
+  const [firstIon, secondIon] = swapIons;
+  const firstSlot = chain.indexOf(firstIon);
+  const secondSlot = chain.indexOf(secondIon);
+  if (firstSlot < 0 || secondSlot < 0 || firstSlot === secondSlot) return null;
+  return { trap, trapPoint, firstIon, secondIon, firstSlot, secondSlot };
+}
+
+function slotWalkPoints(trapPoint, capacity, startSlot, endSlot) {
+  if (startSlot === endSlot) return [trapSlotPoint(trapPoint, clamp(startSlot, 0, capacity - 1), capacity)];
+  const direction = endSlot > startSlot ? 1 : -1;
+  const points = [];
+  for (let slot = startSlot; ; slot += direction) {
+    points.push(trapSlotPoint(trapPoint, clamp(slot, 0, capacity - 1), capacity));
+    if (slot === endSlot) break;
+  }
+  return points;
 }
 
 export function ionRenderPoint(basePoint, location, activeMotion, offsetIndex) {
@@ -187,20 +274,42 @@ export function ionRenderPoint(basePoint, location, activeMotion, offsetIndex) {
   return offsetPoint(basePoint, offsetIndex);
 }
 
-function resizeCanvas(canvas) {
-  const rect = canvas.getBoundingClientRect();
-  const scale = globalThis.devicePixelRatio || 1;
-  const width = Math.max(320, Math.floor(rect.width * scale));
-  const height = Math.max(240, Math.floor(rect.height * scale));
-  if (canvas.width === width && canvas.height === height) return false;
-  canvas.width = width;
-  canvas.height = height;
-  return true;
+export function ionLabelSpec(id, radius) {
+  const text = String(id);
+  return {
+    text,
+    xOffset: 0,
+    yOffset: 0,
+    fontSize: text.length >= 2 ? Math.max(7, Math.floor(radius * 0.88)) : Math.max(9, Math.floor(radius * 1.08)),
+  };
 }
 
-function computeLayout(canvas, trace) {
-  const width = canvas.width;
-  const height = canvas.height;
+export function junctionRenderSpec(junction = {}, directions = []) {
+  const armCount = Number(junction.degree ?? directions.length ?? 0);
+  let kind = "multiport";
+  if (armCount === 2) kind = "straight";
+  if (armCount === 3) kind = "tee";
+  if (armCount === 4) kind = "cross";
+  return {
+    armCount,
+    armLineCap: "butt",
+    armLength: RENDER_SIZES.segmentWidth,
+    centerRadius: RENDER_SIZES.segmentWidth / 2,
+    channelWidth: RENDER_SIZES.segmentWidth,
+    hasEnclosure: false,
+    highlightWidth: 1.4,
+    kind,
+    label: junction.junction_type || `J${armCount}`,
+    markerArmLength: 8,
+    markerRadius: 3.6,
+    markerWidth: 2.2,
+    outerWidth: RENDER_SIZES.segmentOuterWidth,
+  };
+}
+
+function computeLayout(viewport, trace) {
+  const width = viewport.width;
+  const height = viewport.height;
   const marginX = Math.max(92, width * 0.1);
   const marginY = Math.max(84, height * 0.12);
   const traps = new Map();
@@ -222,9 +331,10 @@ function computeLayout(canvas, trace) {
       trapCount === 1
         ? width / 2
         : marginX + (index * (width - marginX * 2)) / Math.max(1, trapCount - 1);
-    const x = point ? scaleValue(point.x, minX, maxX, marginX, width - marginX) : fallbackX;
-    const y = point ? scaleValue(point.y, minY, maxY, marginY, height - marginY) : height * 0.58;
-    traps.set(location, { x, y, width: Math.max(72, Math.min(150, 18 * trap.capacity + 28)) });
+    const scaled = point ? scaleLayoutPoint(point, minX, maxX, minY, maxY, marginX, marginY, width, height) : null;
+    const x = scaled ? scaled.x : fallbackX;
+    const y = scaled ? scaled.y : height * 0.58;
+    traps.set(location, { x, y, width: trapRenderWidth(trap) });
   }
 
   const junctionCount = Math.max(1, trace.topology.junctions.length);
@@ -235,17 +345,26 @@ function computeLayout(canvas, trace) {
       junctionCount === 1
         ? width / 2
         : marginX + (index * (width - marginX * 2)) / Math.max(1, junctionCount - 1);
-    const x = point ? scaleValue(point.x, minX, maxX, marginX, width - marginX) : fallbackX;
-    const y = point ? scaleValue(point.y, minY, maxY, marginY, height - marginY) : height * 0.34;
+    const scaled = point ? scaleLayoutPoint(point, minX, maxX, minY, maxY, marginX, marginY, width, height) : null;
+    const x = scaled ? scaled.x : fallbackX;
+    const y = scaled ? scaled.y : height * 0.34;
     junctions.set(location, { x, y });
   }
+
+  alignTrapPortsToFixedJunctions(trace, traps, junctions);
+  alignJunctionsToTrapPorts(trace, traps, junctions);
 
   for (const segment of trace.topology.segments) {
     const start = resolveSegmentNodePoint(traps, junctions, trace.topology.traps, segment.from, segment.id);
     const end = resolveSegmentNodePoint(traps, junctions, trace.topology.traps, segment.to, segment.id);
     if (!start || !end) continue;
     const key = `segment:${segment.id}`;
-    const route = segmentRoutePoints(start, end, segment.from, segment.to);
+    const route = segmentRoutePoints(start, end, segment.from, segment.to, trace.run?.machine, {
+      traps,
+      junctions,
+      traceTraps: trace.topology.traps,
+      segmentId: segment.id,
+    });
     segments.set(key, pointAlongPolyline(route, 0.5));
     segmentEndpoints.set(key, { start, end, from: segment.from, to: segment.to, route });
   }
@@ -253,9 +372,76 @@ function computeLayout(canvas, trace) {
   return { traps, junctions, segments, segmentEndpoints, traceTrapsFallback: trace.topology.traps };
 }
 
-function scaleValue(value, minInput, maxInput, minOutput, maxOutput) {
-  if (maxInput === minInput) return (minOutput + maxOutput) / 2;
-  return minOutput + ((value - minInput) / (maxInput - minInput)) * (maxOutput - minOutput);
+export function alignJunctionsToTrapPorts(trace, traps, junctions) {
+  if (trace.run?.machine === "G9") return;
+  for (const junction of trace.topology.junctions || []) {
+    const junctionLocation = `junction:${junction.id}`;
+    const junctionPoint = junctions.get(junctionLocation);
+    if (!junctionPoint) continue;
+    const verticalPortXs = [];
+    const horizontalPortYs = [];
+    for (const segment of trace.topology.segments || []) {
+      const trapLocation = segment.from?.startsWith("trap:") ? segment.from : segment.to?.startsWith("trap:") ? segment.to : null;
+      if (!trapLocation || (segment.from !== junctionLocation && segment.to !== junctionLocation)) continue;
+      const trap = trace.topology.traps?.find((item) => `trap:${item.id}` === trapLocation);
+      const trapPoint = traps.get(trapLocation);
+      if (!trap || !trapPoint) continue;
+      const portPoint = trapConnectionPoint(trap, trapPoint, `segment:${segment.id}`);
+      const dx = Math.abs(trapPoint.x - junctionPoint.x);
+      const dy = Math.abs(trapPoint.y - junctionPoint.y);
+      if (dy >= dx) verticalPortXs.push(portPoint.x);
+      else horizontalPortYs.push(portPoint.y);
+    }
+    if (verticalPortXs.length) junctionPoint.x = average(verticalPortXs);
+    if (horizontalPortYs.length) junctionPoint.y = average(horizontalPortYs);
+  }
+}
+
+export function alignTrapPortsToFixedJunctions(trace, traps, junctions) {
+  if (trace.run?.machine !== "G9") return;
+  for (const segment of trace.topology.segments || []) {
+    const trapLocation = segment.from?.startsWith("trap:")
+      ? segment.from
+      : segment.to?.startsWith("trap:")
+        ? segment.to
+        : null;
+    const junctionLocation = segment.from?.startsWith("junction:")
+      ? segment.from
+      : segment.to?.startsWith("junction:")
+        ? segment.to
+        : null;
+    if (!trapLocation || !junctionLocation) continue;
+
+    const trap = trace.topology.traps?.find((item) => `trap:${item.id}` === trapLocation);
+    const trapPoint = traps.get(trapLocation);
+    const junctionPoint = junctions.get(junctionLocation);
+    if (!trap || !trapPoint || !junctionPoint) continue;
+
+    const portPoint = trapConnectionPoint(trap, trapPoint, `segment:${segment.id}`);
+    const dx = Math.abs(trapPoint.x - junctionPoint.x);
+    const dy = Math.abs(trapPoint.y - junctionPoint.y);
+    if (dy >= dx) {
+      trapPoint.x += junctionPoint.x - portPoint.x;
+    } else {
+      trapPoint.y += junctionPoint.y - portPoint.y;
+    }
+  }
+}
+
+function scaleLayoutPoint(point, minX, maxX, minY, maxY, marginX, marginY, width, height) {
+  const spanX = Math.max(1, maxX - minX);
+  const spanY = Math.max(1, maxY - minY);
+  const availableX = Math.max(1, width - marginX * 2);
+  const availableY = Math.max(1, height - marginY * 2);
+  const scale = Math.min(availableX / spanX, availableY / spanY);
+  const usedX = spanX * scale;
+  const usedY = spanY * scale;
+  const offsetX = (width - usedX) / 2;
+  const offsetY = (height - usedY) / 2;
+  return {
+    x: offsetX + (point.x - minX) * scale,
+    y: offsetY + (point.y - minY) * scale,
+  };
 }
 
 function resolveNodePoint(traps, junctions, location) {
@@ -282,8 +468,27 @@ function resolveLocationPoint(layout, location) {
 }
 
 function drawBackground(context, canvas) {
-  context.fillStyle = cssColor("--color-bg");
+  context.fillStyle = cssColor("--color-canvas");
   context.fillRect(0, 0, canvas.width, canvas.height);
+  context.save();
+  context.strokeStyle = "rgba(255, 255, 255, 0.024)";
+  context.lineWidth = 1;
+  const grid = Math.max(42, Math.floor(canvas.width / 18));
+  for (let x = grid; x < canvas.width; x += grid) {
+    context.beginPath();
+    context.moveTo(x, 0);
+    context.lineTo(x, canvas.height);
+    context.stroke();
+  }
+  for (let y = grid; y < canvas.height; y += grid) {
+    context.beginPath();
+    context.moveTo(0, y);
+    context.lineTo(canvas.width, y);
+    context.stroke();
+  }
+  context.strokeStyle = "rgba(255, 255, 255, 0.055)";
+  context.strokeRect(0.5, 0.5, canvas.width - 1, canvas.height - 1);
+  context.restore();
 }
 
 function drawSegments(context, trace, layout, state) {
@@ -297,16 +502,74 @@ function drawSegments(context, trace, layout, state) {
     const segmentKey = `segment:${segment.id}`;
     const isActive = activeMotion.has(segmentKey);
 
-    context.strokeStyle = "rgba(5, 8, 12, 0.72)";
+    context.save();
+    context.strokeStyle = "rgba(0, 0, 0, 0.74)";
     context.lineWidth = isActive ? RENDER_SIZES.activeSegmentOuterWidth : RENDER_SIZES.segmentOuterWidth;
     context.lineCap = "round";
     context.lineJoin = "round";
     strokePolyline(context, points);
 
+    context.strokeStyle = isActive ? "rgba(100, 210, 255, 0.36)" : "rgba(255, 255, 255, 0.105)";
+    context.lineWidth = (isActive ? RENDER_SIZES.activeSegmentWidth : RENDER_SIZES.segmentWidth) + 7;
+    strokePolyline(context, points);
+
+    if (isActive) {
+      context.shadowColor = cssColor("--color-move");
+      context.shadowBlur = 16;
+    }
     context.strokeStyle = isActive ? cssColor("--color-move") : cssColor("--color-segment");
     context.lineWidth = isActive ? RENDER_SIZES.activeSegmentWidth : RENDER_SIZES.segmentWidth;
     strokePolyline(context, points);
+
+    context.shadowBlur = 0;
+    context.strokeStyle = isActive ? "rgba(255, 255, 255, 0.54)" : "rgba(255, 255, 255, 0.2)";
+    context.lineWidth = 1.4;
+    strokePolyline(context, points);
+    context.restore();
   }
+}
+
+function drawChannelTerminals(context, trace, layout, state) {
+  const activeMotion = new Set(
+    state.activeEvents.filter((event) => MOTION_TYPES.has(event.type)).flatMap((event) => [event.source, event.target]),
+  );
+
+  for (const segment of trace.topology.segments) {
+    const key = `segment:${segment.id}`;
+    const endpoints = layout.segmentEndpoints?.get(key);
+    if (!endpoints) continue;
+    const route = endpoints.route || [endpoints.start, endpoints.end].filter(Boolean);
+    const isActive = activeMotion.has(key);
+    drawTerminalForEndpoint(context, route, endpoints.start, endpoints.from, isActive);
+    drawTerminalForEndpoint(context, [...route].reverse(), endpoints.end, endpoints.to, isActive);
+  }
+}
+
+function drawTerminalForEndpoint(context, route, point, location, active) {
+  if (!point) return;
+  if (location?.startsWith("trap:")) {
+    const next = route?.[1] || point;
+    drawTrapCoupler(context, point, next, active);
+  }
+}
+
+function drawTrapCoupler(context, point, nextPoint, active) {
+  const horizontal = Math.abs((nextPoint?.x ?? point.x) - point.x) >= Math.abs((nextPoint?.y ?? point.y) - point.y);
+  const length = RENDER_SIZES.couplerLength;
+  const width = RENDER_SIZES.couplerWidth;
+  const x = point.x - (horizontal ? length / 2 : width / 2);
+  const y = point.y - (horizontal ? width / 2 : length / 2);
+
+  context.save();
+  context.fillStyle = active ? "rgba(100, 210, 255, 0.32)" : "rgba(124, 135, 152, 0.36)";
+  context.strokeStyle = active ? cssColor("--color-move") : "rgba(255, 255, 255, 0.24)";
+  context.lineWidth = active ? 1.8 : 1.2;
+  context.shadowColor = active ? cssColor("--color-move") : "rgba(0, 0, 0, 0.42)";
+  context.shadowBlur = active ? 12 : 4;
+  roundedRect(context, x, y, horizontal ? length : width, horizontal ? width : length, 5);
+  context.fill();
+  context.stroke();
+  context.restore();
 }
 
 function drawTraps(context, trace, layout) {
@@ -320,11 +583,33 @@ function drawTraps(context, trace, layout) {
 function drawTrapChain(context, trap, point) {
   const width = point.width;
   const height = RENDER_SIZES.trapHeight;
-  context.fillStyle = "rgba(70, 119, 200, 0.22)";
+  context.save();
+  context.shadowColor = "rgba(94, 143, 242, 0.2)";
+  context.shadowBlur = 14;
+  context.fillStyle = "rgba(13, 17, 24, 0.92)";
+  context.strokeStyle = "rgba(255, 255, 255, 0.14)";
+  context.lineWidth = 1.2;
+  roundedRect(context, point.x - width / 2 - 4, point.y - height / 2 - 4, width + 8, height + 8, 8);
+  context.fill();
+  context.stroke();
+
+  context.shadowBlur = 0;
+  const gradient = context.createLinearGradient(point.x - width / 2, point.y, point.x + width / 2, point.y);
+  gradient.addColorStop(0, "rgba(94, 143, 242, 0.26)");
+  gradient.addColorStop(0.5, "rgba(94, 143, 242, 0.12)");
+  gradient.addColorStop(1, "rgba(94, 143, 242, 0.26)");
+  context.fillStyle = gradient;
   context.strokeStyle = cssColor("--color-trap");
-  context.lineWidth = 1.5;
+  context.lineWidth = 1.6;
   roundedRect(context, point.x - width / 2, point.y - height / 2, width, height, 5);
   context.fill();
+  context.stroke();
+
+  context.strokeStyle = "rgba(255, 255, 255, 0.24)";
+  context.lineWidth = 1.2;
+  context.beginPath();
+  context.moveTo(point.x - width / 2 + 8, point.y);
+  context.lineTo(point.x + width / 2 - 8, point.y);
   context.stroke();
 
   for (const slot of trap.slots || []) {
@@ -337,60 +622,290 @@ function drawTrapChain(context, trap, point) {
   }
 
   drawLabel(context, `T${trap.id}`, point.x, point.y + 24, cssColor("--color-muted"));
+  context.restore();
 }
 
 function drawTrapPorts(context, trace, layout) {
   for (const trap of trace.topology.traps) {
     const point = layout.traps.get(`trap:${trap.id}`);
     if (!point) continue;
-    const ports = trapPortPoints(point);
+    const ports = trapPortPoints(point, trap.capacity);
     const connected = trapConnectedPortSides(trap);
     for (const side of ["L", "R"]) {
+      drawTrapNeck(context, point, ports[side], side, connected.has(side));
       drawTrapPort(context, ports[side], side, connected.has(side));
     }
   }
 }
 
-function drawTrapPort(context, point, side, connected) {
-  context.fillStyle = connected ? cssColor("--color-segment") : "rgba(115, 127, 145, 0.18)";
-  context.strokeStyle = connected ? cssColor("--color-trap") : "rgba(115, 127, 145, 0.36)";
-  context.lineWidth = connected ? 1.5 : 1;
+function drawTrapNeck(context, trapPoint, portPoint, side, connected) {
+  if (!connected) return;
+  const sign = side === "R" ? 1 : -1;
+  const edge = { x: trapPoint.x + sign * trapPoint.width / 2, y: trapPoint.y };
+  context.save();
+  context.strokeStyle = "rgba(0, 0, 0, 0.62)";
+  context.lineWidth = RENDER_SIZES.couplerWidth + 6;
+  context.lineCap = "round";
   context.beginPath();
-  context.arc(point.x, point.y, RENDER_SIZES.trapPortRadius, 0, Math.PI * 2);
+  context.moveTo(edge.x, edge.y);
+  context.lineTo(portPoint.x, portPoint.y);
+  context.stroke();
+  context.strokeStyle = "rgba(124, 135, 152, 0.42)";
+  context.lineWidth = RENDER_SIZES.couplerWidth;
+  context.beginPath();
+  context.moveTo(edge.x, edge.y);
+  context.lineTo(portPoint.x, portPoint.y);
+  context.stroke();
+  context.strokeStyle = "rgba(255, 255, 255, 0.18)";
+  context.lineWidth = 1.1;
+  context.beginPath();
+  context.moveTo(edge.x, edge.y);
+  context.lineTo(portPoint.x, portPoint.y);
+  context.stroke();
+  context.restore();
+}
+
+function drawTrapPort(context, point, side, connected) {
+  context.save();
+  context.fillStyle = connected ? "rgba(14, 18, 24, 0.98)" : "rgba(115, 127, 145, 0.18)";
+  context.strokeStyle = connected ? "rgba(100, 210, 255, 0.54)" : "rgba(115, 127, 145, 0.36)";
+  context.lineWidth = connected ? 1.8 : 1;
+  context.shadowColor = connected ? "rgba(100, 210, 255, 0.24)" : "transparent";
+  context.shadowBlur = connected ? 8 : 0;
+  context.beginPath();
+  context.arc(point.x, point.y, connected ? RENDER_SIZES.trapPortRadius + 1 : RENDER_SIZES.trapPortRadius, 0, Math.PI * 2);
   context.fill();
   context.stroke();
 
-  context.fillStyle = connected ? cssColor("--color-text") : "rgba(168, 179, 195, 0.48)";
-  context.font = "9px Segoe UI, system-ui, sans-serif";
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.fillText(side, point.x, point.y);
+  context.shadowBlur = 0;
+  context.fillStyle = connected ? "rgba(100, 210, 255, 0.92)" : "rgba(168, 179, 195, 0.48)";
+  context.beginPath();
+  context.arc(point.x, point.y, 2.2, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
 }
 
-function drawJunctions(context, trace, layout) {
+function drawJunctions(context, trace, layout, state) {
+  const activity = activeJunctionActivity(trace, layout, state);
   for (const junction of trace.topology.junctions) {
-    const point = layout.junctions.get(`junction:${junction.id}`);
+    const location = `junction:${junction.id}`;
+    const point = layout.junctions.get(location);
     if (!point) continue;
-    context.fillStyle = cssColor("--color-junction");
-    context.beginPath();
-    context.arc(point.x, point.y, 9, 0, Math.PI * 2);
-    context.fill();
+    const directions = junctionDirections(trace, layout, location, point);
+    const spec = junctionRenderSpec(junction, directions);
+    const active = activity.get(location) || 0;
+    context.save();
+    if (active > 0) {
+      drawActiveJunctionGlow(context, point, directions, spec, active);
+    }
+    context.shadowColor = "rgba(0, 0, 0, 0.5)";
+    context.shadowBlur = 8;
+    drawJunctionPatch(context, point, directions, spec.armLength, spec.outerWidth, "rgba(0, 0, 0, 0.74)", spec.armLineCap);
+    context.shadowColor = "transparent";
+    context.shadowBlur = 0;
+    drawJunctionPatch(
+      context,
+      point,
+      directions,
+      spec.armLength,
+      spec.channelWidth + 7,
+      spec.kind === "cross" ? "rgba(255, 255, 255, 0.12)" : "rgba(255, 255, 255, 0.105)",
+      spec.armLineCap,
+    );
+    drawJunctionPatch(context, point, directions, spec.armLength, spec.channelWidth, cssColor("--color-segment"), spec.armLineCap);
+    drawJunctionPatch(context, point, directions, spec.armLength, spec.highlightWidth, "rgba(255, 255, 255, 0.2)", spec.armLineCap);
+    drawJunctionMarker(context, point, directions, spec, active);
+    context.restore();
   }
+}
+
+function drawActiveJunctionGlow(context, point, directions, spec, active) {
+  const glow = clamp(active, 0, 1);
+  context.save();
+  context.shadowColor = `rgba(100, 210, 255, ${0.48 + glow * 0.28})`;
+  context.shadowBlur = 16 + glow * 14;
+  drawJunctionPatch(
+    context,
+    point,
+    directions,
+    spec.armLength + 3,
+    spec.channelWidth + 10,
+    `rgba(100, 210, 255, ${0.2 + glow * 0.25})`,
+    spec.armLineCap,
+  );
+  context.shadowColor = "rgba(255, 209, 102, 0.42)";
+  context.shadowBlur = 10 + glow * 8;
+  context.fillStyle = `rgba(255, 209, 102, ${0.22 + glow * 0.2})`;
+  context.beginPath();
+  context.arc(point.x, point.y, spec.centerRadius + 8, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+function drawJunctionMarker(context, point, directions, spec, active = 0) {
+  if (!spec.markerRadius) return;
+  context.save();
+  context.shadowColor = active > 0 ? "rgba(100, 210, 255, 0.74)" : "rgba(255, 209, 102, 0.42)";
+  context.shadowBlur = active > 0 ? 15 : 9;
+  context.strokeStyle = active > 0 ? "rgba(194, 244, 255, 0.98)" : junctionStrokeColor(spec);
+  context.lineWidth = active > 0 ? spec.markerWidth + 0.8 : spec.markerWidth;
+  context.lineCap = "round";
+  for (const direction of directions) {
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+    context.lineTo(point.x + direction.x * spec.markerArmLength, point.y + direction.y * spec.markerArmLength);
+    context.stroke();
+  }
+  context.fillStyle = active > 0 ? "rgba(194, 244, 255, 0.98)" : junctionStrokeColor(spec);
+  context.beginPath();
+  context.arc(point.x, point.y, spec.markerRadius, 0, Math.PI * 2);
+  context.fill();
+  context.shadowBlur = 0;
+  context.fillStyle = "rgba(7, 8, 10, 0.76)";
+  context.beginPath();
+  context.arc(point.x, point.y, Math.max(1.1, spec.markerRadius * 0.38), 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+export function activeJunctionActivity(trace, layout, state = {}) {
+  const activity = new Map();
+  for (const event of state.activeEvents || []) {
+    if (!MOTION_TYPES.has(event.type)) continue;
+    const path = motionPathPoints(layout, event, state);
+    const junctions = eventJunctionLocations(trace, layout, event, path);
+    if (!junctions.length) continue;
+    const point = pointAlongPolyline(path, eventProgress(event, state.time));
+    if (!point) continue;
+    for (const location of junctions) {
+      const junctionPoint = layout.junctions?.get(location) || sharedSegmentEndpoint(layout, event.source, event.target);
+      if (!junctionPoint) continue;
+      const radius = Math.max(RENDER_SIZES.segmentWidth * 2.2, 42);
+      const pathDistance = distanceToPolyline(junctionPoint, path);
+      const pathGlow = pathDistance <= RENDER_SIZES.segmentWidth * 0.75 ? 0.34 : 0;
+      const intensity = Math.max(pathGlow, clamp(1 - distance(point, junctionPoint) / radius, 0, 1));
+      if (intensity <= 0) continue;
+      activity.set(location, Math.max(activity.get(location) || 0, intensity));
+    }
+  }
+  return activity;
+}
+
+function eventJunctionLocations(trace, layout, event, path = []) {
+  const locations = new Set();
+  if (event.type === "move" && event.source?.startsWith("segment:") && event.target?.startsWith("segment:")) {
+    const source = trace.topology.segments?.find((segment) => `segment:${segment.id}` === event.source);
+    const target = trace.topology.segments?.find((segment) => `segment:${segment.id}` === event.target);
+    const sourceEndpoints = new Set([source?.from, source?.to].filter(Boolean));
+    const targetEndpoints = new Set([target?.from, target?.to].filter(Boolean));
+    for (const endpoint of sourceEndpoints) {
+      if (endpoint?.startsWith("junction:") && targetEndpoints.has(endpoint)) locations.add(endpoint);
+    }
+  }
+  for (const [location, point] of layout.junctions || []) {
+    if (distanceToPolyline(point, path) <= RENDER_SIZES.segmentWidth * 0.75) locations.add(location);
+  }
+  if (locations.size) return [...locations];
+  const shared = sharedSegmentEndpoint(layout, event.source, event.target);
+  if (!shared) return [];
+  for (const [location, point] of layout.junctions || []) {
+    if (samePoint(point, shared)) return [location];
+  }
+  return [];
+}
+
+function drawJunctionPatch(context, point, directions, length, width, color, lineCap) {
+  drawJunctionArms(context, point, directions, length, width, color, lineCap);
+  context.save();
+  context.fillStyle = color;
+  context.beginPath();
+  context.arc(point.x, point.y, width / 2, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+function drawJunctionArms(context, point, directions, length, width, color, lineCap = "butt") {
+  if (!directions.length) return;
+  context.save();
+  context.strokeStyle = color;
+  context.lineWidth = width;
+  context.lineCap = lineCap;
+  context.lineJoin = "round";
+  for (const direction of directions) {
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+    context.lineTo(point.x + direction.x * length, point.y + direction.y * length);
+    context.stroke();
+  }
+  context.restore();
+}
+
+function junctionStrokeColor(spec) {
+  if (spec.kind === "straight") return "rgba(224, 186, 93, 0.82)";
+  if (spec.kind === "tee") return "rgba(240, 196, 92, 0.95)";
+  if (spec.kind === "cross") return "rgba(255, 209, 102, 0.98)";
+  return cssColor("--color-junction");
+}
+
+export function junctionDirections(trace, layout, junctionLocation, point) {
+  const directions = [];
+  for (const segment of trace.topology.segments || []) {
+    if (segment.from !== junctionLocation && segment.to !== junctionLocation) continue;
+    const endpoints = layout.segmentEndpoints?.get(`segment:${segment.id}`);
+    if (!endpoints) continue;
+    const direction = junctionRouteDirection(point, endpoints, segment.from === junctionLocation);
+    if (!direction) continue;
+    const duplicate = directions.some(
+      (item) => Math.abs(item.x - direction.x) < 0.08 && Math.abs(item.y - direction.y) < 0.08,
+    );
+    if (!duplicate) directions.push(direction);
+  }
+  return directions;
+}
+
+function junctionRouteDirection(point, endpoints, junctionIsStart) {
+  const route = endpoints.route || [endpoints.start, endpoints.end].filter(Boolean);
+  const adjacent = junctionAdjacentRoutePoint(point, route);
+  const fallback = junctionIsStart ? endpoints.end : endpoints.start;
+  return normalizedDirection(point, adjacent || fallback);
+}
+
+function junctionAdjacentRoutePoint(point, route) {
+  if (!point || !route || route.length < 2) return null;
+  for (let index = 0; index < route.length; index += 1) {
+    if (!samePoint(point, route[index])) continue;
+    const next = route[index + 1];
+    if (next && distance(point, next) > 0) return next;
+    const previous = route[index - 1];
+    if (previous && distance(point, previous) > 0) return previous;
+  }
+  return null;
+}
+
+function normalizedDirection(from, to) {
+  if (!from || !to) return null;
+  const length = distance(from, to);
+  if (length === 0) return null;
+  return { x: (to.x - from.x) / length, y: (to.y - from.y) / length };
 }
 
 function drawActiveEvents(context, layout, state) {
   for (const event of state.activeEvents) {
     if (MOTION_TYPES.has(event.type)) {
-      const path = motionPathPoints(layout, event);
+      const path = motionPathPoints(layout, event, state);
       const point = pointAlongPolyline(path, eventProgress(event, state.time));
       if (!point) continue;
       drawMotionPath(context, path);
-      drawSwapCue(context, layout, event);
+      drawSwapCue(context, layout, event, state);
+      context.save();
+      context.shadowColor = cssColor("--color-move");
+      context.shadowBlur = 18;
       context.strokeStyle = cssColor("--color-move");
       context.lineWidth = 2;
       context.beginPath();
       context.arc(point.x, point.y, 24, 0, Math.PI * 2);
       context.stroke();
+      context.restore();
       continue;
     }
 
@@ -400,9 +915,10 @@ function drawActiveEvents(context, layout, state) {
   }
 }
 
-function drawSwapCue(context, layout, event) {
-  const path = splitInternalSwapPoints(layout, event);
+function drawSwapCue(context, layout, event, state = null) {
+  const path = splitInternalSwapPoints(layout, event, state);
   if (path.length < 2) return;
+  context.save();
   context.strokeStyle = "rgba(230, 186, 96, 0.88)";
   context.lineWidth = 3;
   context.setLineDash([4, 5]);
@@ -418,6 +934,7 @@ function drawSwapCue(context, layout, event) {
   context.fill();
   context.stroke();
   drawLabel(context, "SWAP", midpoint.x, midpoint.y - 16, cssColor("--color-warning"));
+  context.restore();
 }
 
 function drawIons(context, trace, layout, state) {
@@ -425,13 +942,14 @@ function drawIons(context, trace, layout, state) {
   const showLabels = trace.particles.length <= 64;
 
   for (const particle of trace.particles) {
+    const swapOverride = activeSplitSwapOverride(layout, state, particle.id);
     const activeMotion = state.activeEvents.find(
       (event) => MOTION_TYPES.has(event.type) && event.ions.includes(particle.id),
     );
     const location = state.locations.get(particle.id) || particle.initial_location;
-    const basePoint = activeMotion
-      ? motionPoint(layout, activeMotion, state.time)
-      : particlePoint(layout, trace, state, particle, location);
+    const basePoint = swapOverride?.point || (activeMotion
+      ? motionPoint(layout, activeMotion, state.time, state)
+      : particlePoint(layout, trace, state, particle, location));
 
     if (!basePoint) continue;
     const offsetKey = activeMotion ? `active:${activeMotion.id}` : location;
@@ -439,29 +957,54 @@ function drawIons(context, trace, layout, state) {
     offsets.set(offsetKey, offsetIndex + 1);
     const point = ionRenderPoint(basePoint, location, activeMotion, offsetIndex);
 
-    context.fillStyle = ionColor(particle.id);
-    context.strokeStyle = "rgba(16, 18, 22, 0.95)";
-    context.lineWidth = 2;
-    context.beginPath();
-    context.arc(
-      point.x,
-      point.y,
-      activeMotion ? RENDER_SIZES.activeIonRadius : RENDER_SIZES.ionRadius,
-      0,
-      Math.PI * 2,
-    );
-    context.fill();
-    context.stroke();
+    const radius = activeMotion ? RENDER_SIZES.activeIonRadius : RENDER_SIZES.ionRadius;
+    drawIonBody(context, particle.id, point, radius, Boolean(activeMotion || swapOverride));
 
     if (showLabels) {
-      drawLabel(context, String(particle.id), point.x, point.y - 10, cssColor("--color-text"));
+      drawIonLabel(context, particle.id, point, radius);
     }
   }
 }
 
-function motionPoint(layout, event, time) {
-  const path = motionPathPoints(layout, event);
+function motionPoint(layout, event, time, state = null) {
+  if (isSplitSwapEvent(event)) {
+    const swapPoint = activeSplitSwapPoint(layout, event, { ...state, time }, event.ions?.[0]);
+    if (swapPoint) return swapPoint;
+    return pointAlongPolyline(splitExitPathPoints(layout, event, state), splitPostSwapProgress(event, time));
+  }
+  const path = motionPathPoints(layout, event, state);
   return pointAlongPolyline(path, eventProgress(event, time));
+}
+
+function activeSplitSwapOverride(layout, state, ionId) {
+  for (const event of state.activeEvents || []) {
+    const point = activeSplitSwapPoint(layout, event, state, ionId);
+    if (point) return { event, point };
+  }
+  return null;
+}
+
+function isSplitSwapEvent(event) {
+  return event?.type === "split" && Number(event.metadata?.swap_count || 0) > 0 && (event.metadata?.swap_ions || []).length === 2;
+}
+
+function splitExitPathPoints(layout, event, state = null) {
+  const swapInfo = splitSwapInfo(layout, event, state || {});
+  const endpointSlot = swapInfo ? endpointSlotIndex(swapInfo.trap, event.target) : null;
+  const slotPath = swapInfo
+    ? slotWalkPoints(swapInfo.trapPoint, swapInfo.trap.capacity, swapInfo.secondSlot, endpointSlot)
+    : [];
+  const endpoint = slotPath.at(-1) || eventEndpointPoint(layout, event, event.source) || splitInternalSwapPoints(layout, event).at(-1);
+  const exitPath = segmentEndpointToCenterPath(layout, event.target, event.source);
+  if (!endpoint) return exitPath;
+  if (!exitPath.length) return [endpoint];
+  const path = slotPath.length ? slotPath : [endpoint];
+  return compactPath([...path, ...(samePoint(endpoint, exitPath[0]) ? exitPath.slice(1) : exitPath)]);
+}
+
+function splitPostSwapProgress(event, time) {
+  const progress = eventProgress(event, time);
+  return clamp((progress - SPLIT_SWAP_PHASE_FRACTION) / (1 - SPLIT_SWAP_PHASE_FRACTION), 0, 1);
 }
 
 function particlePoint(layout, trace, state, particle, location) {
@@ -487,13 +1030,30 @@ function eventEndpointPoint(layout, event, location) {
   return trapSlotPoint(trapPoint, endpointSlotIndex(trap, otherLocation), trap.capacity);
 }
 
+export function gateLaserTargets(layout, state, event) {
+  return (event.ions || [])
+    .map((ion) => {
+      const particle = { id: ion, initial_slot: 0 };
+      const point = particlePoint(layout, { topology: { traps: layout.traceTrapsFallback || [] } }, state, particle, event.target);
+      return point ? { ion, point } : null;
+    })
+    .filter(Boolean);
+}
+
 function drawGateLaser(context, layout, state, event) {
-  context.strokeStyle = cssColor("--color-gate");
-  context.lineWidth = 3;
-  for (const ion of event.ions || []) {
-    const particle = { id: ion, initial_slot: 0 };
-    const point = particlePoint(layout, { topology: { traps: layout.traceTrapsFallback || [] } }, state, particle, event.target);
-    if (!point) continue;
+  context.save();
+  for (const { point } of gateLaserTargets(layout, state, event)) {
+    context.shadowColor = cssColor("--color-gate");
+    context.shadowBlur = 18;
+    context.strokeStyle = "rgba(158, 227, 125, 0.52)";
+    context.lineWidth = 7;
+    context.beginPath();
+    context.moveTo(point.x, point.y - 104);
+    context.lineTo(point.x, point.y - 8);
+    context.stroke();
+    context.shadowBlur = 0;
+    context.strokeStyle = cssColor("--color-gate");
+    context.lineWidth = 2.4;
     context.beginPath();
     context.moveTo(point.x, point.y - 96);
     context.lineTo(point.x, point.y - 8);
@@ -502,6 +1062,7 @@ function drawGateLaser(context, layout, state, event) {
     context.arc(point.x, point.y, 20, 0, Math.PI * 2);
     context.stroke();
   }
+  context.restore();
 }
 
 function trapForLocation(trace, location) {
@@ -511,15 +1072,34 @@ function trapForLocation(trace, location) {
 
 function drawMotionPath(context, path) {
   if (!path || path.length < 2) return;
-  context.strokeStyle = "rgba(97, 175, 239, 0.42)";
-  context.lineWidth = RENDER_SIZES.motionPathWidth;
-  context.setLineDash([8, 8]);
+  context.save();
+  context.shadowColor = cssColor("--color-move");
+  context.shadowBlur = 16;
+  context.strokeStyle = "rgba(100, 210, 255, 0.3)";
+  context.lineWidth = 14;
   context.lineCap = "round";
+  context.lineJoin = "round";
   strokePolyline(context, path);
-  context.setLineDash([]);
+  context.shadowBlur = 0;
+  context.strokeStyle = "rgba(255, 255, 255, 0.72)";
+  context.lineWidth = 2;
+  strokePolyline(context, path);
+  context.restore();
 }
 
-function segmentRoutePoints(start, end, fromLocation, toLocation) {
+export function segmentRoutePoints(start, end, fromLocation, toLocation, machineName, routingContext = {}) {
+  if (machineName === "H6") return [start, end];
+  const fromDirection = endpointPortDirection(fromLocation, toLocation, start, routingContext);
+  const toDirection = endpointPortDirection(toLocation, fromLocation, end, routingContext);
+  if (sameAxis(start, end) && endpointDirectionsFollowAxis(start, end, fromDirection, toDirection)) {
+    return [start, end];
+  }
+  if (fromDirection || toDirection) {
+    const leadDistance = junctionPortLeadDistance();
+    const fromLead = fromDirection ? translatePoint(start, fromDirection, leadDistance) : start;
+    const toLead = toDirection ? translatePoint(end, toDirection, leadDistance) : end;
+    return compactPath([start, fromLead, ...orthogonalConnectorPoints(fromLead, toLead, fromDirection, toDirection), toLead, end]);
+  }
   if (sameAxis(start, end)) return [start, end];
   if (fromLocation?.startsWith("trap:") && toLocation?.startsWith("trap:")) {
     const midY = (start.y + end.y) / 2;
@@ -532,6 +1112,68 @@ function segmentRoutePoints(start, end, fromLocation, toLocation) {
     return compactPath([start, { x: end.x, y: start.y }, end]);
   }
   return compactPath([start, { x: start.x, y: end.y }, end]);
+}
+
+function endpointPortDirection(location, neighborLocation, endpointPoint, routingContext) {
+  if (location?.startsWith("junction:")) {
+    const center = nodeCenterPoint(routingContext, location) || endpointPoint;
+    const neighbor = nodeCenterPoint(routingContext, neighborLocation);
+    return dominantAxisDirection(center, neighbor);
+  }
+  if (location?.startsWith("trap:")) {
+    return null;
+  }
+  return null;
+}
+
+function trapForRoutingContext(routingContext, location) {
+  return (routingContext?.traceTraps || []).find((trap) => `trap:${trap.id}` === location) || null;
+}
+
+function nodeCenterPoint(routingContext, location) {
+  return routingContext?.traps?.get(location) || routingContext?.junctions?.get(location) || null;
+}
+
+function dominantAxisDirection(from, to) {
+  if (!from || !to) return null;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return null;
+  if (Math.abs(dx) >= Math.abs(dy)) return { x: Math.sign(dx) || 1, y: 0 };
+  return { x: 0, y: Math.sign(dy) || 1 };
+}
+
+function junctionPortLeadDistance() {
+  return RENDER_SIZES.segmentWidth * 2.2;
+}
+
+function endpointDirectionsFollowAxis(start, end, fromDirection, toDirection) {
+  const forward = dominantAxisDirection(start, end);
+  const backward = dominantAxisDirection(end, start);
+  return (!fromDirection || sameDirection(fromDirection, forward)) && (!toDirection || sameDirection(toDirection, backward));
+}
+
+function sameDirection(a, b) {
+  if (!a || !b) return false;
+  return Math.abs(a.x - b.x) < 0.001 && Math.abs(a.y - b.y) < 0.001;
+}
+
+function average(values) {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function translatePoint(point, direction, distanceValue) {
+  return {
+    x: point.x + direction.x * distanceValue,
+    y: point.y + direction.y * distanceValue,
+  };
+}
+
+function orthogonalConnectorPoints(start, end, fromDirection, toDirection) {
+  if (!start || !end || sameAxis(start, end)) return [];
+  if (fromDirection && Math.abs(fromDirection.x) > 0) return [{ x: start.x, y: end.y }];
+  if (!fromDirection && toDirection && Math.abs(toDirection.y) > 0) return [{ x: start.x, y: end.y }];
+  return [{ x: end.x, y: start.y }];
 }
 
 function segmentEndpointToCenterPath(layout, segmentLocation, endpointLocationOrPoint) {
@@ -652,6 +1294,25 @@ function distance(left, right) {
   return Math.hypot(left.x - right.x, left.y - right.y);
 }
 
+function distanceToPolyline(point, path) {
+  if (!point || !path?.length) return Number.POSITIVE_INFINITY;
+  if (path.length === 1) return distance(point, path[0]);
+  let minDistance = Number.POSITIVE_INFINITY;
+  for (let index = 1; index < path.length; index += 1) {
+    minDistance = Math.min(minDistance, pointToSegmentDistance(point, path[index - 1], path[index]));
+  }
+  return minDistance;
+}
+
+function pointToSegmentDistance(point, start, end) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared === 0) return distance(point, start);
+  const projection = clamp(((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared, 0, 1);
+  return distance(point, { x: start.x + dx * projection, y: start.y + dy * projection });
+}
+
 function offsetPoint(point, index) {
   if (index === 0) return point;
   const angle = index * 2.399963;
@@ -672,11 +1333,84 @@ function roundedRect(context, x, y, width, height, radius) {
 }
 
 function drawLabel(context, text, x, y, color) {
+  context.save();
+  context.fillStyle = "rgba(5, 6, 7, 0.58)";
+  const width = Math.max(12, String(text).length * 7 + 6);
+  roundedRect(context, x - width / 2, y - 7, width, 14, 4);
+  context.fill();
   context.fillStyle = color;
-  context.font = "12px Segoe UI, system-ui, sans-serif";
+  context.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, system-ui, sans-serif";
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillText(text, x, y);
+  context.restore();
+}
+
+function drawIonBody(context, id, point, radius, active = false) {
+  const color = ionColor(id);
+  const lightColor = shadeColor(color, 30);
+  const darkColor = shadeColor(color, -38);
+  const haloRadius = active ? radius * 2.8 : radius * 2.05;
+
+  context.save();
+  context.globalCompositeOperation = "screen";
+  const halo = context.createRadialGradient(point.x, point.y, radius * 0.2, point.x, point.y, haloRadius);
+  halo.addColorStop(0, active ? "rgba(255, 255, 255, 0.32)" : "rgba(255, 255, 255, 0.14)");
+  halo.addColorStop(0.36, hexToRgba(color, active ? 0.34 : 0.2));
+  halo.addColorStop(1, "rgba(0, 0, 0, 0)");
+  context.fillStyle = halo;
+  context.beginPath();
+  context.arc(point.x, point.y, haloRadius, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+
+  context.save();
+  context.shadowColor = active ? cssColor("--color-move") : "rgba(0, 0, 0, 0.48)";
+  context.shadowBlur = active ? 18 : 7;
+  const shell = context.createRadialGradient(
+    point.x - radius * 0.28,
+    point.y - radius * 0.36,
+    radius * 0.12,
+    point.x,
+    point.y,
+    radius,
+  );
+  shell.addColorStop(0, "rgba(255, 255, 255, 0.92)");
+  shell.addColorStop(0.24, lightColor);
+  shell.addColorStop(0.68, color);
+  shell.addColorStop(1, darkColor);
+  context.fillStyle = shell;
+  context.beginPath();
+  context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+  context.fill();
+
+  context.shadowBlur = 0;
+  context.strokeStyle = active ? "rgba(214, 246, 255, 0.88)" : "rgba(244, 248, 255, 0.34)";
+  context.lineWidth = active ? 1.6 : 1.15;
+  context.beginPath();
+  context.arc(point.x, point.y, radius - 0.45, 0, Math.PI * 2);
+  context.stroke();
+
+  context.globalAlpha = active ? 0.86 : 0.62;
+  context.fillStyle = "rgba(255, 255, 255, 0.82)";
+  context.beginPath();
+  context.arc(point.x - radius * 0.3, point.y - radius * 0.36, Math.max(1.1, radius * 0.16), 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+function drawIonLabel(context, id, point, radius) {
+  const spec = ionLabelSpec(id, radius);
+  context.save();
+  context.font = `800 ${spec.fontSize}px -apple-system, BlinkMacSystemFont, Segoe UI, system-ui, sans-serif`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.lineWidth = 2.2;
+  context.strokeStyle = "rgba(0, 0, 0, 0.72)";
+  context.fillStyle = "#f8fbff";
+  context.strokeText(spec.text, point.x + spec.xOffset, point.y + spec.yOffset);
+  context.fillText(spec.text, point.x + spec.xOffset, point.y + spec.yOffset);
+  context.restore();
 }
 
 function ionColor(id) {
@@ -684,12 +1418,39 @@ function ionColor(id) {
   return palette[Math.abs(id) % palette.length];
 }
 
-function cssColor(name) {
+function shadeColor(hex, percent) {
+  const value = Number.parseInt(hex.replace("#", ""), 16);
+  const amount = Math.round(2.55 * percent);
+  const red = clamp((value >> 16) + amount, 0, 255);
+  const green = clamp(((value >> 8) & 0xff) + amount, 0, 255);
+  const blue = clamp((value & 0xff) + amount, 0, 255);
+  return `#${(0x1000000 + red * 0x10000 + green * 0x100 + blue).toString(16).slice(1)}`;
+}
+
+function hexToRgba(hex, alpha) {
+  const value = Number.parseInt(hex.replace("#", ""), 16);
+  const red = (value >> 16) & 0xff;
+  const green = (value >> 8) & 0xff;
+  const blue = value & 0xff;
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+export function resetCssColorCache() {
+  cssColorCache.clear();
+}
+
+export function cssColor(name) {
+  if (cssColorCache.has(name)) return cssColorCache.get(name);
   if (globalThis.document && globalThis.getComputedStyle) {
     const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    if (value) return value;
+    if (value) {
+      cssColorCache.set(name, value);
+      return value;
+    }
   }
-  return FALLBACK_COLORS[name] || "#ffffff";
+  const fallback = FALLBACK_COLORS[name] || "#ffffff";
+  cssColorCache.set(name, fallback);
+  return fallback;
 }
 
 function clamp(value, min, max) {

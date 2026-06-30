@@ -109,9 +109,42 @@ def test_grid_qccdsim_architecture_can_run_and_exports_rich_topology():
     assert len(trace["topology"]["traps"]) == 9
     assert len(trace["topology"]["segments"]) == 16
     assert len(trace["topology"]["junctions"]) == 6
+    assert sorted(junction["degree"] for junction in trace["topology"]["junctions"]) == [3, 3, 3, 3, 4, 4]
+    assert {junction["junction_type"] for junction in trace["topology"]["junctions"]} == {"J3", "J4"}
+    assert {junction["cross_time"] for junction in trace["topology"]["junctions"]} == {100, 120}
     assert trace["topology"]["layout"]["trap:0"] != trace["topology"]["layout"]["trap:8"]
     assert trace["run"]["machine"] == "G3x3"
     assert trace["validation"]["valid"] is True
+
+
+def test_g9_trace_layout_keeps_traps_outside_junction_grid():
+    result = run_simulation(
+        SimulationConfig(
+            program=str(ROOT / "programs" / "benchmarks" / "qasmbench" / "small" / "qft_n4.qasm"),
+            machine="G9",
+            ions=2,
+            mapper="Greedy",
+            reorder="Naive",
+            serial_trap_ops=1,
+            serial_comm=0,
+            serial_all=0,
+            gate_type="FM",
+            swap_type="GateSwap",
+            single_qubit_gate_time=7,
+            single_qubit_gate_fidelity=0.999,
+        )
+    )
+
+    trace = export_trace(result)
+    layout = trace["topology"]["layout"]
+    for segment in trace["topology"]["segments"]:
+        endpoints = {segment["from"], segment["to"]}
+        trap = next((item for item in endpoints if item.startswith("trap:")), None)
+        junction = next((item for item in endpoints if item.startswith("junction:")), None)
+        if trap and junction:
+            assert layout[trap] != layout[junction]
+            distance = abs(layout[trap]["x"] - layout[junction]["x"]) + abs(layout[trap]["y"] - layout[junction]["y"])
+            assert distance >= 0.7
 
 
 def test_validate_trace_rejects_gate_when_ions_are_not_colocated():
@@ -142,6 +175,127 @@ def test_validate_trace_rejects_gate_when_ions_are_not_colocated():
 
     assert validation["valid"] is False
     assert any("not at trap:0" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_unsupported_event_types_and_gates_outside_traps():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [{"id": 0, "capacity": 2, "orientation": {"0": "R"}}],
+            "segments": [{"id": 0, "from": "trap:0", "to": "junction:0", "length": 10}],
+            "junctions": [{"id": 0}],
+        },
+        "dag": {"nodes": [{"id": 0, "gate_name": "h", "qubits": [0], "arity": 1}], "edges": []},
+        "particles": [{"id": 0, "initial_location": "trap:0"}],
+        "events": [
+            {
+                "id": 0,
+                "type": "teleport",
+                "start": 0,
+                "end": 10,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "segment:0",
+                "metadata": {},
+            },
+            {
+                "id": 1,
+                "type": "gate",
+                "start": 10,
+                "end": 20,
+                "ions": [0],
+                "source": "segment:0",
+                "target": "segment:0",
+                "metadata": {"gate_id": 0, "arity": 1},
+            },
+        ],
+        "metrics": {"event_count": 2},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("unsupported event type teleport" in error for error in validation["errors"])
+    assert any("gate event 1 must execute inside one trap" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_dag_nodes_without_matching_gate_events():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {"traps": [{"id": 0, "capacity": 1}], "segments": [], "junctions": []},
+        "dag": {
+            "nodes": [
+                {"id": 0, "gate_name": "h", "qubits": [0], "arity": 1},
+                {"id": 1, "gate_name": "x", "qubits": [0], "arity": 1},
+            ],
+            "edges": [{"source": 0, "target": 1}],
+        },
+        "particles": [{"id": 0, "initial_location": "trap:0"}],
+        "events": [
+            {
+                "id": 0,
+                "type": "gate",
+                "start": 0,
+                "end": 10,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "trap:0",
+                "metadata": {"gate_id": 0, "arity": 1},
+            }
+        ],
+        "metrics": {"event_count": 1},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("dag node 1 has no matching gate event" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_dag_dependency_timing_violations():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {"traps": [{"id": 0, "capacity": 1}], "segments": [], "junctions": []},
+        "dag": {
+            "nodes": [
+                {"id": 0, "gate_name": "h", "qubits": [0], "arity": 1},
+                {"id": 1, "gate_name": "x", "qubits": [0], "arity": 1},
+            ],
+            "edges": [{"source": 0, "target": 1}],
+        },
+        "particles": [{"id": 0, "initial_location": "trap:0"}],
+        "events": [
+            {
+                "id": 0,
+                "type": "gate",
+                "start": 0,
+                "end": 10,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "trap:0",
+                "metadata": {"gate_id": 0, "arity": 1},
+            },
+            {
+                "id": 1,
+                "type": "gate",
+                "start": 5,
+                "end": 15,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "trap:0",
+                "metadata": {"gate_id": 1, "arity": 1},
+            },
+        ],
+        "metrics": {"event_count": 2},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("dag edge 0->1 violates event order" in error for error in validation["errors"])
 
 
 def test_validate_trace_rejects_overlapping_events_for_same_ion():
@@ -183,6 +337,46 @@ def test_validate_trace_rejects_overlapping_events_for_same_ion():
 
     assert validation["valid"] is False
     assert any("busy until 10" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_overlapping_trap_operations_on_different_ions():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {"traps": [{"id": 0, "capacity": 3}], "segments": [], "junctions": []},
+        "particles": [
+            {"id": 0, "initial_location": "trap:0"},
+            {"id": 1, "initial_location": "trap:0"},
+        ],
+        "events": [
+            {
+                "id": 0,
+                "type": "gate",
+                "start": 0,
+                "end": 10,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "trap:0",
+                "metadata": {"arity": 1},
+            },
+            {
+                "id": 1,
+                "type": "gate",
+                "start": 5,
+                "end": 15,
+                "ions": [1],
+                "source": "trap:0",
+                "target": "trap:0",
+                "metadata": {"arity": 1},
+            },
+        ],
+        "metrics": {"event_count": 2},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("trap:0 busy until 10" in error for error in validation["errors"])
 
 
 def test_validate_trace_rejects_duplicate_topology_ids_and_missing_locations():
@@ -271,6 +465,268 @@ def test_validate_trace_rejects_split_endpoint_that_disagrees_with_architecture_
 
     assert validation["valid"] is False
     assert any("endpoint L does not match trap:0 segment:0 orientation R" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_non_endpoint_split_without_internal_swaps():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [{"id": 0, "capacity": 3, "orientation": {"0": "R"}}],
+            "segments": [{"id": 0, "from": "trap:0", "to": "junction:0", "length": 10}],
+            "junctions": [{"id": 0}],
+        },
+        "particles": [
+            {"id": 0, "initial_location": "trap:0", "initial_slot": 0},
+            {"id": 1, "initial_location": "trap:0", "initial_slot": 1},
+            {"id": 2, "initial_location": "trap:0", "initial_slot": 2},
+        ],
+        "events": [
+            {
+                "id": 0,
+                "type": "split",
+                "start": 0,
+                "end": 80,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "segment:0",
+                "metadata": {"endpoint": "R"},
+            }
+        ],
+        "metrics": {"event_count": 1},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("split ion 0 is not at R endpoint of trap:0" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_internal_split_metadata_that_cannot_reach_endpoint():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [{"id": 0, "capacity": 3, "orientation": {"0": "R"}}],
+            "segments": [{"id": 0, "from": "trap:0", "to": "junction:0", "length": 10}],
+            "junctions": [{"id": 0}],
+        },
+        "particles": [
+            {"id": 0, "initial_location": "trap:0", "initial_slot": 0},
+            {"id": 1, "initial_location": "trap:0", "initial_slot": 1},
+            {"id": 2, "initial_location": "trap:0", "initial_slot": 2},
+        ],
+        "events": [
+            {
+                "id": 0,
+                "type": "split",
+                "start": 0,
+                "end": 80,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "segment:0",
+                "metadata": {"endpoint": "R", "swap_count": 1, "swap_hops": 1, "swap_ions": [0, 2]},
+            }
+        ],
+        "metrics": {"event_count": 1},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("needs 2 swap hops" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_shuttling_that_skips_topology_adjacency():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [
+                {"id": 0, "capacity": 1, "orientation": {"0": "R"}},
+                {"id": 1, "capacity": 1, "orientation": {"1": "L"}},
+                {"id": 2, "capacity": 1, "orientation": {"2": "L"}},
+            ],
+            "segments": [
+                {"id": 0, "from": "trap:0", "to": "junction:0", "length": 10},
+                {"id": 1, "from": "junction:0", "to": "trap:1", "length": 10},
+                {"id": 2, "from": "junction:1", "to": "trap:2", "length": 10},
+            ],
+            "junctions": [{"id": 0}, {"id": 1}],
+        },
+        "particles": [{"id": 0, "initial_location": "trap:0"}],
+        "events": [
+            {
+                "id": 0,
+                "type": "split",
+                "start": 0,
+                "end": 10,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "segment:0",
+                "metadata": {"endpoint": "R"},
+            },
+            {
+                "id": 1,
+                "type": "move",
+                "start": 10,
+                "end": 20,
+                "ions": [0],
+                "source": "segment:0",
+                "target": "segment:2",
+                "metadata": {},
+            },
+        ],
+        "metrics": {"event_count": 2},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("not adjacent to segment:2" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_overlapping_segment_use():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [
+                {"id": 0, "capacity": 1, "orientation": {"0": "R"}},
+                {"id": 1, "capacity": 1, "orientation": {"0": "L"}},
+            ],
+            "segments": [{"id": 0, "from": "trap:0", "to": "trap:1", "length": 10}],
+            "junctions": [],
+        },
+        "particles": [
+            {"id": 0, "initial_location": "trap:0"},
+            {"id": 1, "initial_location": "trap:1"},
+        ],
+        "events": [
+            {
+                "id": 0,
+                "type": "split",
+                "start": 0,
+                "end": 10,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "segment:0",
+                "metadata": {"endpoint": "R"},
+            },
+            {
+                "id": 1,
+                "type": "split",
+                "start": 5,
+                "end": 15,
+                "ions": [1],
+                "source": "trap:1",
+                "target": "segment:0",
+                "metadata": {"endpoint": "L"},
+            },
+        ],
+        "metrics": {"event_count": 2},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("segment:0 busy until 10" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_overlapping_junction_crossings():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [{"id": trap_id, "capacity": 1} for trap_id in range(4)],
+            "segments": [
+                {"id": 0, "from": "trap:0", "to": "junction:0", "length": 10},
+                {"id": 1, "from": "junction:0", "to": "trap:1", "length": 10},
+                {"id": 2, "from": "trap:2", "to": "junction:0", "length": 10},
+                {"id": 3, "from": "junction:0", "to": "trap:3", "length": 10},
+            ],
+            "junctions": [{"id": 0}],
+        },
+        "particles": [
+            {"id": 0, "initial_location": "segment:0"},
+            {"id": 1, "initial_location": "segment:2"},
+        ],
+        "events": [
+            {
+                "id": 0,
+                "type": "move",
+                "start": 0,
+                "end": 10,
+                "ions": [0],
+                "source": "segment:0",
+                "target": "segment:1",
+                "metadata": {},
+            },
+            {
+                "id": 1,
+                "type": "move",
+                "start": 5,
+                "end": 15,
+                "ions": [1],
+                "source": "segment:2",
+                "target": "segment:3",
+                "metadata": {},
+            },
+        ],
+        "metrics": {"event_count": 2},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("junction:0 busy until 10" in error for error in validation["errors"])
+
+
+def test_validate_trace_rejects_dynamic_trap_capacity_overflow_after_merge():
+    bad_trace = {
+        "schema_version": "1.0",
+        "device_type": "ion_trap",
+        "topology": {
+            "traps": [
+                {"id": 0, "capacity": 1, "orientation": {"0": "R"}},
+                {"id": 1, "capacity": 1, "orientation": {"0": "L"}},
+            ],
+            "segments": [{"id": 0, "from": "trap:0", "to": "trap:1", "length": 10}],
+            "junctions": [],
+        },
+        "particles": [
+            {"id": 0, "initial_location": "trap:0"},
+            {"id": 1, "initial_location": "trap:1"},
+        ],
+        "events": [
+            {
+                "id": 0,
+                "type": "split",
+                "start": 0,
+                "end": 10,
+                "ions": [0],
+                "source": "trap:0",
+                "target": "segment:0",
+                "metadata": {"endpoint": "R"},
+            },
+            {
+                "id": 1,
+                "type": "merge",
+                "start": 10,
+                "end": 20,
+                "ions": [0],
+                "source": "segment:0",
+                "target": "trap:1",
+                "metadata": {"endpoint": "L"},
+            },
+        ],
+        "metrics": {"event_count": 2},
+    }
+
+    validation = validate_trace(bad_trace)
+
+    assert validation["valid"] is False
+    assert any("trap:1 occupancy 2 exceeds capacity 1" in error for error in validation["errors"])
 
 
 def test_export_trace_cli_writes_valid_json(tmp_path):

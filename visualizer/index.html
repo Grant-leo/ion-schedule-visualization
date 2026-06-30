@@ -4,46 +4,41 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>QCCD Schedule Visual Debugger</title>
-    <link rel="stylesheet" href="./styles.css?v=20260629-demo8" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070809'/%3E%3Cpath d='M7 16h18M16 7v18' stroke='%2364d2ff' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23ffd166'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css?v=20260630-swap-circuit1" />
   </head>
   <body>
     <div class="app-shell">
       <header class="header-bar">
         <div class="brand-lockup">
           <span class="product-kicker">QCCDSim Workbench</span>
-          <h1>QCCD Schedule Visual Debugger</h1>
+          <h1>QCCD Visualizer</h1>
           <p>Trace-level inspection for trapped-ion scheduling under trap/channel constraints.</p>
         </div>
         <div class="header-meta">
-          <span class="scope-pill">Ion-trap QCCD only</span>
-          <div id="validationPanel" class="status-pill is-loading">Loading trace</div>
+          <div id="headlineMetricsPanel" class="headline-metrics" aria-live="polite"></div>
+          <div id="validationPanel" class="sr-only" aria-live="polite">Loading trace</div>
         </div>
       </header>
-      <aside class="left-control-panel">
+      <aside id="controlPanel" class="left-control-panel">
         <section class="control-section">
           <span class="panel-eyebrow">Demo scenario</span>
           <h2 id="scenarioTitle">QCCD schedule replay</h2>
           <p id="scenarioDescription">Replay QCCDSim trace events as ion shuttling, laser gates, and DAG progress.</p>
+          <span class="field-label">Replay source</span>
+          <div class="source-mode-toggle" role="group" aria-label="Replay source">
+            <button id="experimentSourceButton" type="button" data-source-mode="experiment" aria-pressed="true">
+              <strong>Experiment</strong>
+              <span>from config</span>
+            </button>
+            <button id="traceSourceButton" type="button" data-source-mode="trace" aria-pressed="false">
+              <strong>Verified trace</strong>
+              <span>curated JSON</span>
+            </button>
+          </div>
           <label for="traceSelect">Verified trace</label>
           <select id="traceSelect"></select>
         </section>
-        <details class="advanced-config">
-          <summary>Experiment configuration</summary>
-          <label for="programSelect">Circuit</label>
-          <select id="programSelect"></select>
-          <div id="benchmarkMetaPanel" class="benchmark-meta"></div>
-          <label for="architectureSelect">Architecture</label>
-          <select id="architectureSelect"></select>
-          <label for="capacitySelect">Trap capacity</label>
-          <select id="capacitySelect"></select>
-          <label for="mapperSelect">Mapper</label>
-          <select id="mapperSelect"></select>
-          <label for="orderingSelect">Initial ordering</label>
-          <select id="orderingSelect"></select>
-          <label for="schedulerSelect">Scheduler policy</label>
-          <select id="schedulerSelect"></select>
-          <button id="loadConfigButton" class="primary-action" type="button">Generate Schedule</button>
-        </details>
         <label for="speedSelect">Speed</label>
         <select id="speedSelect">
           <option value="0.25">0.25x</option>
@@ -58,13 +53,49 @@
           <button id="stepButton" type="button">Step</button>
           <button id="restartButton" type="button">Restart</button>
         </div>
+        <details class="advanced-config" open>
+          <summary>Experiment configuration</summary>
+          <label for="programSelect">Circuit</label>
+          <select id="programSelect"></select>
+          <div id="benchmarkMetaPanel" class="benchmark-meta"></div>
+          <label for="architectureSelect">Architecture</label>
+          <select id="architectureSelect"></select>
+          <label for="capacitySelect">Trap capacity</label>
+          <select id="capacitySelect"></select>
+          <label for="mapperSelect">Mapper</label>
+          <select id="mapperSelect"></select>
+          <label for="orderingSelect">Initial ordering</label>
+          <select id="orderingSelect"></select>
+          <span class="field-label">Scheduling mode</span>
+          <div class="scheduler-mode-toggle" role="group" aria-label="Scheduling mode">
+            <button id="parallelSchedulerButton" type="button" data-scheduler-mode="EJF" aria-pressed="true">
+              <strong>Parallel</strong>
+              <span>cross-trap gates</span>
+            </button>
+            <button id="serialCommSchedulerButton" type="button" data-scheduler-mode="EJF-SerialComm" aria-pressed="false">
+              <strong>Shuttle serial</strong>
+              <span>one channel flow</span>
+            </button>
+            <button id="serialSchedulerButton" type="button" data-scheduler-mode="EJF-GlobalSerial" aria-pressed="false">
+              <strong>Global serial</strong>
+              <span>global baseline</span>
+            </button>
+          </div>
+          <label for="schedulerSelect">Scheduler detail</label>
+          <select id="schedulerSelect"></select>
+          <div id="configErrorPanel" class="config-error" aria-live="polite"></div>
+          <button id="loadConfigButton" class="primary-action" type="button">Generate Schedule</button>
+        </details>
         <div class="scope-note">
           <strong>Scope</strong>
           <span>Schedule inspection only. No noise, calibration, or pulse-control validation.</span>
         </div>
       </aside>
       <main class="visualization-viewport">
-        <canvas id="vizCanvas" width="1280" height="720"></canvas>
+        <p id="vizSummary" class="sr-only">Animated QCCD hardware schedule with ion chains, shuttling channels, junctions, and laser gates.</p>
+        <div id="circuitPanel" class="circuit-strip" aria-label="TikZ-style circuit synchronized with the hardware replay"></div>
+        <button id="circuitExpandButton" class="circuit-expand-button" type="button" aria-label="Expand circuit view">Expand</button>
+        <canvas id="vizCanvas" width="1280" height="720" role="img" aria-describedby="vizSummary"></canvas>
         <div class="stage-overlay top-left">
           <span class="panel-eyebrow">Hardware layer</span>
           <strong>Trap and channel replay</strong>
@@ -89,26 +120,24 @@
           <div id="dagSummaryPanel" class="dag-summary"></div>
           <div id="dagPanel"></div>
         </section>
-        <section class="inspector-section">
-          <span class="panel-eyebrow">Timeline focus</span>
-          <h2>Current Operation</h2>
-          <div id="eventPanel" class="event-card"></div>
-        </section>
-        <section class="inspector-section hero-metrics">
-          <span class="panel-eyebrow">Schedule metrics</span>
-          <div id="metricsPanel"></div>
-        </section>
-        <section class="inspector-section">
-          <span class="panel-eyebrow">Initial ion chains</span>
-          <h2>Initial Layout</h2>
-          <div id="initialLayoutPanel"></div>
-        </section>
       </aside>
+      <div id="eventPanel" hidden></div>
+      <div id="metricsPanel" hidden></div>
+      <div id="initialLayoutPanel" hidden></div>
       <footer class="bottom-timeline">
         <input id="timeline" type="range" min="0" max="1" value="0" step="1" />
-        <span id="timeReadout">0 / 0</span>
+        <span id="timeReadout">0 / 0 gates</span>
       </footer>
     </div>
-    <script type="module" src="./app.js?v=20260629-demo8"></script>
+    <div id="circuitDialog" class="circuit-dialog" role="dialog" aria-modal="true" aria-label="Expanded quantum circuit" hidden>
+      <section class="circuit-dialog-panel">
+        <div class="circuit-dialog-toolbar">
+          <span>Quantum circuit</span>
+          <button id="circuitCloseButton" type="button">Close</button>
+        </div>
+        <div id="circuitDialogPanel" class="circuit-dialog-body" aria-label="Expanded TikZ-style circuit synchronized with playback"></div>
+      </section>
+    </div>
+    <script type="module" src="./app.js?v=20260630-swap-circuit1"></script>
   </body>
 </html>

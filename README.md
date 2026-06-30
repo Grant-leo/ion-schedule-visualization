@@ -1,86 +1,168 @@
-# QCCD Schedule Visual Debugger
+# QCCD Schedule Visualizer
 
-This repository extends QCCDSim with an interactive visual debugger for trapped-ion QCCD schedules. The visualizer replays QCCDSim traces on hardware topology layouts, so ion shuttling, gate execution, dependency progress, and schedule metrics can be inspected together.
+QCCD Schedule Visualizer is an interactive debugger for trapped-ion QCCD schedules. It extends QCCDSim with a browser-based replay view so users can inspect ion movement, trap-chain ordering, shuttling routes, laser gate execution, dependency progress, and schedule metrics in one place.
 
-The original QCCDSim compiler and simulator is described in: https://ieeexplore.ieee.org/document/9138945
+The prototype focuses on ion-trap QCCD hardware. It does not model noise, calibration drift, or pulse-level control. Its purpose is schedule verification and explanation: it makes the process behind a QCCDSim schedule visible enough to find repeated shuttling, blocked dependencies, routing bottlenecks, and suspicious chain operations.
 
 ## What It Shows
 
-- QCCD trap/channel topologies generated from QCCDSim machine definitions.
-- Ion chains inside traps, with split, move, and merge operations animated along hardware paths.
-- Laser-style highlighting for gate execution.
-- A vertical Qiskit-derived dependency DAG that advances with schedule playback.
-- Metrics for finish time, event count, 1Q/2Q gate mix, and shuttling burden.
-- Architecture, trap-capacity, benchmark, mapper, initial-ordering, and scheduler-policy selection through the local visualizer API.
-- Chain-internal swap cues before split operations when QCCDSim reports a required endpoint swap.
-
-## Current Scope
-
-The current prototype focuses on trapped-ion QCCD schedule inspection. It is a trace-level debugger: it checks topology consistency, ion locations, occupancy, event ordering, and schedule/DAG progress. It does not model noise, pulse-level control, calibration drift, or neutral-atom hardware.
+- Trap/channel topologies derived from QCCDSim machine definitions.
+- Ion chains inside each trap, with endpoint split/merge constraints.
+- Shuttling along hardware-valid segment and junction paths.
+- Junction highlighting when an active route passes through a junction.
+- GateSwap-style split preparation: the two reported qubit labels exchange before the endpoint ion leaves the trap.
+- Laser highlighting for active gate execution.
+- A TikZ-style circuit strip synchronized with playback, plus an expanded circuit view.
+- A full-height dependency DAG where active gates are emphasized and completed nodes dim.
+- Live headline metrics for gate progress, shuttling operations, and shuttling time.
 
 ## Quick Start
 
-Create the Python environment and install dependencies:
+Install the Python dependencies:
 
 ```powershell
 python -m venv venv
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Start the visualizer server:
+Start the local visualizer server:
 
 ```powershell
 .\venv\Scripts\python.exe visualizer_server.py --port 63200
 ```
 
-Open:
+Open the page:
 
 ```text
 http://127.0.0.1:63200/
 ```
 
-The default demo loads `qft_n4` on the `G3x3` QCCD architecture with trap capacity `2`, the `Greedy` mapper, `Naive` initial ordering, and the baseline EJF scheduler.
+The server also serves the local API used by the page:
 
-## Demo Flow
+- `GET /api/options` returns available benchmarks, architectures, capacities, mappers, orderings, and scheduler policies.
+- `GET /api/trace?...` generates a fresh QCCDSim trace for the selected configuration.
 
-1. Open the visualizer and confirm the status badge shows `Schedule verified`.
-2. Press `Play` to replay the schedule.
-3. Watch ions split from trap-chain endpoints, shuttle through channels, and merge into destination traps.
-4. Observe laser highlighting during gate execution.
-5. Use the DAG panel to track completed, active, ready, and blocked operations.
-6. Switch mapper, initial ordering, scheduler policy, architecture, or capacity, then regenerate the schedule.
-7. Compare schedule metrics, especially `Shuttling burden`, finish time, and DAG progress, across configurations.
+## How To Use The Page
+
+1. Choose a replay source.
+   - `Experiment` generates a trace from the current controls.
+   - `Verified trace` loads a curated JSON trace from `visualizer/traces/`.
+2. Select a benchmark circuit, QCCD architecture, trap capacity, mapper, initial ordering, and scheduler mode.
+3. Click `Generate Schedule`.
+4. Press `Play` to replay the schedule, or `Step` to advance to the next event.
+5. Watch the main canvas for trap-chain state, split/move/merge operations, route glow, junction glow, and laser gates.
+6. Use the top circuit strip to follow the active gate; click `Expand` to inspect a larger synchronized circuit view.
+7. Use the right-side DAG to see dependency progress. Active gates are brighter; completed nodes are dimmed.
+
+The scheduler mode buttons are shortcuts for the scheduler dropdown:
+
+- `Parallel`: allows independent cross-trap work where dependencies and resources permit it.
+- `Shuttle serial`: serializes communication flow.
+- `Global serial`: forces a global serial baseline.
+
+## Data Flow
+
+The visualizer can load schedule data in two ways.
+
+Static traces are stored under:
+
+```text
+visualizer/traces/
+visualizer/traces/manifest.json
+```
+
+Dynamic traces are generated by:
+
+```text
+visualizer_server.py
+simulation.py
+trace_export.py
+```
+
+For dynamic generation, the page sends the selected program, architecture, capacity, mapper, ordering, and scheduler to `/api/trace`. The backend builds a QCCDSim `SimulationConfig`, runs the QCCDSim scheduling pipeline, exports the result to a JSON trace, validates it, and returns it to the browser.
+
+## Trace Information Used By The UI
+
+The browser does not read raw QASM directly. It consumes the exported trace JSON. The main fields are:
+
+- `topology.traps`: trap ids, capacities, and segment-end orientations.
+- `topology.segments`: channel connections between traps and junctions.
+- `topology.junctions`: junction ids and degrees.
+- `topology.layout`: normalized hardware coordinates used by the renderer.
+- `particles`: initial qubit or ion labels, trap locations, and initial slots.
+- `events`: scheduled `gate`, `split`, `move`, and `merge` events with start/end cycles.
+- `events[].metadata`: gate ids, gate names, endpoint side, swap counts, swap hops, ion hops, and reported `swap_ions`.
+- `dag.nodes` and `dag.edges`: the Qiskit-derived dependency graph.
+- `metrics`: finish time, operation counts, shuttling time, swap count, swap hops, ion hops, and gate parallelism.
+- `run`: benchmark, machine, mapper, capacity, ordering, scheduler, gate model, and swap model.
+
+The main canvas is driven by `events`, `particles`, and `topology`. The circuit strip and DAG are driven by `dag` plus live gate-completion state. The headline metrics are derived from `metrics` and replay progress.
 
 ## Benchmarks
 
-The demo catalog uses a representative QASMBench subset under `programs/benchmarks/qasmbench`. It includes search, Fourier, oracle, optimization, arithmetic, variational, linear-algebra, QEC, simulation, state-preparation, ML, overlap, and larger arithmetic circuits. `programs/benchmarks/qasmbench/manifest.csv` records source paths, hashes, qubit counts, operation counts, CX counts, and categories.
+The benchmark catalog is based on a local QASMBench subset:
 
-Static demo traces are stored in `visualizer/traces/` for fast loading, while `/api/trace` can generate fresh traces from selected configurations.
+```text
+programs/benchmarks/qasmbench/
+programs/benchmarks/qasmbench/manifest.csv
+```
 
-Supported visualizer options:
+The manifest records each program path, category, qubit count, operation count, CX count, and hash. The current demo set includes small and medium circuits such as Grover, QFT, adders, cat-state preparation, oracle-style circuits, QAOA-like workloads, QEC-style circuits, and larger arithmetic or ML-inspired circuits.
 
+## Supported Controls
+
+- Architectures: QCCDSim machine layouts exposed by `simulation.supported_machine_names()`.
+- Capacities: `1, 2, 3, 4, 5, 6, 8` ions per trap region.
 - Mappers: `Greedy`, `Random`, `LPFS`, `Agg`, `PO`, and deterministic `SABRE`-style placement.
 - Initial ordering: `Naive` and `Fidelity`.
-- Scheduler policies: `EJF`, `EJF-ParallelTrap`, `EJF-SerialComm`, and `EJF-GlobalSerial`.
+- Schedulers: visualizer-safe EJF variants, including parallel and serial baselines.
 
-To regenerate static traces:
-
-```powershell
-.\venv\Scripts\python.exe -B tools\generate_demo_traces.py
-```
+The page performs capacity preflight checks before generation. If a circuit cannot fit safely on the selected architecture/capacity pair, the UI shows a configuration error instead of installing an invalid replay.
 
 ## Validation
 
-Run the focused Python validation suite:
-
-```powershell
-.\venv\Scripts\python.exe -B -m pytest -q tests\test_trace_export.py tests\test_visualizer_server.py tests\test_visualizer_http.py tests\test_machine_topologies.py tests\test_demo_traces.py
-```
-
-Run the frontend unit tests:
+Run the frontend tests:
 
 ```powershell
 npm --prefix visualizer test
 ```
 
-These tests cover topology uniqueness, trace validation, capacity preflight checks, HTTP API behavior, replay state, hardware path interpolation, DAG state, and presentation-safe UI summaries.
+Run the Python validation tests:
+
+```powershell
+.\venv\Scripts\python.exe -B -m pytest -q tests
+```
+
+The tests cover trace validation, topology consistency, replay state, DAG state, live metrics, route interpolation, junction highlighting, swap visualization, API behavior, and UI contract checks.
+
+## Regenerating Static Demo Traces
+
+Static traces are useful for fast demos without waiting for a new schedule to be generated:
+
+```powershell
+.\venv\Scripts\python.exe -B tools\generate_demo_traces.py
+```
+
+After regeneration, `visualizer/traces/manifest.json` controls which curated traces appear in the `Verified trace` dropdown.
+
+## Project Structure
+
+```text
+visualizer/                 Browser UI, canvas renderer, DAG/circuit renderers, tests
+visualizer_server.py         Local HTTP server and trace-generation API
+trace_export.py              QCCDSim schedule-to-trace exporter
+simulation.py                QCCDSim run configuration and machine/scheduler entry points
+machine.py                   Trap, segment, junction, timing, and hardware parameters
+mappers.py                   Placement and mapper implementations
+ejf_schedule.py              EJF scheduling policy implementation
+programs/benchmarks/         Local benchmark circuits and manifest
+tests/                       Python validation suite
+```
+
+## Original Base
+
+This project builds on QCCDSim by Prakash Murali and collaborators. The original QCCDSim work is described in:
+
+```text
+P. Murali et al., "Architecting Noisy Intermediate-Scale Trapped Ion Quantum Computers."
+```
