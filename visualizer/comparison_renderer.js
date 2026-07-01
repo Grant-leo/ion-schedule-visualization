@@ -30,6 +30,18 @@ export function renderComparisonRows(container, result) {
     flags.textContent = result.flags.map(flagLabel).join(" | ");
     fragment.appendChild(flags);
   }
+  const markers = (result.delta_markers || []).slice(0, 3);
+  if (markers.length) {
+    const markerList = document.createElement("div");
+    markerList.className = "comparison-markers";
+    for (const marker of markers) {
+      const markerNode = document.createElement("span");
+      markerNode.className = `comparison-marker is-${marker.kind?.includes("regression") ? "regression" : "improvement"}`;
+      markerNode.textContent = markerLabel(marker);
+      markerList.appendChild(markerNode);
+    }
+    fragment.appendChild(markerList);
+  }
   container.appendChild(fragment);
 }
 
@@ -78,6 +90,16 @@ function flagLabel(flag) {
   if (flag === "seed_mismatch") return "different seeds";
   if (flag === "tie_break_mismatch") return "different tie-breaks";
   return String(flag).replaceAll("_", " ");
+}
+
+function markerLabel(marker) {
+  const resource = marker.resource ? `${marker.resource} ` : "";
+  const sign = marker.delta >= 0 ? "+" : "";
+  if (marker.metric === "shuttles") return `Shuttling ${sign}${formatNumber(marker.delta)}`;
+  if (marker.metric === "total_time") return `Time ${sign}${formatNumber(marker.delta)}`;
+  if (marker.metric === "channel_pressure") return `Pressure ${sign}${formatNumber(marker.delta)}`;
+  if (marker.metric === "segment_duration") return `${resource}${sign}${formatNumber(marker.delta)}`;
+  return `${resource}${sign}${formatNumber(marker.delta)}`;
 }
 
 function shortProgram(program) {

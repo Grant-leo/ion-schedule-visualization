@@ -40,6 +40,16 @@ def test_adapt_external_trace_blocks_capacity_overflow():
     assert any("initial occupancy 2 exceeds capacity 1" in detail for detail in excinfo.value.details)
 
 
+def test_adapt_external_trace_reports_malformed_gate_id_as_validation_error():
+    payload = load_fixture("external_valid_trace.json")
+    payload["trace"]["events"][0]["metadata"]["gate_id"] = "bad"
+
+    with pytest.raises(ExternalTraceError) as excinfo:
+        adapt_external_trace(payload)
+
+    assert any("has no matching gate event" in detail or "gate_id" in detail for detail in excinfo.value.details)
+
+
 def test_adapt_external_trace_rejects_unsupported_schema_and_remote_or_path_inputs():
     payload = load_fixture("external_valid_trace.json")
     payload["schema_version"] = "other"

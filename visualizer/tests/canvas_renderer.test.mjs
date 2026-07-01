@@ -9,6 +9,7 @@ import {
   gateLaserTargets,
   activeJunctionActivity,
   activeSplitSwapPoint,
+  bottleneckIntensity,
   interpolatePoint,
   ionLabelSpec,
   ionRenderPoint,
@@ -41,6 +42,21 @@ function assertClose(actual, expected, tolerance = 0.001) {
 function distanceBetween(left, right) {
   return Math.hypot(left.x - right.x, left.y - right.y);
 }
+
+test("bottleneckIntensity scales hot segment resources for rendering", () => {
+  const metrics = {
+    bottlenecks: {
+      segments: [
+        { resource: "segment:2", duration: 100 },
+        { resource: "segment:1", duration: 50 },
+      ],
+    },
+  };
+
+  assert.equal(bottleneckIntensity(metrics, "segment:2"), 1);
+  assert.equal(bottleneckIntensity(metrics, "segment:1"), 0.5);
+  assert.equal(bottleneckIntensity(metrics, "segment:0"), 0);
+});
 
 test("resizeCanvas keeps layout dimensions in CSS pixels on high-DPI displays", () => {
   const previousDpr = globalThis.devicePixelRatio;

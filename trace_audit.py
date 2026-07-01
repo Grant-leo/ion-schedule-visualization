@@ -123,7 +123,48 @@ def recompute_trace_metrics(trace):
         "swap_count": swap_count,
         "swap_hops": swap_hops,
         "ion_hops": ion_hops,
+        "bottlenecks": extract_trace_bottlenecks(trace),
         **_gate_parallel_metrics(events),
+    }
+
+
+def extract_trace_bottlenecks(trace, limit=5):
+    """Return deterministic resource hot spots derived only from trace events."""
+    events = [event for event in trace.get("events", []) if isinstance(event, dict)]
+    segment_usage = {}
+    junction_usage = {}
+    largest_shuttles = []
+    topology = trace.get("topology") if isinstance(trace, dict) else {}
+
+    for event in events:
+        if event.get("type") not in {"split", "move", "merge"}:
+            continue
+        event_id = event.get("id")
+        duration = max(0, _number(event.get("end")) - _number(event.get("start")))
+        segments = _event_segment_resources(event)
+        junctions = _event_junction_resources(event, topology)
+        for resource in segments:
+            _add_resource_usage(segment_usage, resource, duration, event_id)
+        for resource in junctions:
+            _add_resource_usage(junction_usage, resource, duration, event_id)
+        largest_shuttles.append(
+            {
+                "event_id": event_id,
+                "type": event.get("type"),
+                "duration": duration,
+                "resources": segments + junctions,
+                "cost": duration * max(1, len(segments) + len(junctions)),
+            }
+        )
+
+    return {
+        "segments": _rank_resource_usage(segment_usage, limit),
+        "junctions": _rank_resource_usage(junction_usage, limit),
+        "largest_shuttles": sorted(
+            largest_shuttles,
+            key=lambda item: (-item["cost"], item["event_id"] if item["event_id"] is not None else -1),
+        )[:limit],
+        "dag_stalls": _dag_stalls(trace, limit),
     }
 
 
@@ -169,6 +210,102 @@ def _gate_parallel_metrics(events):
         "cross_trap_parallel_gates": cross_trap_parallel,
         "same_trap_gate_overlaps": same_trap_overlaps,
     }
+
+
+def _event_segment_resources(event):
+    event_type = event.get("type")
+    if event_type == "split" and _is_segment(event.get("target")):
+        return [event.get("target")]
+    if event_type == "merge" and _is_segment(event.get("source")):
+        return [event.get("source")]
+    if event_type == "move":
+        return sorted({location for location in [event.get("source"), event.get("target")] if _is_segment(location)})
+    return []
+
+
+def _event_junction_resources(event, topology):
+    if event.get("type") != "move":
+        return []
+    source = event.get("source")
+    target = event.get("target")
+    if not (_is_segment(source) and _is_segment(target)):
+        return []
+    segment_endpoints = _segment_endpoint_map(topology)
+    shared = set(segment_endpoints.get(source, [])) & set(segment_endpoints.get(target, []))
+    return sorted(location for location in shared if isinstance(location, str) and location.startswith("junction:"))
+
+
+def _segment_endpoint_map(topology):
+    endpoints = {}
+    if not isinstance(topology, dict):
+        return endpoints
+    for segment in topology.get("segments") or []:
+        if not isinstance(segment, dict):
+            continue
+        resource = f"segment:{segment.get('id')}"
+        endpoints[resource] = [segment.get("from"), segment.get("to")]
+    return endpoints
+
+
+def _add_resource_usage(usage, resource, duration, event_id):
+    entry = usage.setdefault(resource, {"resource": resource, "duration": 0, "count": 0, "event_ids": []})
+    entry["duration"] += duration
+    entry["count"] += 1
+    if event_id is not None:
+        entry["event_ids"].append(event_id)
+
+
+def _rank_resource_usage(usage, limit):
+    return sorted(
+        usage.values(),
+        key=lambda item: (-item["duration"], -item["count"], item["resource"]),
+    )[:limit]
+
+
+def _dag_stalls(trace, limit):
+    gate_windows = {}
+    for event in trace.get("events") or []:
+        if not isinstance(event, dict) or event.get("type") != "gate":
+            continue
+        gate_id = (event.get("metadata") or {}).get("gate_id")
+        gate_id = _integer_id(gate_id)
+        if gate_id is not None:
+            gate_windows[gate_id] = (_number(event.get("start")), _number(event.get("end")))
+
+    stalls = []
+    for edge in (trace.get("dag") or {}).get("edges") or []:
+        source = _integer_id(edge.get("source"))
+        target = _integer_id(edge.get("target"))
+        if source is None or target is None:
+            continue
+        if source not in gate_windows or target not in gate_windows:
+            continue
+        _, source_end = gate_windows[source]
+        target_start, _ = gate_windows[target]
+        stall_time = max(0, target_start - source_end)
+        if stall_time > 0:
+            stalls.append({"source": source, "target": target, "stall_time": stall_time})
+    return sorted(stalls, key=lambda item: (-item["stall_time"], item["source"], item["target"]))[:limit]
+
+
+def _is_segment(location):
+    return isinstance(location, str) and location.startswith("segment:")
+
+
+def _number(value, default=0):
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return default
+    return numeric if numeric == numeric else default
+
+
+def _integer_id(value):
+    try:
+        numeric = int(value)
+    except (TypeError, ValueError):
+        return None
+    return numeric
 
 
 def _unique_errors(errors):

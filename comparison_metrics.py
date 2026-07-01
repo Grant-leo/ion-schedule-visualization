@@ -41,6 +41,7 @@ def compare_traces(baseline, candidate):
         _metric_row(metric, label, direction, baseline_metrics[metric], candidate_metrics[metric])
         for metric, label, direction in METRIC_DEFINITIONS
     ]
+    delta_markers = _delta_markers(rows, baseline, candidate)
     return {
         "valid": True,
         "status": "comparable",
@@ -50,6 +51,7 @@ def compare_traces(baseline, candidate):
         "baseline": _run_summary(baseline),
         "candidate": _run_summary(candidate),
         "rows": rows,
+        "delta_markers": delta_markers,
     }
 
 
@@ -143,6 +145,62 @@ def _metric_row(metric, label, direction, baseline, candidate):
         "delta_percent": delta_percent,
         "winner": winner,
     }
+
+
+def _delta_markers(rows, baseline, candidate):
+    markers = []
+    row_by_metric = {row["metric"]: row for row in rows}
+    for metric, kind_prefix in [("total_time", "time"), ("shuttles", "shuttling"), ("channel_pressure", "channel_pressure")]:
+        row = row_by_metric.get(metric)
+        if not row or math.isclose(row["delta"], 0, abs_tol=1e-12):
+            continue
+        direction = "improvement" if row["winner"] == "candidate" else "regression"
+        markers.append(
+            {
+                "kind": f"{kind_prefix}_{direction}",
+                "metric": metric,
+                "baseline": row["baseline"],
+                "candidate": row["candidate"],
+                "delta": row["delta"],
+            }
+        )
+    markers.extend(_resource_delta_markers(baseline, candidate))
+    return markers
+
+
+def _resource_delta_markers(baseline, candidate):
+    baseline_segments = _resource_duration_map(_trace_bottlenecks(baseline).get("segments"))
+    candidate_segments = _resource_duration_map(_trace_bottlenecks(candidate).get("segments"))
+    markers = []
+    for resource in sorted(set(baseline_segments) | set(candidate_segments)):
+        baseline_duration = baseline_segments.get(resource, 0)
+        candidate_duration = candidate_segments.get(resource, 0)
+        delta = candidate_duration - baseline_duration
+        if math.isclose(delta, 0, abs_tol=1e-12):
+            continue
+        markers.append(
+            {
+                "kind": "resource_improvement" if delta < 0 else "resource_regression",
+                "metric": "segment_duration",
+                "resource": resource,
+                "baseline": baseline_duration,
+                "candidate": candidate_duration,
+                "delta": delta,
+            }
+        )
+    return sorted(markers, key=lambda item: (-abs(item["delta"]), item["resource"]))[:5]
+
+
+def _trace_bottlenecks(trace):
+    return recompute_trace_metrics(trace).get("bottlenecks") or {}
+
+
+def _resource_duration_map(items):
+    result = {}
+    for item in items or []:
+        if isinstance(item, dict) and item.get("resource"):
+            result[item["resource"]] = _number(item.get("duration"))
+    return result
 
 
 def _channel_pressure(trace):

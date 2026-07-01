@@ -1,6 +1,6 @@
 import copy
 
-from trace_audit import build_trace_validation
+from trace_audit import build_trace_validation, recompute_trace_metrics
 from trace_contract import stamp_trace_contract
 
 
@@ -37,6 +37,7 @@ def adapt_external_trace(payload):
     normalized["source_claims"] = copy.deepcopy(payload.get("source_claims") or {})
     _normalize_run(normalized, payload)
     _normalize_provenance(normalized, payload)
+    normalized["metrics"] = recompute_trace_metrics(normalized)
 
     stamp_trace_contract(normalized)
     validation = build_trace_validation(normalized)

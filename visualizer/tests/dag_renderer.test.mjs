@@ -32,6 +32,28 @@ test("layoutDag places Qiskit-style DAG nodes by dependency layer and keeps edge
   assert.ok(graph.nodes[1].x < graph.nodes[2].x);
 });
 
+test("layoutDag marks DAG nodes that release large dependency stalls", () => {
+  const dagState = {
+    nodes: new Map([
+      [0, { id: 0, gate_name: "h", qubits: [0], state: "completed" }],
+      [1, { id: 1, gate_name: "cx", qubits: [0, 1], state: "blocked" }],
+    ]),
+    edges: [{ source: 0, target: 1 }],
+  };
+
+  const graph = layoutDag(dagState, {
+    width: 360,
+    height: 180,
+    bottlenecks: { dag_stalls: [{ source: 0, target: 1, stall_time: 90 }] },
+  });
+
+  const source = graph.nodes.find((node) => node.id === 0);
+  const target = graph.nodes.find((node) => node.id === 1);
+  assert.equal(source.bottleneck, true);
+  assert.equal(source.releases_stall_time, 90);
+  assert.equal(target.bottleneck, undefined);
+});
+
 test("layoutDag supports a vertical dependency page layout", () => {
   const dagState = {
     nodes: new Map([

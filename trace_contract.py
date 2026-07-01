@@ -37,6 +37,7 @@ METRIC_MODEL = {
         "max_parallel_gates",
         "cross_trap_parallel_gates",
         "same_trap_gate_overlaps",
+        "bottlenecks",
     ],
 }
 

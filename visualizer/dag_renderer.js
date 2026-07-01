@@ -25,7 +25,15 @@ export function layoutDag(dagState, options = {}) {
     return level;
   };
 
-  const nodesWithLevels = allNodes.map((node) => ({ ...node, level: levelOf(node.id) }));
+  const stallBySource = dagBottleneckMap(options.bottlenecks);
+  const nodesWithLevels = allNodes.map((node) => {
+    const stallTime = stallBySource.get(node.id);
+    return {
+      ...node,
+      level: levelOf(node.id),
+      ...(stallTime ? { bottleneck: true, releases_stall_time: stallTime } : {}),
+    };
+  });
   const nodes = nodesWithLevels;
   const edges = allEdges;
   const byLevel = new Map();
@@ -144,6 +152,7 @@ export function renderDagSvg(container, dagState, options = {}) {
     width: Math.max(300, Math.floor(rect.width || 0)),
     height: Math.max(360, Math.floor(rect.height || 0)),
     direction: options.direction,
+    bottlenecks: options.bottlenecks,
   });
   const structureKey = dagStructureKey(graph);
   const existingSvg = container.firstElementChild;
@@ -202,7 +211,18 @@ export function renderDagSvg(container, dagState, options = {}) {
 }
 
 function dagNodeClass(node, graph) {
-  return `dag-svg-node ${node.state || "blocked"}${graph.compact ? " compact" : ""}`;
+  return `dag-svg-node ${node.state || "blocked"}${graph.compact ? " compact" : ""}${node.bottleneck ? " bottleneck" : ""}`;
+}
+
+function dagBottleneckMap(bottlenecks = {}) {
+  const result = new Map();
+  for (const stall of bottlenecks.dag_stalls || []) {
+    const source = Number(stall.source);
+    const stallTime = Number(stall.stall_time) || 0;
+    if (!Number.isFinite(source) || stallTime <= 0) continue;
+    result.set(source, Math.max(result.get(source) || 0, stallTime));
+  }
+  return result;
 }
 
 function formatNodeLabel(node) {
@@ -268,9 +288,9 @@ function syncDagNodeStates(svg, graph) {
     const node = nodeById.get(element.getAttribute("data-node-id"));
     if (!node) continue;
     const state = node.state || "blocked";
-    if (element.getAttribute("data-state") === state) continue;
     element.setAttribute("data-state", state);
-    element.setAttribute("class", dagNodeClass(node, graph));
+    const className = dagNodeClass(node, graph);
+    if (element.getAttribute("class") !== className) element.setAttribute("class", className);
   }
   svg.querySelector(".dag-highlight-label-layer")?.remove();
   appendCompactLabels(svg, graph);

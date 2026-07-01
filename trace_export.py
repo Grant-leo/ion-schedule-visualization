@@ -15,7 +15,7 @@ def location_key(kind, idx):
 
 
 def export_trace(result):
-    from trace_audit import build_trace_validation
+    from trace_audit import build_trace_validation, recompute_trace_metrics
 
     trace = {
         "schema_version": "1.0",
@@ -26,8 +26,9 @@ def export_trace(result):
         "dag": _dag(result.parser),
         "particles": _particles(result.initial_layout),
         "events": [_event_to_trace(event, result.machine) for event in result.scheduler.schedule.events],
-        "metrics": _metrics(result.scheduler.schedule),
+        "metrics": {},
     }
+    trace["metrics"] = recompute_trace_metrics(trace)
     stamp_trace_contract(trace)
     trace["validation"] = build_trace_validation(trace)
     return trace

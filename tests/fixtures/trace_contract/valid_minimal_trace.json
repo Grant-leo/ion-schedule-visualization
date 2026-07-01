@@ -80,6 +80,12 @@
     "swap_count": 0,
     "swap_hops": 0,
     "ion_hops": 0,
+    "bottlenecks": {
+      "segments": [],
+      "junctions": [],
+      "largest_shuttles": [],
+      "dag_stalls": []
+    },
     "max_parallel_gates": 1,
     "cross_trap_parallel_gates": 0,
     "same_trap_gate_overlaps": 0

@@ -34,6 +34,9 @@ export function compareTracePair(baseline, candidate) {
 
   const baselineMetrics = comparisonMetrics(baseline);
   const candidateMetrics = comparisonMetrics(candidate);
+  const rows = METRIC_DEFINITIONS.map(([metric, label, direction]) =>
+    metricRow(metric, label, direction, baselineMetrics[metric], candidateMetrics[metric]),
+  );
   return {
     valid: true,
     status: "comparable",
@@ -42,9 +45,8 @@ export function compareTracePair(baseline, candidate) {
     compatibility,
     baseline: runSummary(baseline),
     candidate: runSummary(candidate),
-    rows: METRIC_DEFINITIONS.map(([metric, label, direction]) =>
-      metricRow(metric, label, direction, baselineMetrics[metric], candidateMetrics[metric]),
-    ),
+    rows,
+    delta_markers: deltaMarkers(rows, baseline, candidate),
   };
 }
 
@@ -127,6 +129,65 @@ function metricRow(metric, label, direction, baseline, candidate) {
     delta_percent: baseline === 0 ? null : delta / baseline,
     winner,
   };
+}
+
+function deltaMarkers(rows, baseline, candidate) {
+  const markers = [];
+  const rowByMetric = new Map(rows.map((row) => [row.metric, row]));
+  for (const [metric, prefix] of [
+    ["total_time", "time"],
+    ["shuttles", "shuttling"],
+    ["channel_pressure", "channel_pressure"],
+  ]) {
+    const row = rowByMetric.get(metric);
+    if (!row || Math.abs(row.delta) <= 1e-12) continue;
+    const direction = row.winner === "candidate" ? "improvement" : "regression";
+    markers.push({
+      kind: `${prefix}_${direction}`,
+      metric,
+      baseline: row.baseline,
+      candidate: row.candidate,
+      delta: row.delta,
+    });
+  }
+  markers.push(...resourceDeltaMarkers(baseline, candidate));
+  return markers;
+}
+
+function resourceDeltaMarkers(baseline, candidate) {
+  const baselineSegments = resourceDurationMap(traceBottlenecks(baseline).segments);
+  const candidateSegments = resourceDurationMap(traceBottlenecks(candidate).segments);
+  return [...new Set([...baselineSegments.keys(), ...candidateSegments.keys()])]
+    .sort()
+    .map((resource) => {
+      const baselineDuration = baselineSegments.get(resource) || 0;
+      const candidateDuration = candidateSegments.get(resource) || 0;
+      const delta = candidateDuration - baselineDuration;
+      if (Math.abs(delta) <= 1e-12) return null;
+      return {
+        kind: delta < 0 ? "resource_improvement" : "resource_regression",
+        metric: "segment_duration",
+        resource,
+        baseline: baselineDuration,
+        candidate: candidateDuration,
+        delta,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta) || left.resource.localeCompare(right.resource))
+    .slice(0, 5);
+}
+
+function traceBottlenecks(trace = {}) {
+  return recomputeMetrics(trace).bottlenecks || {};
+}
+
+function resourceDurationMap(items = []) {
+  return new Map(
+    items
+      .filter((item) => item && typeof item === "object" && item.resource)
+      .map((item) => [item.resource, number(item.duration)]),
+  );
 }
 
 function channelPressure(trace = {}) {
@@ -317,5 +378,84 @@ function recomputeMetrics(trace = {}) {
     swap_count: swapCount,
     swap_hops: swapHops,
     ion_hops: ionHops,
+    bottlenecks: extractBottlenecks(trace, events),
   };
+}
+
+function extractBottlenecks(trace = {}, events = []) {
+  const segmentUsage = new Map();
+  const junctionUsage = new Map();
+  const largestShuttles = [];
+  for (const event of events) {
+    if (!["split", "move", "merge"].includes(event.type)) continue;
+    const duration = Math.max(0, number(event.end) - number(event.start));
+    const segments = eventSegmentResources(event);
+    const junctions = eventJunctionResources(event, trace.topology);
+    for (const resource of segments) addResourceUsage(segmentUsage, resource, duration, event.id);
+    for (const resource of junctions) addResourceUsage(junctionUsage, resource, duration, event.id);
+    largestShuttles.push({
+      event_id: event.id,
+      type: event.type,
+      duration,
+      resources: [...segments, ...junctions],
+      cost: duration * Math.max(1, segments.length + junctions.length),
+    });
+  }
+  return {
+    segments: rankResourceUsage(segmentUsage),
+    junctions: rankResourceUsage(junctionUsage),
+    largest_shuttles: largestShuttles
+      .sort((left, right) => right.cost - left.cost || number(left.event_id, -1) - number(right.event_id, -1))
+      .slice(0, 5),
+    dag_stalls: dagStalls(trace),
+  };
+}
+
+function eventJunctionResources(event, topology = {}) {
+  if (event.type !== "move" || !isSegment(event.source) || !isSegment(event.target)) return [];
+  const endpoints = segmentEndpointMap(topology);
+  const sourceEndpoints = new Set(endpoints.get(event.source) || []);
+  return (endpoints.get(event.target) || [])
+    .filter((location) => sourceEndpoints.has(location) && typeof location === "string" && location.startsWith("junction:"))
+    .sort();
+}
+
+function segmentEndpointMap(topology = {}) {
+  return new Map(
+    (topology.segments || [])
+      .filter((segment) => segment && typeof segment === "object")
+      .map((segment) => [`segment:${segment.id}`, [segment.from, segment.to]]),
+  );
+}
+
+function addResourceUsage(usage, resource, duration, eventId) {
+  const entry = usage.get(resource) || { resource, duration: 0, count: 0, event_ids: [] };
+  entry.duration += duration;
+  entry.count += 1;
+  if (eventId !== undefined && eventId !== null) entry.event_ids.push(eventId);
+  usage.set(resource, entry);
+}
+
+function rankResourceUsage(usage) {
+  return [...usage.values()].sort((left, right) => right.duration - left.duration || right.count - left.count || left.resource.localeCompare(right.resource)).slice(0, 5);
+}
+
+function dagStalls(trace = {}) {
+  const gateWindows = new Map();
+  for (const event of trace.events || []) {
+    if (event?.type !== "gate") continue;
+    const gateId = event.metadata?.gate_id;
+    if (gateId !== undefined && gateId !== null) gateWindows.set(Number(gateId), [number(event.start), number(event.end)]);
+  }
+  return (trace.dag?.edges || [])
+    .map((edge) => {
+      const source = gateWindows.get(Number(edge.source));
+      const target = gateWindows.get(Number(edge.target));
+      if (!source || !target) return null;
+      const stallTime = Math.max(0, target[0] - source[1]);
+      return stallTime > 0 ? { source: edge.source, target: edge.target, stall_time: stallTime } : null;
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.stall_time - left.stall_time || Number(left.source) - Number(right.source) || Number(left.target) - Number(right.target))
+    .slice(0, 5);
 }

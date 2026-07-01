@@ -939,6 +939,36 @@ textarea {
   color: #ffb8be;
 }
 
+.comparison-markers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.comparison-marker {
+  max-width: 100%;
+  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  color: var(--color-muted);
+  background: rgba(255, 255, 255, 0.04);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.comparison-marker.is-improvement {
+  border-color: rgba(143, 232, 113, 0.34);
+  color: #b9f7a5;
+  background: rgba(143, 232, 113, 0.08);
+}
+
+.comparison-marker.is-regression {
+  border-color: rgba(255, 184, 190, 0.34);
+  color: #ffd1d5;
+  background: rgba(255, 184, 190, 0.08);
+}
+
 .visualization-viewport {
   grid-area: viewport;
   position: relative;
@@ -1414,6 +1444,12 @@ textarea {
 .dag-svg-node.completed rect {
   fill: rgba(17, 18, 21, 0.9);
   stroke: rgba(255, 255, 255, 0.12);
+}
+
+.dag-svg-node.bottleneck:not(.active) rect {
+  stroke: rgba(230, 186, 96, 0.92);
+  stroke-width: 2.2;
+  filter: drop-shadow(0 0 9px rgba(230, 186, 96, 0.46));
 }
 
 .dag-svg-node.active rect {

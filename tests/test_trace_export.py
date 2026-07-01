@@ -76,6 +76,8 @@ def test_export_trace_contains_topology_events_metrics_and_validation():
     gate_events = [event for event in trace["events"] if event["type"] == "gate"]
     assert all(isinstance(event["metadata"]["gate_id"], int) for event in gate_events)
     assert trace["metrics"]["event_count"] == len(trace["events"])
+    assert set(trace["metrics"]["bottlenecks"]) == {"segments", "junctions", "largest_shuttles", "dag_stalls"}
+    assert trace["metrics"]["bottlenecks"]["segments"]
     assert trace["timing"]["unit"] == "us"
     assert trace["timing"]["cycle_time_us"] == 1
     assert trace["timing"]["parameters"]["split_merge_time"] == 80
@@ -89,6 +91,7 @@ def test_export_trace_contains_topology_events_metrics_and_validation():
     assert trace["provenance"]["source"] == "QCCDSim"
     assert trace["timing_model"]["name"] == "qccdsim-cycle-timing"
     assert trace["metric_model"]["name"] == "qccdsim-schedule-metrics"
+    assert "bottlenecks" in trace["metric_model"]["fields"]
     assert all(trap["initial_ion_capacity"] == 1 for trap in trace["topology"]["traps"])
     assert all(trap["physical_capacity"] == 3 for trap in trace["topology"]["traps"])
     assert all(trap["communication_buffer"] == 2 for trap in trace["topology"]["traps"])

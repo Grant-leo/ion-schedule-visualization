@@ -78,6 +78,17 @@ test("createComparisonRows recomputes stale event metrics before comparing", () 
   assert.equal(rowByMetric(rows, "shuttles").baseline, 3);
 });
 
+test("compareTracePair reports delta markers only on comparison results", () => {
+  const baseline = trace({ id: "baseline", finishTime: 100 });
+  const candidate = trace({ id: "candidate", finishTime: 80 });
+  candidate.events = candidate.events.filter((event) => event.type === "gate");
+
+  const result = compareTracePair(baseline, candidate);
+
+  assert.equal(result.delta_markers[0].kind, "time_improvement");
+  assert.equal(result.delta_markers.some((marker) => marker.kind === "shuttling_improvement"), true);
+});
+
 test("compareTracePair reports non-comparable circuit and timing mismatches", () => {
   const baseline = trace();
   const candidate = trace({

@@ -201,6 +201,20 @@ def test_compare_traces_recomputes_stale_metric_counts_from_events():
     assert row_by_metric(result, "shuttles")["baseline"] == 6
 
 
+def test_compare_traces_reports_delta_markers_only_on_comparison_result():
+    baseline = minimal_trace("baseline", finish_time=100, shuttle_rounds=2)
+    candidate = minimal_trace("candidate", finish_time=80, shuttle_rounds=1)
+
+    result = compare_traces(baseline, candidate)
+
+    marker = next(item for item in result["delta_markers"] if item["kind"] == "shuttling_improvement")
+    assert marker["kind"] == "shuttling_improvement"
+    assert marker["metric"] == "shuttles"
+    assert marker["delta"] == -3
+    assert "delta_markers" not in baseline["metrics"]
+    assert "delta_markers" not in candidate["metrics"]
+
+
 def test_compare_traces_refuses_explicitly_invalid_trace():
     baseline = minimal_trace("baseline")
     candidate = minimal_trace("candidate")

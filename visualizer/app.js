@@ -1167,7 +1167,7 @@ function draw(options = {}) {
 
   if (dagKey !== lastDagKey) {
     renderDagSummary(state.dagState);
-    renderDagSvg(elements.dagPanel, state.dagState, { direction: "vertical" });
+    renderDagSvg(elements.dagPanel, state.dagState, { direction: "vertical", bottlenecks: trace.metrics?.bottlenecks });
     focusDagViewport(elements.dagPanel);
     lastDagKey = dagKey;
   }

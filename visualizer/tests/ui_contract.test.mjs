@@ -161,7 +161,7 @@ test("invalid schedule reasons are visible on the hardware stage", () => {
 test("large dependency DAGs are rendered without dropping nodes", () => {
   assert.doesNotMatch(appSource, /DAG_MAX_RENDERED_NODES/);
   assert.doesNotMatch(appSource, /maxNodes/);
-  assert.match(appSource, /renderDagSvg\(elements\.dagPanel,\s*state\.dagState,\s*\{\s*direction:\s*"vertical"\s*\}\)/);
+  assert.match(appSource, /renderDagSvg\(elements\.dagPanel,\s*state\.dagState,\s*\{\s*direction:\s*"vertical",\s*bottlenecks:\s*trace\.metrics\?\.bottlenecks\s*\}\)/);
 });
 
 test("responsive DAG panel stays scroll-contained near the desktop breakpoint", () => {

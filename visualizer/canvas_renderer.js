@@ -74,6 +74,15 @@ export function resizeCanvas(canvas) {
   return { width, height, dpr, resized };
 }
 
+export function bottleneckIntensity(metrics = {}, resource) {
+  const segments = metrics?.bottlenecks?.segments;
+  if (!Array.isArray(segments) || !resource) return 0;
+  const maxDuration = Math.max(0, ...segments.map((item) => Number(item?.duration) || 0));
+  if (maxDuration <= 0) return 0;
+  const match = segments.find((item) => item?.resource === resource);
+  return match ? clamp((Number(match.duration) || 0) / maxDuration, 0, 1) : 0;
+}
+
 export function eventProgress(event, time) {
   const duration = Math.max(1, event.end - event.start);
   return clamp((time - event.start) / duration, 0, 1);
@@ -856,6 +865,7 @@ function drawSegments(context, trace, layout, state) {
     if (points.length < 2) continue;
     const segmentKey = `segment:${segment.id}`;
     const isActive = activeMotion.has(segmentKey);
+    const heat = bottleneckIntensity(trace.metrics, segmentKey);
 
     context.save();
     context.strokeStyle = "rgba(0, 0, 0, 0.74)";
@@ -867,6 +877,14 @@ function drawSegments(context, trace, layout, state) {
     context.strokeStyle = isActive ? "rgba(100, 210, 255, 0.36)" : "rgba(255, 255, 255, 0.105)";
     context.lineWidth = (isActive ? RENDER_SIZES.activeSegmentWidth : RENDER_SIZES.segmentWidth) + 7;
     strokePolyline(context, points);
+
+    if (heat > 0 && !isActive) {
+      context.shadowColor = cssColor("--color-warning");
+      context.shadowBlur = 10 + heat * 10;
+      context.strokeStyle = `rgba(230, 186, 96, ${0.16 + heat * 0.22})`;
+      context.lineWidth = RENDER_SIZES.segmentWidth + 8 + heat * 5;
+      strokePolyline(context, points);
+    }
 
     if (isActive) {
       context.shadowColor = cssColor("--color-move");
