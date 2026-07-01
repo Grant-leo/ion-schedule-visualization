@@ -9,6 +9,7 @@ import pytest
 
 from visualizer_server import VisualizerHandler
 from visualizer_server import CAPACITIES
+from visualizer_server import MAX_BUNDLE_BYTES
 from visualizer_server import MAX_IMPORT_BYTES
 from visualizer_server import PROGRAMS
 from visualizer_server import STATIC_DIR
@@ -162,6 +163,8 @@ def test_visualizer_trace_endpoint_applies_mapper_ordering_and_scheduler(visuali
     assert trace["run"]["reorder"] == "Naive"
     assert trace["run"]["scheduler_policy"] == "EJF-GlobalSerial"
     assert trace["run"]["serial_all"] is True
+    assert trace["run"]["seed"] == 12345
+    assert trace["run"]["tie_break_policy"] == "deterministic-id"
     assert trace["validation"]["valid"] is True
 
 
@@ -392,6 +395,88 @@ def test_visualizer_custom_trace_endpoint_generates_schedule_from_valid_architec
     assert trace["topology"]["traps"][1]["orientation"] == {"1": "L", "2": "R"}
     assert trace["topology"]["layout"]["trap:2"]["x"] == 480
     assert trace["metrics"]["event_count"] == len(trace["events"])
+
+
+def test_visualizer_bundle_export_endpoint_returns_reproducible_json(visualizer_http_server):
+    query = urllib.parse.urlencode(
+        {
+            "program": "qft_n4",
+            "machine": "G3x3",
+            "capacity": "2",
+            "mapper": "Greedy",
+            "ordering": "Naive",
+            "scheduler": "EJF",
+        }
+    )
+    trace = read_json(f"{visualizer_http_server}/api/trace?{query}")
+
+    bundle = post_json(
+        f"{visualizer_http_server}/api/export/bundle",
+        {
+            "traces": [trace],
+            "metadata": {
+                "qasm_hash": "qasm-v1",
+                "command": {"program": "qft_n4", "machine": "G3x3"},
+                "git_commit": "test-commit",
+            },
+        },
+    )
+
+    assert bundle["bundle"]["schema_version"] == "qccd_experiment_bundle_v1"
+    assert bundle["bundle"]["trace_hashes"] == [trace["trace_hash"]]
+    assert bundle["manifest"]["timing_model_hash"] == trace["timing_model"]["hash"]
+    assert bundle["manifest"]["metric_model_hash"] == trace["metric_model"]["hash"]
+    assert bundle["manifest"]["qasm_hash"] == "qasm-v1"
+    assert bundle["runs"][0]["scheduler_policy"] == "EJF"
+    assert bundle["audit"]["traces"][0]["validation"]["valid"] is True
+
+
+def test_visualizer_bundle_export_endpoint_allows_large_reproducibility_payloads(visualizer_http_server):
+    query = urllib.parse.urlencode(
+        {
+            "program": "qft_n4",
+            "machine": "G3x3",
+            "capacity": "2",
+            "mapper": "Greedy",
+            "ordering": "Naive",
+            "scheduler": "EJF",
+        }
+    )
+    trace = read_json(f"{visualizer_http_server}/api/trace?{query}")
+    payload = {
+        "traces": [trace],
+        "metadata": {
+            "command": {"program": "qft_n4", "machine": "G3x3"},
+            "unused_padding": "x" * (MAX_IMPORT_BYTES + 1024),
+        },
+    }
+    body = json.dumps(payload).encode("utf-8")
+
+    assert len(body) > MAX_IMPORT_BYTES
+    assert len(body) < MAX_BUNDLE_BYTES
+
+    bundle = post_json(f"{visualizer_http_server}/api/export/bundle", body)
+
+    assert bundle["bundle"]["trace_count"] == 1
+    assert bundle["bundle"]["trace_hashes"] == [trace["trace_hash"]]
+
+
+def test_visualizer_bundle_export_endpoint_rejects_wrong_content_type_and_malformed_json(visualizer_http_server):
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        post_json(f"{visualizer_http_server}/api/export/bundle", {"bad": True}, content_type="text/plain")
+    assert excinfo.value.code == 415
+
+    request = urllib.request.Request(
+        f"{visualizer_http_server}/api/export/bundle",
+        data=b"{bad json",
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        urllib.request.urlopen(request, timeout=60)
+    assert excinfo.value.code == 400
+    payload = json.loads(excinfo.value.read().decode("utf-8"))
+    assert "Malformed JSON" in payload["error"]
 
 
 def test_visualizer_program_catalog_has_feasible_demo_configurations():

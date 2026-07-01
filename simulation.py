@@ -26,6 +26,9 @@ from test_machines import (
     test_trap_2x3,
 )
 
+SIMULATION_SEED = 12345
+TIE_BREAK_POLICY = "deterministic-id"
+
 
 @dataclass(frozen=True)
 class SimulationConfig:
@@ -198,7 +201,7 @@ def _layout_to_qubit_mapping(layout):
 
 
 def run_simulation(config):
-    np.random.seed(12345)
+    np.random.seed(SIMULATION_SEED)
     parser = InputParse()
     if config.program_text:
         parser.parse_qasm_text(config.program_text)

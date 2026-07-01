@@ -560,7 +560,8 @@ select {
 .inspector-section,
 .advanced-config,
 .scope-note,
-.comparison-panel {
+.comparison-panel,
+.export-panel {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-2);
   background: var(--color-material);
@@ -870,6 +871,12 @@ textarea {
   padding: var(--space-3);
 }
 
+.export-panel {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
 .comparison-heading {
   display: grid;
   gap: 2px;
@@ -882,10 +889,29 @@ textarea {
 
 .comparison-status,
 .comparison-empty,
-.comparison-flags {
+.comparison-flags,
+.export-status {
   color: var(--color-muted);
   font-size: 11px;
   line-height: 1.35;
+}
+
+.export-status {
+  min-height: 16px;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.export-status.is-valid {
+  color: #a8ee86;
+}
+
+.export-status.is-invalid {
+  color: #ffb8be;
+}
+
+.export-status.is-loading {
+  color: var(--color-move);
 }
 
 .comparison-rows {

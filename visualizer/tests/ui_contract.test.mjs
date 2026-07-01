@@ -136,6 +136,24 @@ test("multi-run comparison lives in the left control flow without changing the m
   assert.match(cssSource, /\.visualization-viewport\s*{[\s\S]*grid-area:\s*viewport/);
 });
 
+test("experiment bundle export is a left-panel workflow action", () => {
+  assert.match(indexSource, /id="exportBundleButton"/);
+  assert.match(indexSource, /id="exportBundleStatus"/);
+  assert.ok(indexSource.indexOf('id="comparisonPanel"') < indexSource.indexOf('id="exportBundleButton"'));
+  assert.match(appSource, /function\s+exportExperimentBundle\(/);
+  assert.match(appSource, /fetchJson\("api\/export\/bundle"/);
+  assert.match(appSource, /comparison:\s*comparisonResult/);
+  assert.match(cssSource, /\.export-panel/);
+});
+
+test("experiment bundle export does not reuse stale imported-QASM metadata", () => {
+  assert.doesNotMatch(appSource, /circuit_summary:\s*importedCircuitSummary/);
+  assert.match(appSource, /function\s+bundleCircuitSummary\(selectedRecords\s*=\s*\[\]\)/);
+  assert.match(appSource, /circuit_summary:\s*bundleCircuitSummary\(selectedRecords\)/);
+  assert.match(appSource, /isImportedCircuitTrace/);
+  assert.match(appSource, /run\?\.program/);
+});
+
 test("invalid traces are rejected before replay installation", () => {
   const validIndex = appSource.indexOf("const valid = frontendValidation.valid && backendValidation.valid");
   const guardIndex = appSource.indexOf("if (!valid)");
@@ -182,7 +200,8 @@ test("DAG fit controls compute viewport-aware zoom targets", () => {
 test("browser module cache versions track Task 7 renderer changes", () => {
   assert.match(appSource, /renderCircuitSvg\s*\}\s+from\s+"\.\/circuit_renderer\.js\?v=20260701-dagperf1"/);
   assert.match(appSource, /renderDagSvg\s*\}\s+from\s+"\.\/dag_renderer\.js\?v=20260701-dagperf1"/);
-  assert.match(indexSource, /app\.js\?v=20260701-dagperf1/);
+  assert.match(indexSource, /app\.js\?v=20260702-bundle1/);
+  assert.match(indexSource, /styles\.css\?v=20260702-bundle1/);
 });
 
 test("circuit state sync batches gate element lookup for large updates", () => {

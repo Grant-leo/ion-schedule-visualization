@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from architecture_schema import ArchitectureValidationError, validate_architecture_spec
+from experiment_bundle import create_experiment_bundle
 from external_trace_adapter import ExternalTraceError, adapt_external_trace
 from parse import CircuitValidationError, InputParse, validate_openqasm_text
 from simulation import (
@@ -37,6 +38,7 @@ SCHEDULERS = list(supported_scheduler_policies())
 VISUALIZER_UNSAFE_SCHEDULERS = {"EJF-ParallelTrap"}
 VISUALIZER_SCHEDULERS = [policy for policy in SCHEDULERS if policy not in VISUALIZER_UNSAFE_SCHEDULERS]
 MAX_IMPORT_BYTES = 2_000_000
+MAX_BUNDLE_BYTES = 64_000_000
 VISUALIZER_SCHEDULER_LABELS = {
     "EJF": "Parallel schedule",
     "EJF-SerialComm": "Serial shuttling",
@@ -312,6 +314,9 @@ class VisualizerHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/trace/custom":
             self._handle_custom_trace()
             return
+        if parsed.path == "/api/export/bundle":
+            self._handle_export_bundle()
+            return
         self._send_json({"error": "Unsupported endpoint"}, status=HTTPStatus.NOT_FOUND)
 
     def _handle_trace(self, query):
@@ -375,7 +380,18 @@ class VisualizerHandler(SimpleHTTPRequestHandler):
         except Exception as exc:
             self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
 
-    def _read_json_payload(self, too_large_error):
+    def _handle_export_bundle(self):
+        payload = self._read_json_payload("Experiment bundle payload is too large", max_bytes=MAX_BUNDLE_BYTES)
+        if payload is None:
+            return
+        try:
+            traces = payload.get("traces") if isinstance(payload, dict) else None
+            metadata = payload.get("metadata") if isinstance(payload, dict) else None
+            self._send_json(create_experiment_bundle(traces, metadata or {}))
+        except Exception as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+
+    def _read_json_payload(self, too_large_error, max_bytes=MAX_IMPORT_BYTES):
         content_type = self.headers.get("Content-Type", "")
         if not content_type.lower().split(";")[0].strip() == "application/json":
             self._send_json({"error": "Unsupported content type"}, status=HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
@@ -385,7 +401,7 @@ class VisualizerHandler(SimpleHTTPRequestHandler):
         except ValueError:
             self._send_json({"error": "Invalid Content-Length"}, status=HTTPStatus.BAD_REQUEST)
             return None
-        if content_length > MAX_IMPORT_BYTES:
+        if content_length > max_bytes:
             self._send_json({"error": too_large_error}, status=HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
             return None
         try:

@@ -88,6 +88,8 @@ const elements = {
   comparisonCandidateSelect: document.getElementById("comparisonCandidateSelect"),
   comparisonStatus: document.getElementById("comparisonStatus"),
   comparisonRows: document.getElementById("comparisonRows"),
+  exportBundleButton: document.getElementById("exportBundleButton"),
+  exportBundleStatus: document.getElementById("exportBundleStatus"),
   timeReadout: document.getElementById("timeReadout"),
 };
 
@@ -113,6 +115,7 @@ const GENERATION_LOCKED_ELEMENTS = [
   elements.timeline,
   elements.comparisonBaselineSelect,
   elements.comparisonCandidateSelect,
+  elements.exportBundleButton,
 ];
 
 const EXPERIMENT_CONFIG_ELEMENTS = [
@@ -369,6 +372,7 @@ function wireControls() {
   elements.architectureImportButton.addEventListener("click", () => loadImportedArchitecture());
   elements.comparisonBaselineSelect.addEventListener("change", () => updateComparisonSelectionFromControls());
   elements.comparisonCandidateSelect.addEventListener("change", () => updateComparisonSelectionFromControls());
+  elements.exportBundleButton.addEventListener("click", () => exportExperimentBundle());
   elements.loadConfigButton.addEventListener("click", () => loadSelectedConfig());
   for (const button of elements.sourceModeButtons) {
     button.addEventListener("click", async () => {
@@ -939,6 +943,114 @@ function renderComparisonPanel() {
   renderComparisonRows(elements.comparisonRows, result);
 }
 
+async function exportExperimentBundle() {
+  if (!trace || traceBlocked) {
+    setExportStatus("No verified trace is available to export.", "invalid");
+    return;
+  }
+  const selectedRecords = bundleRunRecords();
+  const traces = selectedRecords.map((record) => record.trace).filter(Boolean);
+  if (!traces.length) {
+    setExportStatus("No selected trace is available to export.", "invalid");
+    return;
+  }
+
+  const comparisonResult =
+    selectedRecords.length === 2 ? compareTracePair(selectedRecords[0].trace, selectedRecords[1].trace) : null;
+  setExportStatus("Building reproducibility bundle...", "loading");
+  elements.exportBundleButton.disabled = true;
+  try {
+    const bundle = await fetchJson("api/export/bundle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        traces,
+        metadata: {
+          source: "browser-workbench",
+          command: currentExperimentCommand(selectedRecords),
+          circuit_summary: bundleCircuitSummary(selectedRecords),
+          comparison: comparisonResult,
+        },
+      }),
+    });
+    downloadJson(bundleFileName(bundle), bundle);
+    const traceCount = bundle?.bundle?.trace_count ?? traces.length;
+    const hashPrefix = String(bundle?.bundle?.bundle_hash || "").slice(0, 12);
+    setExportStatus(`Exported ${traceCount} trace${traceCount === 1 ? "" : "s"} | bundle ${hashPrefix}`, "valid");
+  } catch (error) {
+    setExportStatus(formatErrorMessage(error), "invalid");
+  } finally {
+    updateExportAvailability();
+  }
+}
+
+function bundleRunRecords() {
+  const pair = runStore.comparisonPair();
+  if (pair) return [pair.baseline, pair.candidate];
+  const selected = runStore.selectedRuns();
+  if (selected.length) return selected.slice(0, 2);
+  if (activeRunKey) {
+    try {
+      return [runStore.getRun(activeRunKey)];
+    } catch {
+      // Fall through to the currently displayed trace.
+    }
+  }
+  return [{ key: "current", trace, metadata: { sourceMode } }];
+}
+
+function currentExperimentCommand(selectedRecords = []) {
+  return {
+    source_mode: sourceMode,
+    program: elements.programSelect.value,
+    architecture: elements.architectureSelect.value,
+    initial_load_cap: Number(elements.capacitySelect.value),
+    mapper: elements.mapperSelect.value,
+    ordering: elements.orderingSelect.value,
+    scheduler: elements.schedulerSelect.value,
+    active_run_key: activeRunKey,
+    exported_run_keys: selectedRecords.map((record) => record.key),
+    exported_trace_hashes: selectedRecords.map((record) => record.trace?.trace_hash).filter(Boolean),
+  };
+}
+
+function bundleCircuitSummary(selectedRecords = []) {
+  if (!importedCircuitSummary || selectedRecords.length === 0) return null;
+  return selectedRecords.every((record) => isImportedCircuitTrace(record.trace)) ? importedCircuitSummary : null;
+}
+
+function isImportedCircuitTrace(nextTrace) {
+  const run = nextTrace?.run || {};
+  return String(run?.program || "").startsWith(`${IMPORTED_CIRCUIT_PREFIX}qasm:`);
+}
+
+function downloadJson(filename, payload) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function bundleFileName(bundle) {
+  const hashes = bundle?.bundle?.trace_hashes || [];
+  const firstHash = hashes[0] ? String(hashes[0]).slice(0, 12) : "trace";
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return `qccd-experiment-bundle-${firstHash}-${stamp}.json`;
+}
+
+function setExportStatus(message, state = "") {
+  elements.exportBundleStatus.textContent = message;
+  elements.exportBundleStatus.classList.toggle("is-valid", state === "valid");
+  elements.exportBundleStatus.classList.toggle("is-invalid", state === "invalid");
+  elements.exportBundleStatus.classList.toggle("is-loading", state === "loading");
+}
+
 function focusComparisonPanelIfReady() {
   if (runStore.allRuns().length < 2) return;
   elements.comparisonRows.scrollIntoView({ block: "start" });
@@ -1031,6 +1143,7 @@ function renderStatusPanel(summary) {
 function setReplayBlocked(isBlocked) {
   traceBlocked = isBlocked;
   updatePlaybackAvailability();
+  updateExportAvailability();
 }
 
 function updatePlaybackAvailability() {
@@ -1056,6 +1169,7 @@ function setGenerationLoading(isLoading) {
     element.disabled = isLoading;
   }
   updatePlaybackAvailability();
+  updateExportAvailability();
   applySourceModeAvailability();
   updateSchedulerModeButtons();
   if (!isLoading) {
@@ -1092,6 +1206,10 @@ function applySourceModeAvailability() {
   for (const element of EXPERIMENT_CONFIG_ELEMENTS) {
     element.disabled = experimentDisabled;
   }
+}
+
+function updateExportAvailability() {
+  elements.exportBundleButton.disabled = generationLoading || traceBlocked || !trace;
 }
 
 function showConfigError(message) {

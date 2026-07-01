@@ -33,6 +33,14 @@ G9 grid QCCD replay:
 2. Open `http://127.0.0.1:63200/`.
 3. Choose `Verified trace` and select the H6 QFT demo trace.
 4. Press `Play` to watch ion shuttling, laser gates, circuit progress, and DAG completion advance together.
+5. Click `Export Bundle` after the replay is verified to download a reproducible JSON experiment package.
+
+## Reference Docs
+
+- [Trace contract](docs/trace-contract.md): the JSON boundary between QCCDSim, external schedulers, and the replay UI.
+- [Import and export workflow](docs/import-export.md): how to use generated traces, imported traces, custom circuits, custom architectures, and experiment bundles.
+- [Demo script](docs/demo-script.md): a concise live-demo path for hackathon judging.
+- [Research workflow](docs/research-workflow.md): how to use the visualizer as a mapper, scheduler, and architecture research workbench.
 
 ## Why This Is Not Just Animation
 
@@ -94,6 +102,7 @@ The server also serves the local API used by the page:
 
 - `GET /api/options` returns available benchmarks, architectures, capacities, mappers, orderings, and scheduler policies.
 - `GET /api/trace?...` generates a fresh QCCDSim trace for the selected configuration.
+- `POST /api/export/bundle` exports verified trace data, audit results, comparison data, and reproducibility metadata as JSON.
 
 ## How To Use The Page
 
@@ -106,6 +115,7 @@ The server also serves the local API used by the page:
 5. Watch the main canvas for trap-chain state, split/move/merge operations, route glow, junction glow, and laser gates.
 6. Use the top circuit strip to follow the active gate; click `Expand` to inspect a larger synchronized circuit view.
 7. Use the right-side DAG to see dependency progress. Active gates are brighter; completed nodes are dimmed.
+8. Use `Export Bundle` to save the active trace or selected comparison pair with validation and reproducibility metadata.
 
 The scheduler mode buttons are shortcuts for the scheduler dropdown:
 
