@@ -15,6 +15,7 @@ from visualizer_server import _machine_trap_count
 
 
 FIXTURE_DIR = STATIC_DIR.parent / "tests" / "fixtures" / "trace_contract"
+ARCHITECTURE_FIXTURE_DIR = STATIC_DIR.parent / "tests" / "fixtures" / "architectures"
 
 
 class QuietVisualizerHandler(VisualizerHandler):
@@ -49,6 +50,10 @@ def post_json(url, payload, content_type="application/json"):
 
 def load_external_fixture(name):
     return json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))
+
+
+def load_architecture_fixture(name):
+    return json.loads((ARCHITECTURE_FIXTURE_DIR / name).read_text(encoding="utf-8"))
 
 
 def test_visualizer_options_endpoint_serves_demo_defaults(visualizer_http_server):
@@ -198,6 +203,70 @@ def test_visualizer_import_trace_endpoint_rejects_wrong_content_type_and_malform
     assert excinfo.value.code == 400
     payload = json.loads(excinfo.value.read().decode("utf-8"))
     assert "Malformed JSON" in payload["error"]
+
+
+def test_visualizer_architecture_validate_endpoint_accepts_custom_qccd_graph(visualizer_http_server):
+    payload = post_json(
+        f"{visualizer_http_server}/api/architecture/validate",
+        load_architecture_fixture("custom_linear_valid.json"),
+    )
+
+    assert payload["valid"] is True
+    assert payload["status"] == "graph_valid"
+    assert payload["scheduling_support"] == "qccdsim_machine_builder"
+    assert payload["topology"]["traps"][1]["orientation"] == {"1": "L", "2": "R"}
+    assert payload["topology"]["layout"]["trap:0"]["x"] == 0
+
+
+def test_visualizer_architecture_validate_endpoint_rejects_invalid_graph(visualizer_http_server):
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        post_json(
+            f"{visualizer_http_server}/api/architecture/validate",
+            load_architecture_fixture("custom_invalid_junction_degree.json"),
+        )
+
+    assert excinfo.value.code == 400
+    payload = json.loads(excinfo.value.read().decode("utf-8"))
+    assert payload["error"] == "Invalid QCCD architecture specification"
+    assert any("junction 0 declared degree 3 but graph degree is 2" in detail for detail in payload["details"])
+
+
+def test_visualizer_architecture_validate_endpoint_rejects_wrong_content_type_and_malformed_json(visualizer_http_server):
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        post_json(f"{visualizer_http_server}/api/architecture/validate", {"bad": True}, content_type="text/plain")
+    assert excinfo.value.code == 415
+
+    request = urllib.request.Request(
+        f"{visualizer_http_server}/api/architecture/validate",
+        data=b"{bad json",
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        urllib.request.urlopen(request, timeout=60)
+    assert excinfo.value.code == 400
+    payload = json.loads(excinfo.value.read().decode("utf-8"))
+    assert "Malformed JSON" in payload["error"]
+
+
+def test_visualizer_custom_trace_endpoint_generates_schedule_from_valid_architecture(visualizer_http_server):
+    trace = post_json(
+        f"{visualizer_http_server}/api/trace/custom",
+        {
+            "program": "qft_n4",
+            "capacity": 2,
+            "mapper": "Greedy",
+            "ordering": "Naive",
+            "scheduler": "EJF",
+            "architecture": load_architecture_fixture("custom_linear_valid.json"),
+        },
+    )
+
+    assert trace["validation"]["valid"] is True
+    assert trace["run"]["machine"] == "CUSTOM:custom_linear_3"
+    assert trace["topology"]["traps"][1]["orientation"] == {"1": "L", "2": "R"}
+    assert trace["topology"]["layout"]["trap:2"]["x"] == 480
+    assert trace["metrics"]["event_count"] == len(trace["events"])
 
 
 def test_visualizer_program_catalog_has_feasible_demo_configurations():

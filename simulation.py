@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from architecture_builder import build_custom_machine
 from ejf_schedule import EJFSchedule
 from machine import MachineParams
 from mappers import (
@@ -41,6 +42,7 @@ class SimulationConfig:
     single_qubit_gate_time: int = 7
     single_qubit_gate_fidelity: float = 0.999
     scheduler_policy: str = ""
+    architecture_spec: object = None
 
 
 @dataclass
@@ -146,6 +148,8 @@ MACHINE_BUILDERS = {
 
 def build_machine(config):
     params = make_machine_params(config)
+    if config.architecture_spec is not None:
+        return build_custom_machine(config.architecture_spec, config.ions, params)
     try:
         builder = MACHINE_BUILDERS[config.machine]
     except KeyError as exc:

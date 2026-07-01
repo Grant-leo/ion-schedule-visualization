@@ -19,3 +19,14 @@ export async function importTraceText(text, options = {}) {
     fetchImpl: options.fetchImpl,
   });
 }
+
+
+export async function importArchitectureText(text, options = {}) {
+  const payload = parseImportText(text);
+  return fetchJson("api/architecture/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    fetchImpl: options.fetchImpl,
+  });
+}

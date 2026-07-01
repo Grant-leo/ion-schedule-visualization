@@ -1,0 +1,60 @@
+{
+  "schema_version": "qccd_architecture_v1",
+  "id": "custom_linear_3",
+  "name": "Custom Linear 3",
+  "device_type": "ion_trap_qccd",
+  "defaults": {
+    "segment_capacity": 16,
+    "segment_length": 10
+  },
+  "traps": [
+    {
+      "id": 0,
+      "capacity": 2,
+      "ports": [
+        { "segment": 0, "side": "R" }
+      ],
+      "gate_zone": true,
+      "storage_zones": [0, 1],
+      "laser_accessible": true
+    },
+    {
+      "id": 1,
+      "capacity": 2,
+      "ports": [
+        { "segment": 1, "side": "L" },
+        { "segment": 2, "side": "R" }
+      ],
+      "gate_zone": true,
+      "storage_zones": [0, 1],
+      "laser_accessible": true
+    },
+    {
+      "id": 2,
+      "capacity": 2,
+      "ports": [
+        { "segment": 3, "side": "L" }
+      ],
+      "gate_zone": true,
+      "storage_zones": [0, 1],
+      "laser_accessible": true
+    }
+  ],
+  "junctions": [
+    { "id": 0, "degree": 2, "kind": "linear", "cross_time": 5 },
+    { "id": 1, "degree": 2, "kind": "linear", "cross_time": 5 }
+  ],
+  "segments": [
+    { "id": 0, "from": { "type": "trap", "id": 0 }, "to": { "type": "junction", "id": 0 }, "length": 10, "capacity": 16 },
+    { "id": 1, "from": { "type": "trap", "id": 1 }, "to": { "type": "junction", "id": 0 }, "length": 10, "capacity": 16 },
+    { "id": 2, "from": { "type": "trap", "id": 1 }, "to": { "type": "junction", "id": 1 }, "length": 10, "capacity": 16 },
+    { "id": 3, "from": { "type": "trap", "id": 2 }, "to": { "type": "junction", "id": 1 }, "length": 10, "capacity": 16 }
+  ],
+  "layout": {
+    "trap:0": { "x": 0, "y": 0, "angle": 0 },
+    "junction:0": { "x": 120, "y": 0 },
+    "trap:1": { "x": 240, "y": 0, "angle": 0 },
+    "junction:1": { "x": 360, "y": 0 },
+    "trap:2": { "x": 480, "y": 0, "angle": 0 }
+  }
+}

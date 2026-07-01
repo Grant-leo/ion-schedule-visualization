@@ -7,6 +7,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from architecture_schema import ArchitectureValidationError, validate_architecture_spec
 from external_trace_adapter import ExternalTraceError, adapt_external_trace
 from parse import InputParse
 from simulation import (
@@ -81,6 +82,45 @@ def generate_trace(program_id, machine, capacity, mapper, ordering="Naive", sche
     return trace
 
 
+def generate_custom_trace(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("Custom trace request must be an object")
+    architecture_spec = payload.get("architecture")
+    if architecture_spec is None:
+        raise ValueError("Missing custom architecture payload")
+    normalized_architecture = validate_architecture_spec(architecture_spec)
+    program_id = str(payload.get("program") or "")
+    capacity = int(payload.get("capacity"))
+    mapper = str(payload.get("mapper") or "")
+    ordering = str(payload.get("ordering") or "Naive")
+    scheduler = str(payload.get("scheduler") or "EJF")
+    _validate_custom_trace_options(program_id, capacity, mapper, ordering, scheduler, normalized_architecture)
+    serial_trap_ops, serial_comm, serial_all = scheduler_policy_flags(scheduler)
+
+    config = SimulationConfig(
+        program=str(ROOT / PROGRAMS[program_id]["path"]),
+        machine=f"CUSTOM:{normalized_architecture['id']}",
+        ions=capacity,
+        mapper=mapper,
+        reorder=ordering,
+        serial_trap_ops=serial_trap_ops,
+        serial_comm=serial_comm,
+        serial_all=serial_all,
+        scheduler_policy=scheduler,
+        gate_type="FM",
+        swap_type="GateSwap",
+        single_qubit_gate_time=7,
+        single_qubit_gate_fidelity=0.999,
+        architecture_spec=architecture_spec,
+    )
+    trace = export_trace(run_simulation(config))
+    validation = trace.get("validation") or {}
+    if not validation.get("valid", False):
+        errors = "; ".join((validation.get("errors") or [])[:4]) or "unknown validation error"
+        raise ValueError(f"Generated custom trace failed validation: {errors}")
+    return trace
+
+
 @lru_cache(maxsize=64)
 def _generate_trace_json(program_id, machine, capacity, mapper, ordering, scheduler):
     if program_id not in PROGRAMS:
@@ -135,6 +175,28 @@ def _validate_demo_capacity(program_id, machine, capacity):
         )
 
 
+def _validate_custom_trace_options(program_id, capacity, mapper, ordering, scheduler, normalized_architecture):
+    if program_id not in PROGRAMS:
+        raise ValueError(f"Unsupported program: {program_id}")
+    if capacity not in CAPACITIES:
+        raise ValueError(f"Unsupported capacity: {capacity}")
+    if mapper not in MAPPERS:
+        raise ValueError(f"Unsupported mapper: {mapper}")
+    if ordering not in ORDERINGS:
+        raise ValueError(f"Unsupported ordering: {ordering}")
+    if scheduler not in VISUALIZER_SCHEDULERS:
+        raise ValueError(f"Unsupported visualizer scheduler: {scheduler}")
+    qubits = _program_qubit_count(program_id)
+    trap_count = len(normalized_architecture["topology"]["traps"])
+    slots = trap_count * capacity
+    if qubits > slots:
+        raise ValueError(
+            f"{PROGRAMS[program_id]['label']} requires {qubits} logical qubits, "
+            f"but custom architecture {normalized_architecture['id']} with initial load cap {capacity} "
+            f"provides {slots} initial ion slots"
+        )
+
+
 @lru_cache(maxsize=32)
 def _program_qubit_count(program_id):
     qubits = PROGRAMS[program_id].get("qubits")
@@ -174,6 +236,12 @@ class VisualizerHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/import/trace":
             self._handle_import_trace()
             return
+        if parsed.path == "/api/architecture/validate":
+            self._handle_architecture_validate()
+            return
+        if parsed.path == "/api/trace/custom":
+            self._handle_custom_trace()
+            return
         self._send_json({"error": "Unsupported endpoint"}, status=HTTPStatus.NOT_FOUND)
 
     def _handle_trace(self, query):
@@ -189,26 +257,53 @@ class VisualizerHandler(SimpleHTTPRequestHandler):
             self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
 
     def _handle_import_trace(self):
+        payload = self._read_json_payload("Imported trace payload is too large")
+        if payload is None:
+            return
+        try:
+            self._send_json(adapt_external_trace(payload))
+        except ExternalTraceError as exc:
+            self._send_json({"error": str(exc), "details": exc.details}, status=HTTPStatus.BAD_REQUEST)
+
+    def _handle_architecture_validate(self):
+        payload = self._read_json_payload("Architecture payload is too large")
+        if payload is None:
+            return
+        try:
+            self._send_json(validate_architecture_spec(payload))
+        except ArchitectureValidationError as exc:
+            self._send_json({"error": str(exc), "details": exc.details}, status=HTTPStatus.BAD_REQUEST)
+
+    def _handle_custom_trace(self):
+        payload = self._read_json_payload("Custom trace payload is too large")
+        if payload is None:
+            return
+        try:
+            self._send_json(generate_custom_trace(payload))
+        except ArchitectureValidationError as exc:
+            self._send_json({"error": str(exc), "details": exc.details}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+
+    def _read_json_payload(self, too_large_error):
         content_type = self.headers.get("Content-Type", "")
         if not content_type.lower().split(";")[0].strip() == "application/json":
             self._send_json({"error": "Unsupported content type"}, status=HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
-            return
+            return None
         try:
             content_length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             self._send_json({"error": "Invalid Content-Length"}, status=HTTPStatus.BAD_REQUEST)
-            return
+            return None
         if content_length > MAX_IMPORT_BYTES:
-            self._send_json({"error": "Imported trace payload is too large"}, status=HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
-            return
+            self._send_json({"error": too_large_error}, status=HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            return None
         try:
             body = self.rfile.read(content_length)
-            payload = json.loads(body.decode("utf-8"))
-            self._send_json(adapt_external_trace(payload))
+            return json.loads(body.decode("utf-8"))
         except json.JSONDecodeError as exc:
             self._send_json({"error": f"Malformed JSON: {exc.msg}"}, status=HTTPStatus.BAD_REQUEST)
-        except ExternalTraceError as exc:
-            self._send_json({"error": str(exc), "details": exc.details}, status=HTTPStatus.BAD_REQUEST)
+            return None
 
     def _send_json(self, payload, status=HTTPStatus.OK):
         body = json.dumps(payload, indent=2).encode("utf-8")

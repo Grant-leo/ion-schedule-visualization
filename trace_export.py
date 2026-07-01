@@ -655,6 +655,10 @@ def _junction_to_trace(machine, junction):
 
 
 def _layout(machine, machine_name):
+    custom_architecture = getattr(machine, "custom_architecture", None)
+    custom_layout = ((custom_architecture or {}).get("topology") or {}).get("layout")
+    if custom_layout:
+        return custom_layout
     if machine_name == "L6":
         return _linear_layout(machine)
     if machine_name in {"T4x2", "T6x3", "T8x4", "G2x3"}:

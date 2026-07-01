@@ -1,0 +1,17 @@
+{
+  "schema_version": "qccd_architecture_v1",
+  "id": "duplicate_traps",
+  "name": "Duplicate traps",
+  "device_type": "ion_trap_qccd",
+  "traps": [
+    { "id": 0, "capacity": 2, "ports": [{ "segment": 0, "side": "R" }] },
+    { "id": 0, "capacity": 2, "ports": [{ "segment": 1, "side": "L" }] }
+  ],
+  "junctions": [
+    { "id": 0, "degree": 2 }
+  ],
+  "segments": [
+    { "id": 0, "from": { "type": "trap", "id": 0 }, "to": { "type": "junction", "id": 0 } },
+    { "id": 1, "from": { "type": "trap", "id": 0 }, "to": { "type": "junction", "id": 0 } }
+  ]
+}

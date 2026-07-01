@@ -71,13 +71,31 @@ test("app exposes an imported trace source backed by the import adapter", () => 
   assert.match(indexSource, /data-source-mode="import"/);
   assert.match(indexSource, /id="importTraceInput"/);
   assert.match(indexSource, /id="importTraceButton"/);
-  assert.match(appSource, /from\s+"\.\/import_panel\.js\?v=20260701-import1"/);
+  assert.match(appSource, /from\s+"\.\/import_panel\.js\?v=20260701-architecture1"/);
   assert.match(appSource, /async function loadImportedTrace\(\)/);
   assert.match(appSource, /importTraceText\(text\)/);
   assert.match(appSource, /elements\.importTraceInput\.disabled\s*=\s*generationLoading/);
   assert.doesNotMatch(appSource, /elements\.importTraceInput\.disabled\s*=\s*generationLoading\s*\|\|\s*sourceMode\s*!==\s*"import"/);
   assert.doesNotMatch(appSource, /const EXPERIMENT_CONFIG_ELEMENTS = \[(?:(?!\];)[\s\S])*elements\.importTraceButton/);
   assert.match(appSource, /sourceMode\s*!==\s*"import"/);
+  assert.doesNotMatch(appSource, /sourceMode\s*===\s*"architecture"/);
+});
+
+test("custom architecture import lives inside experiment configuration", () => {
+  assert.match(indexSource, /id="architectureImportPanel"/);
+  assert.match(indexSource, /id="architectureImportInput"/);
+  assert.match(indexSource, /id="architectureImportButton"/);
+  assert.match(indexSource, /id="architectureImportStatus"[^>]*aria-live="polite"/);
+  assert.match(indexSource, /id="architecturePreviewPanel"/);
+  assert.ok(indexSource.indexOf('id="architectureSelect"') < indexSource.indexOf('id="architectureImportPanel"'));
+  assert.ok(indexSource.indexOf('id="architectureImportPanel"') < indexSource.indexOf('id="capacitySelect"'));
+  assert.doesNotMatch(indexSource, /data-source-mode="architecture"/);
+  assert.match(cssSource, /\.architecture-import-panel/);
+  assert.match(appSource, /architectureImportInput:\s*document\.getElementById\("architectureImportInput"\)/);
+  assert.match(appSource, /async function loadImportedArchitecture\(\)/);
+  assert.match(appSource, /importArchitectureText\(text\)/);
+  assert.match(appSource, /api\/trace\/custom/);
+  assert.match(appSource, /setSourceMode\("experiment"\)/);
 });
 
 test("invalid traces are rejected before replay installation", () => {

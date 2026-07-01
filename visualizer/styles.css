@@ -704,6 +704,60 @@ select {
   color: #ffb8be;
 }
 
+.architecture-import-panel {
+  margin-top: var(--space-2);
+  padding: 8px 9px;
+  border: 1px solid rgba(100, 210, 255, 0.16);
+  border-radius: var(--radius-2);
+  background: rgba(100, 210, 255, 0.045);
+}
+
+.architecture-import-panel summary {
+  min-height: 20px;
+  margin: 0;
+  color: var(--color-text);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.architecture-import-panel[open] summary {
+  margin-bottom: 6px;
+}
+
+.architecture-import-status,
+.architecture-preview-panel {
+  margin-top: var(--space-2);
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.38;
+}
+
+.architecture-import-status.is-valid {
+  color: #a8ee86;
+}
+
+.architecture-import-status.is-invalid {
+  color: #ffb8be;
+}
+
+.architecture-preview-panel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.architecture-preview-panel span {
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-2);
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: center;
+}
+
 .advanced-config .primary-action {
   width: 100%;
   margin-top: var(--space-3);

@@ -1,7 +1,7 @@
 import { createRenderer } from "./canvas_renderer.js?v=20260630-rottrap1";
 import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-circuit-parallel2";
 import { renderDagSvg } from "./dag_renderer.js?v=20260630-swap-circuit1";
-import { importTraceText } from "./import_panel.js?v=20260701-import1";
+import { importArchitectureText, importTraceText } from "./import_panel.js?v=20260701-architecture1";
 import { createReplay, validateTrace } from "./replay.js?v=20260630-fidelity2";
 import { fetchJson, formatErrorMessage, isAbortError } from "./api_client.js?v=20260701-foundation1";
 import { createRunStore } from "./run_store.js?v=20260701-foundation1";
@@ -32,6 +32,10 @@ const elements = {
   scenarioDescription: document.getElementById("scenarioDescription"),
   programSelect: document.getElementById("programSelect"),
   architectureSelect: document.getElementById("architectureSelect"),
+  architectureImportInput: document.getElementById("architectureImportInput"),
+  architectureImportButton: document.getElementById("architectureImportButton"),
+  architectureImportStatus: document.getElementById("architectureImportStatus"),
+  architecturePreviewPanel: document.getElementById("architecturePreviewPanel"),
   capacitySelect: document.getElementById("capacitySelect"),
   mapperSelect: document.getElementById("mapperSelect"),
   orderingSelect: document.getElementById("orderingSelect"),
@@ -67,6 +71,8 @@ const GENERATION_LOCKED_ELEMENTS = [
   elements.traceSelect,
   elements.importTraceInput,
   elements.importTraceButton,
+  elements.architectureImportInput,
+  elements.architectureImportButton,
   elements.programSelect,
   elements.architectureSelect,
   elements.capacitySelect,
@@ -83,6 +89,8 @@ const GENERATION_LOCKED_ELEMENTS = [
 const EXPERIMENT_CONFIG_ELEMENTS = [
   elements.programSelect,
   elements.architectureSelect,
+  elements.architectureImportInput,
+  elements.architectureImportButton,
   elements.capacitySelect,
   elements.mapperSelect,
   elements.orderingSelect,
@@ -94,6 +102,7 @@ const PLAYBACK_ELEMENTS = [elements.playPauseButton, elements.restartButton, ele
 
 const renderer = createRenderer(elements.canvas);
 const runStore = createRunStore();
+const CUSTOM_ARCH_PREFIX = "CUSTOM:";
 
 let replay = null;
 let trace = null;
@@ -125,6 +134,8 @@ let lastExpandedCircuitKey = "";
 let latestTimeDelta = null;
 let latestShuttleDelta = null;
 let latestFidelityDelta = null;
+let generationActionLabel = "Generating...";
+let customArchitectureSpec = null;
 
 init().catch((error) => {
   const message = formatErrorMessage(error);
@@ -205,6 +216,50 @@ function fillSelect(select, values) {
   }
 }
 
+function customArchitectureValue(architecture) {
+  return `${CUSTOM_ARCH_PREFIX}${architecture.id}`;
+}
+
+function isCustomArchitectureValue(value) {
+  return String(value || "").startsWith(CUSTOM_ARCH_PREFIX);
+}
+
+function installCustomArchitectureOption(architecture) {
+  const value = customArchitectureValue(architecture);
+  const trapCount = architecture.topology?.traps?.length || 0;
+  machineTrapCounts.set(value, trapCount);
+  let option = [...elements.architectureSelect.options].find((item) => item.value === value);
+  if (!option) {
+    option = document.createElement("option");
+    elements.architectureSelect.appendChild(option);
+  }
+  option.value = value;
+  option.textContent = `${architecture.name || architecture.id} (custom, ${trapCount} traps)`;
+  elements.architectureSelect.value = value;
+}
+
+function renderArchitectureImportStatus(message, state = "") {
+  elements.architectureImportStatus.textContent = message;
+  elements.architectureImportStatus.classList.toggle("is-valid", state === "valid");
+  elements.architectureImportStatus.classList.toggle("is-invalid", state === "invalid");
+}
+
+function renderArchitecturePreview(architecture) {
+  const topology = architecture.topology || {};
+  const items = [
+    ["Traps", topology.traps?.length || 0],
+    ["Segments", topology.segments?.length || 0],
+    ["Junctions", topology.junctions?.length || 0],
+  ];
+  elements.architecturePreviewPanel.replaceChildren();
+  for (const [label, value] of items) {
+    const item = document.createElement("span");
+    item.textContent = `${label} ${value}`;
+    elements.architecturePreviewPanel.appendChild(item);
+  }
+  elements.architecturePreviewPanel.hidden = false;
+}
+
 function configOptionsFromManifest(manifest) {
   const programById = new Map();
   for (const item of manifest) {
@@ -228,6 +283,8 @@ function wireControls() {
   });
   elements.importTraceInput.addEventListener("change", () => setSourceMode("import"));
   elements.importTraceButton.addEventListener("click", () => loadImportedTrace());
+  elements.architectureImportInput.addEventListener("change", () => setSourceMode("experiment"));
+  elements.architectureImportButton.addEventListener("click", () => loadImportedArchitecture());
   elements.loadConfigButton.addEventListener("click", () => loadSelectedConfig());
   for (const button of elements.sourceModeButtons) {
     button.addEventListener("click", async () => {
@@ -338,6 +395,7 @@ async function loadImportedTrace() {
   }
   const { requestId } = beginLoadRequest();
   setSourceMode("import");
+  generationActionLabel = "Generating...";
   setGenerationLoading(true);
   try {
     const text = await file.text();
@@ -351,6 +409,45 @@ async function loadImportedTrace() {
     setReplayBlocked(true);
     showConfigError(message);
     elements.eventPanel.textContent = message;
+  } finally {
+    if (requestId === loadRequestId) {
+      setGenerationLoading(false);
+    }
+  }
+}
+
+async function loadImportedArchitecture() {
+  const file = elements.architectureImportInput.files?.[0];
+  if (!file) {
+    setSourceMode("experiment");
+    renderArchitectureImportStatus("Choose a local QCCD architecture JSON file.", "invalid");
+    showConfigError("Choose a local QCCD architecture JSON file.");
+    return;
+  }
+  const { requestId } = beginLoadRequest();
+  setSourceMode("experiment");
+  generationActionLabel = "Validating...";
+  setGenerationLoading(true);
+  renderArchitectureImportStatus("Validating architecture graph...", "loading");
+  try {
+    const text = await file.text();
+    const normalized = await importArchitectureText(text);
+    if (requestId !== loadRequestId) return;
+    customArchitectureSpec = JSON.parse(text);
+    installCustomArchitectureOption(normalized);
+    renderArchitecturePreview(normalized);
+    renderArchitectureImportStatus(`Validated ${normalized.name || normalized.id}.`, "valid");
+    clearConfigError();
+    renderSelectedBenchmark();
+  } catch (error) {
+    if (requestId !== loadRequestId) return;
+    customArchitectureSpec = null;
+    elements.architecturePreviewPanel.hidden = true;
+    elements.architecturePreviewPanel.replaceChildren();
+    const details = Array.isArray(error.details) && error.details.length ? ` ${error.details.slice(0, 3).join("; ")}` : "";
+    const message = `${formatErrorMessage(error)}.${details}`.replace(/\.\s*\./, ".");
+    renderArchitectureImportStatus(message, "invalid");
+    showConfigError(message);
   } finally {
     if (requestId === loadRequestId) {
       setGenerationLoading(false);
@@ -427,20 +524,45 @@ async function loadSelectedConfig({ preserveControlScroll = true } = {}) {
     renderSelectedBenchmark();
     return;
   }
+  if (isCustomArchitectureValue(machine) && !customArchitectureSpec) {
+    const message = "Validate a custom architecture JSON before generating a custom schedule.";
+    setStatus("Custom architecture missing", "invalid", message);
+    setReplayBlocked(true);
+    elements.eventPanel.textContent = message;
+    showConfigError(message);
+    return;
+  }
+  generationActionLabel = "Generating...";
   setGenerationLoading(true);
 
   try {
     if (apiAvailable) {
       setStatus("Generating schedule", "loading");
-      const params = new URLSearchParams({
-        program,
-        machine,
-        capacity: String(capacity),
-        mapper,
-        ordering,
-        scheduler,
-      });
-      const nextTrace = await fetchJson(`api/trace?${params.toString()}`, { signal });
+      const nextTrace = isCustomArchitectureValue(machine)
+        ? await fetchJson("api/trace/custom", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              program,
+              capacity,
+              mapper,
+              ordering,
+              scheduler,
+              architecture: customArchitectureSpec,
+            }),
+            signal,
+          })
+        : await fetchJson(
+            `api/trace?${new URLSearchParams({
+              program,
+              machine,
+              capacity: String(capacity),
+              mapper,
+              ordering,
+              scheduler,
+            }).toString()}`,
+            { signal },
+          );
       if (requestId !== loadRequestId) return;
       if (!loadTraceData(nextTrace, { resetControlPanelScroll: !preserveControlScroll })) return;
       restoreControlScrollTop(controlScrollTop);
@@ -682,14 +804,19 @@ function setGenerationLoading(isLoading) {
     playing = false;
     elements.playPauseButton.textContent = "Play";
   }
-  elements.loadConfigButton.textContent = isLoading ? "Generating..." : "Generate Schedule";
+  elements.loadConfigButton.textContent = isLoading ? generationActionLabel : "Generate Schedule";
   elements.importTraceButton.textContent = isLoading && sourceMode === "import" ? "Importing..." : "Import Trace";
+  elements.architectureImportButton.textContent =
+    isLoading && generationActionLabel === "Validating..." ? "Validating..." : "Validate Architecture";
   for (const element of GENERATION_LOCKED_ELEMENTS) {
     element.disabled = isLoading;
   }
   updatePlaybackAvailability();
   applySourceModeAvailability();
   updateSchedulerModeButtons();
+  if (!isLoading) {
+    generationActionLabel = "Generating...";
+  }
 }
 
 function setSourceMode(mode) {
@@ -713,6 +840,8 @@ function applySourceModeAvailability() {
   elements.importTraceButton.disabled = generationLoading || sourceMode !== "import";
   const experimentDisabled = generationLoading || sourceMode !== "experiment";
   elements.loadConfigButton.disabled = generationLoading || sourceMode !== "experiment";
+  elements.architectureImportInput.disabled = experimentDisabled;
+  elements.architectureImportButton.disabled = experimentDisabled;
   for (const element of EXPERIMENT_CONFIG_ELEMENTS) {
     element.disabled = experimentDisabled;
   }
