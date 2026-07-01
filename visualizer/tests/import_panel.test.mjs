@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { importArchitectureText, importTraceText, parseImportText } from "../import_panel.js";
+import {
+  generateCircuitTrace,
+  importArchitectureText,
+  importTraceText,
+  parseImportText,
+  validateCircuitText,
+} from "../import_panel.js";
 
 
 test("parseImportText parses local JSON text", () => {
@@ -61,4 +67,66 @@ test("importArchitectureText posts the parsed payload to the architecture valida
   assert.equal(calls[0].options.method, "POST");
   assert.equal(calls[0].options.headers["Content-Type"], "application/json");
   assert.deepEqual(JSON.parse(calls[0].options.body), { schema_version: "qccd_architecture_v1" });
+});
+
+
+test("validateCircuitText posts OpenQASM text to the circuit validator", async () => {
+  const calls = [];
+  const summary = { valid: true, id: "qasm:abc", qubits: 2 };
+  const fetchImpl = async (path, options) => {
+    calls.push({ path, options });
+    return {
+      ok: true,
+      status: 200,
+      async text() {
+        return JSON.stringify(summary);
+      },
+    };
+  };
+
+  const result = await validateCircuitText("OPENQASM 2.0;", { sourceLabel: "inline", fetchImpl });
+
+  assert.deepEqual(result, summary);
+  assert.equal(calls[0].path, "api/circuit/validate");
+  assert.equal(calls[0].options.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].options.body), { qasm: "OPENQASM 2.0;", source_label: "inline" });
+});
+
+
+test("generateCircuitTrace posts imported QASM and experiment configuration to trace endpoint", async () => {
+  const calls = [];
+  const trace = { validation: { valid: true }, run: { program: "IMPORTED:qasm:abc" } };
+  const fetchImpl = async (path, options) => {
+    calls.push({ path, options });
+    return {
+      ok: true,
+      status: 200,
+      async text() {
+        return JSON.stringify(trace);
+      },
+    };
+  };
+
+  const result = await generateCircuitTrace("OPENQASM 2.0;", {
+    sourceLabel: "inline",
+    machine: "L6",
+    capacity: 2,
+    mapper: "Greedy",
+    ordering: "Naive",
+    scheduler: "EJF",
+    fetchImpl,
+  });
+
+  assert.deepEqual(result, trace);
+  assert.equal(calls[0].path, "api/trace");
+  assert.equal(calls[0].options.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    qasm: "OPENQASM 2.0;",
+    source_label: "inline",
+    machine: "L6",
+    capacity: 2,
+    mapper: "Greedy",
+    ordering: "Naive",
+    scheduler: "EJF",
+  });
 });

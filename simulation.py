@@ -43,6 +43,8 @@ class SimulationConfig:
     single_qubit_gate_fidelity: float = 0.999
     scheduler_policy: str = ""
     architecture_spec: object = None
+    program_text: str = ""
+    source_label: str = ""
 
 
 @dataclass
@@ -198,7 +200,10 @@ def _layout_to_qubit_mapping(layout):
 def run_simulation(config):
     np.random.seed(12345)
     parser = InputParse()
-    parser.parse_ir(config.program)
+    if config.program_text:
+        parser.parse_qasm_text(config.program_text)
+    else:
+        parser.parse_ir(config.program)
     machine = build_machine(config)
     initial_layout = build_initial_layout(config, parser, machine)
     serial_trap_ops, serial_comm, serial_all = effective_scheduler_flags(config)

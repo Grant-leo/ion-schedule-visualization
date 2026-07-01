@@ -71,7 +71,7 @@ test("app exposes an imported trace source backed by the import adapter", () => 
   assert.match(indexSource, /data-source-mode="import"/);
   assert.match(indexSource, /id="importTraceInput"/);
   assert.match(indexSource, /id="importTraceButton"/);
-  assert.match(appSource, /from\s+"\.\/import_panel\.js\?v=20260701-architecture1"/);
+  assert.match(appSource, /from\s+"\.\/import_panel\.js\?v=20260701-circuit-import1"/);
   assert.match(appSource, /async function loadImportedTrace\(\)/);
   assert.match(appSource, /importTraceText\(text\)/);
   assert.match(appSource, /elements\.importTraceInput\.disabled\s*=\s*generationLoading/);
@@ -96,6 +96,23 @@ test("custom architecture import lives inside experiment configuration", () => {
   assert.match(appSource, /importArchitectureText\(text\)/);
   assert.match(appSource, /api\/trace\/custom/);
   assert.match(appSource, /setSourceMode\("experiment"\)/);
+});
+
+test("inline OpenQASM circuit import lives inside experiment configuration", () => {
+  assert.match(indexSource, /id="circuitImportPanel"/);
+  assert.match(indexSource, /id="circuitImportText"/);
+  assert.match(indexSource, /id="circuitImportFile"/);
+  assert.match(indexSource, /id="circuitValidateButton"/);
+  assert.match(indexSource, /id="circuitImportStatus"[^>]*aria-live="polite"/);
+  assert.ok(indexSource.indexOf('id="programSelect"') < indexSource.indexOf('id="circuitImportPanel"'));
+  assert.ok(indexSource.indexOf('id="circuitImportPanel"') < indexSource.indexOf('id="benchmarkMetaPanel"'));
+  assert.doesNotMatch(indexSource, /data-source-mode="circuit"/);
+  assert.match(cssSource, /\.circuit-import-panel/);
+  assert.match(appSource, /circuitImportText:\s*document\.getElementById\("circuitImportText"\)/);
+  assert.match(appSource, /async function validateImportedCircuit\(\)/);
+  assert.match(appSource, /validateCircuitText\(qasm/);
+  assert.match(appSource, /generateCircuitTrace\(importedCircuitText/);
+  assert.match(appSource, /IMPORTED:\$\{summary\.id\}/);
 });
 
 test("invalid traces are rejected before replay installation", () => {

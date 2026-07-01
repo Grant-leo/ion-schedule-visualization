@@ -9,6 +9,7 @@ import pytest
 
 from visualizer_server import VisualizerHandler
 from visualizer_server import CAPACITIES
+from visualizer_server import MAX_IMPORT_BYTES
 from visualizer_server import PROGRAMS
 from visualizer_server import STATIC_DIR
 from visualizer_server import _machine_trap_count
@@ -247,6 +248,130 @@ def test_visualizer_architecture_validate_endpoint_rejects_wrong_content_type_an
     assert excinfo.value.code == 400
     payload = json.loads(excinfo.value.read().decode("utf-8"))
     assert "Malformed JSON" in payload["error"]
+
+
+def test_visualizer_circuit_validate_endpoint_accepts_inline_openqasm(visualizer_http_server):
+    qasm = """
+    OPENQASM 2.0;
+    include "qelib1.inc";
+    qreg q[2];
+    h q[0];
+    cx q[0], q[1];
+    """
+
+    payload = post_json(f"{visualizer_http_server}/api/circuit/validate", {"qasm": qasm, "source_label": "inline bell"})
+
+    assert payload["valid"] is True
+    assert payload["source_label"] == "inline bell"
+    assert payload["qubits"] == 2
+    assert payload["cx"] == 1
+    assert payload["recommended_initial_load_cap"] == 1
+    assert payload["decomposition"]["transpiler_seed"] == 12345
+    assert payload["id"].startswith("qasm:")
+
+
+def test_visualizer_circuit_validate_endpoint_rejects_invalid_openqasm(visualizer_http_server):
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        post_json(f"{visualizer_http_server}/api/circuit/validate", {"qasm": "OPENQASM 2.0; qreg q[2]; cx q[0], ;"})
+
+    assert excinfo.value.code == 400
+    payload = json.loads(excinfo.value.read().decode("utf-8"))
+    assert payload["error"] == "Invalid OpenQASM circuit"
+    assert any("OpenQASM parse failed" in detail for detail in payload["details"])
+
+
+def test_visualizer_circuit_validate_endpoint_rejects_wrong_content_type_malformed_json_and_oversized_payload(
+    visualizer_http_server,
+):
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        post_json(f"{visualizer_http_server}/api/circuit/validate", {"bad": True}, content_type="text/plain")
+    assert excinfo.value.code == 415
+
+    request = urllib.request.Request(
+        f"{visualizer_http_server}/api/circuit/validate",
+        data=b"{bad json",
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        urllib.request.urlopen(request, timeout=60)
+    assert excinfo.value.code == 400
+    payload = json.loads(excinfo.value.read().decode("utf-8"))
+    assert "Malformed JSON" in payload["error"]
+
+    request = urllib.request.Request(
+        f"{visualizer_http_server}/api/circuit/validate",
+        data=b" " * (MAX_IMPORT_BYTES + 1),
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        urllib.request.urlopen(request, timeout=60)
+    assert excinfo.value.code == 413
+    payload = json.loads(excinfo.value.read().decode("utf-8"))
+    assert payload["error"] == "Circuit payload is too large"
+
+
+def test_visualizer_trace_post_generates_schedule_from_inline_openqasm(visualizer_http_server):
+    qasm = """
+    OPENQASM 2.0;
+    include "qelib1.inc";
+    qreg q[2];
+    h q[0];
+    cx q[0], q[1];
+    rz(pi/8) q[1];
+    """
+
+    trace = post_json(
+        f"{visualizer_http_server}/api/trace",
+        {
+            "qasm": qasm,
+            "source_label": "inline bell",
+            "machine": "L6",
+            "capacity": 1,
+            "mapper": "Greedy",
+            "ordering": "Naive",
+            "scheduler": "EJF",
+        },
+    )
+
+    assert trace["validation"]["valid"] is True
+    assert trace["run"]["program"].startswith("IMPORTED:qasm:")
+    assert trace["run"]["source_label"] == "inline bell"
+    assert trace["dag"]["nodes"][0]["gate_name"] == "h"
+    assert any(node["gate_name"] == "cx" for node in trace["dag"]["nodes"])
+
+
+def test_visualizer_trace_post_rejects_wrong_content_type_malformed_json_and_oversized_payload(
+    visualizer_http_server,
+):
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        post_json(f"{visualizer_http_server}/api/trace", {"bad": True}, content_type="text/plain")
+    assert excinfo.value.code == 415
+
+    request = urllib.request.Request(
+        f"{visualizer_http_server}/api/trace",
+        data=b"{bad json",
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        urllib.request.urlopen(request, timeout=60)
+    assert excinfo.value.code == 400
+    payload = json.loads(excinfo.value.read().decode("utf-8"))
+    assert "Malformed JSON" in payload["error"]
+
+    request = urllib.request.Request(
+        f"{visualizer_http_server}/api/trace",
+        data=b" " * (MAX_IMPORT_BYTES + 1),
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        urllib.request.urlopen(request, timeout=60)
+    assert excinfo.value.code == 413
+    payload = json.loads(excinfo.value.read().decode("utf-8"))
+    assert payload["error"] == "Imported circuit trace payload is too large"
 
 
 def test_visualizer_custom_trace_endpoint_generates_schedule_from_valid_architecture(visualizer_http_server):

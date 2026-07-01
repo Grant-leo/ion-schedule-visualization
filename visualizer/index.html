@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>QCCD Schedule Visual Debugger</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070809'/%3E%3Cpath d='M7 16h18M16 7v18' stroke='%2364d2ff' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23ffd166'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css?v=20260701-architecture1" />
+    <link rel="stylesheet" href="./styles.css?v=20260701-circuit-import1" />
   </head>
   <body>
     <div class="app-shell">
@@ -68,6 +68,15 @@
             <summary>Experiment configuration</summary>
             <label for="programSelect">Circuit</label>
             <select id="programSelect"></select>
+            <details id="circuitImportPanel" class="circuit-import-panel">
+              <summary>Imported circuit</summary>
+              <label for="circuitImportText">OpenQASM</label>
+              <textarea id="circuitImportText" rows="5" spellcheck="false"></textarea>
+              <label for="circuitImportFile">Circuit file</label>
+              <input id="circuitImportFile" type="file" accept=".qasm,.txt,text/plain" />
+              <button id="circuitValidateButton" class="secondary-action" type="button">Validate Circuit</button>
+              <div id="circuitImportStatus" class="circuit-import-status" aria-live="polite"></div>
+            </details>
             <div id="benchmarkMetaPanel" class="benchmark-meta"></div>
             <label for="architectureSelect">Architecture</label>
             <select id="architectureSelect"></select>
@@ -165,6 +174,6 @@
         <div id="circuitDialogPanel" class="circuit-dialog-body" aria-label="Expanded TikZ-style circuit synchronized with playback"></div>
       </section>
     </div>
-    <script type="module" src="./app.js?v=20260701-architecture1"></script>
+    <script type="module" src="./app.js?v=20260701-circuit-import1"></script>
   </body>
 </html>

@@ -30,3 +30,32 @@ export async function importArchitectureText(text, options = {}) {
     fetchImpl: options.fetchImpl,
   });
 }
+
+
+export async function validateCircuitText(qasm, options = {}) {
+  return fetchJson("api/circuit/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ qasm, source_label: options.sourceLabel || "Imported circuit" }),
+    fetchImpl: options.fetchImpl,
+  });
+}
+
+
+export async function generateCircuitTrace(qasm, options = {}) {
+  return fetchJson("api/trace", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      qasm,
+      source_label: options.sourceLabel || "Imported circuit",
+      machine: options.machine,
+      capacity: options.capacity,
+      mapper: options.mapper,
+      ordering: options.ordering,
+      scheduler: options.scheduler,
+    }),
+    fetchImpl: options.fetchImpl,
+    signal: options.signal,
+  });
+}

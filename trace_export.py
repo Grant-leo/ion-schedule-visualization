@@ -561,7 +561,7 @@ def _run_config(result):
     serial_trap_ops, serial_comm, serial_all = effective_scheduler_flags(config)
     physical_capacity = _machine_physical_capacity(result.machine)
     communication_buffer = max(0, physical_capacity - config.ions) if physical_capacity is not None else 0
-    return {
+    payload = {
         "program": config.program,
         "machine": config.machine,
         "ions_per_region": config.ions,
@@ -579,6 +579,9 @@ def _run_config(result):
         "single_qubit_gate_time": config.single_qubit_gate_time,
         "single_qubit_gate_fidelity": config.single_qubit_gate_fidelity,
     }
+    if getattr(config, "source_label", ""):
+        payload["source_label"] = config.source_label
+    return payload
 
 
 def _machine_physical_capacity(machine):

@@ -1,7 +1,12 @@
 import { createRenderer } from "./canvas_renderer.js?v=20260630-rottrap1";
 import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-circuit-parallel2";
 import { renderDagSvg } from "./dag_renderer.js?v=20260630-swap-circuit1";
-import { importArchitectureText, importTraceText } from "./import_panel.js?v=20260701-architecture1";
+import {
+  generateCircuitTrace,
+  importArchitectureText,
+  importTraceText,
+  validateCircuitText,
+} from "./import_panel.js?v=20260701-circuit-import1";
 import { createReplay, validateTrace } from "./replay.js?v=20260630-fidelity2";
 import { fetchJson, formatErrorMessage, isAbortError } from "./api_client.js?v=20260701-foundation1";
 import { createRunStore } from "./run_store.js?v=20260701-foundation1";
@@ -31,6 +36,10 @@ const elements = {
   scenarioTitle: document.getElementById("scenarioTitle"),
   scenarioDescription: document.getElementById("scenarioDescription"),
   programSelect: document.getElementById("programSelect"),
+  circuitImportText: document.getElementById("circuitImportText"),
+  circuitImportFile: document.getElementById("circuitImportFile"),
+  circuitValidateButton: document.getElementById("circuitValidateButton"),
+  circuitImportStatus: document.getElementById("circuitImportStatus"),
   architectureSelect: document.getElementById("architectureSelect"),
   architectureImportInput: document.getElementById("architectureImportInput"),
   architectureImportButton: document.getElementById("architectureImportButton"),
@@ -73,6 +82,9 @@ const GENERATION_LOCKED_ELEMENTS = [
   elements.importTraceButton,
   elements.architectureImportInput,
   elements.architectureImportButton,
+  elements.circuitImportText,
+  elements.circuitImportFile,
+  elements.circuitValidateButton,
   elements.programSelect,
   elements.architectureSelect,
   elements.capacitySelect,
@@ -88,6 +100,9 @@ const GENERATION_LOCKED_ELEMENTS = [
 
 const EXPERIMENT_CONFIG_ELEMENTS = [
   elements.programSelect,
+  elements.circuitImportText,
+  elements.circuitImportFile,
+  elements.circuitValidateButton,
   elements.architectureSelect,
   elements.architectureImportInput,
   elements.architectureImportButton,
@@ -103,6 +118,7 @@ const PLAYBACK_ELEMENTS = [elements.playPauseButton, elements.restartButton, ele
 const renderer = createRenderer(elements.canvas);
 const runStore = createRunStore();
 const CUSTOM_ARCH_PREFIX = "CUSTOM:";
+const IMPORTED_CIRCUIT_PREFIX = "IMPORTED:";
 
 let replay = null;
 let trace = null;
@@ -136,6 +152,8 @@ let latestShuttleDelta = null;
 let latestFidelityDelta = null;
 let generationActionLabel = "Generating...";
 let customArchitectureSpec = null;
+let importedCircuitText = "";
+let importedCircuitSummary = null;
 
 init().catch((error) => {
   const message = formatErrorMessage(error);
@@ -260,6 +278,43 @@ function renderArchitecturePreview(architecture) {
   elements.architecturePreviewPanel.hidden = false;
 }
 
+function importedCircuitValue(summary) {
+  return `IMPORTED:${summary.id}`;
+}
+
+function isImportedCircuitValue(value) {
+  return String(value || "").startsWith(`${IMPORTED_CIRCUIT_PREFIX}qasm:`);
+}
+
+function installImportedCircuitOption(summary) {
+  const value = importedCircuitValue(summary);
+  const label = `${summary.source_label || "Imported circuit"} (imported, ${summary.qubits}q, CX ${summary.cx})`;
+  programCatalog.set(value, {
+    id: value,
+    label: summary.source_label || "Imported circuit",
+    qubits: summary.qubits,
+    total_ops: summary.total_ops,
+    cx: summary.cx,
+    source: "Imported QASM",
+    category: "inline",
+    tier: "custom",
+  });
+  let option = [...elements.programSelect.options].find((item) => item.value === value);
+  if (!option) {
+    option = document.createElement("option");
+    elements.programSelect.appendChild(option);
+  }
+  option.value = value;
+  option.textContent = label;
+  elements.programSelect.value = value;
+}
+
+function renderCircuitImportStatus(message, state = "") {
+  elements.circuitImportStatus.textContent = message;
+  elements.circuitImportStatus.classList.toggle("is-valid", state === "valid");
+  elements.circuitImportStatus.classList.toggle("is-invalid", state === "invalid");
+}
+
 function configOptionsFromManifest(manifest) {
   const programById = new Map();
   for (const item of manifest) {
@@ -283,6 +338,13 @@ function wireControls() {
   });
   elements.importTraceInput.addEventListener("change", () => setSourceMode("import"));
   elements.importTraceButton.addEventListener("click", () => loadImportedTrace());
+  elements.circuitImportText.addEventListener("input", () => {
+    setSourceMode("experiment");
+    importedCircuitSummary = null;
+    renderCircuitImportStatus("");
+  });
+  elements.circuitImportFile.addEventListener("change", () => loadCircuitFileIntoEditor());
+  elements.circuitValidateButton.addEventListener("click", () => validateImportedCircuit());
   elements.architectureImportInput.addEventListener("change", () => setSourceMode("experiment"));
   elements.architectureImportButton.addEventListener("click", () => loadImportedArchitecture());
   elements.loadConfigButton.addEventListener("click", () => loadSelectedConfig());
@@ -384,6 +446,56 @@ function restoreControlScrollTop(scrollTop) {
   if (scrollTop === null || scrollTop === undefined) return;
   const scroller = elements.controlScrollRegion || elements.controlPanel;
   if (scroller) scroller.scrollTop = scrollTop;
+}
+
+async function loadCircuitFileIntoEditor() {
+  const file = elements.circuitImportFile.files?.[0];
+  if (!file) return;
+  setSourceMode("experiment");
+  try {
+    const text = await file.text();
+    elements.circuitImportText.value = text;
+    importedCircuitSummary = null;
+    renderCircuitImportStatus("");
+  } catch (error) {
+    renderCircuitImportStatus(formatErrorMessage(error), "invalid");
+  }
+}
+
+async function validateImportedCircuit() {
+  const qasm = elements.circuitImportText.value.trim();
+  if (!qasm) {
+    setSourceMode("experiment");
+    renderCircuitImportStatus("OpenQASM text is empty.", "invalid");
+    showConfigError("OpenQASM text is empty.");
+    return;
+  }
+  const { requestId } = beginLoadRequest();
+  setSourceMode("experiment");
+  generationActionLabel = "Validating...";
+  setGenerationLoading(true);
+  renderCircuitImportStatus("Validating circuit...", "loading");
+  try {
+    const summary = await validateCircuitText(qasm, { sourceLabel: "Imported circuit" });
+    if (requestId !== loadRequestId) return;
+    importedCircuitText = qasm;
+    importedCircuitSummary = summary;
+    installImportedCircuitOption(summary);
+    renderCircuitImportStatus(`Validated ${summary.qubits}q / ${summary.total_ops} ops / ${summary.cx} CX.`, "valid");
+    clearConfigError();
+    renderSelectedBenchmark();
+  } catch (error) {
+    if (requestId !== loadRequestId) return;
+    importedCircuitSummary = null;
+    const details = Array.isArray(error.details) && error.details.length ? ` ${error.details.slice(0, 3).join("; ")}` : "";
+    const message = `${formatErrorMessage(error)}.${details}`.replace(/\.\s*\./, ".");
+    renderCircuitImportStatus(message, "invalid");
+    showConfigError(message);
+  } finally {
+    if (requestId === loadRequestId) {
+      setGenerationLoading(false);
+    }
+  }
 }
 
 async function loadImportedTrace() {
@@ -532,13 +644,31 @@ async function loadSelectedConfig({ preserveControlScroll = true } = {}) {
     showConfigError(message);
     return;
   }
+  if (isImportedCircuitValue(program) && (!importedCircuitSummary || !importedCircuitText)) {
+    const message = "Validate the imported OpenQASM circuit before generating a schedule.";
+    setStatus("Imported circuit missing", "invalid", message);
+    setReplayBlocked(true);
+    elements.eventPanel.textContent = message;
+    showConfigError(message);
+    return;
+  }
   generationActionLabel = "Generating...";
   setGenerationLoading(true);
 
   try {
     if (apiAvailable) {
       setStatus("Generating schedule", "loading");
-      const nextTrace = isCustomArchitectureValue(machine)
+      const nextTrace = isImportedCircuitValue(program)
+        ? await generateCircuitTrace(importedCircuitText, {
+            sourceLabel: importedCircuitSummary.source_label,
+            machine,
+            capacity,
+            mapper,
+            ordering,
+            scheduler,
+            signal,
+          })
+        : isCustomArchitectureValue(machine)
         ? await fetchJson("api/trace/custom", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -806,6 +936,8 @@ function setGenerationLoading(isLoading) {
   }
   elements.loadConfigButton.textContent = isLoading ? generationActionLabel : "Generate Schedule";
   elements.importTraceButton.textContent = isLoading && sourceMode === "import" ? "Importing..." : "Import Trace";
+  elements.circuitValidateButton.textContent =
+    isLoading && generationActionLabel === "Validating..." ? "Validating..." : "Validate Circuit";
   elements.architectureImportButton.textContent =
     isLoading && generationActionLabel === "Validating..." ? "Validating..." : "Validate Architecture";
   for (const element of GENERATION_LOCKED_ELEMENTS) {
@@ -840,6 +972,9 @@ function applySourceModeAvailability() {
   elements.importTraceButton.disabled = generationLoading || sourceMode !== "import";
   const experimentDisabled = generationLoading || sourceMode !== "experiment";
   elements.loadConfigButton.disabled = generationLoading || sourceMode !== "experiment";
+  elements.circuitImportText.disabled = experimentDisabled;
+  elements.circuitImportFile.disabled = experimentDisabled;
+  elements.circuitValidateButton.disabled = experimentDisabled;
   elements.architectureImportInput.disabled = experimentDisabled;
   elements.architectureImportButton.disabled = experimentDisabled;
   for (const element of EXPERIMENT_CONFIG_ELEMENTS) {

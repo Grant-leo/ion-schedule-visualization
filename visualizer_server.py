@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlparse
 
 from architecture_schema import ArchitectureValidationError, validate_architecture_spec
 from external_trace_adapter import ExternalTraceError, adapt_external_trace
-from parse import InputParse
+from parse import CircuitValidationError, InputParse, validate_openqasm_text
 from simulation import (
     SimulationConfig,
     build_machine,
@@ -121,6 +121,49 @@ def generate_custom_trace(payload):
     return trace
 
 
+def validate_imported_circuit(payload):
+    if not isinstance(payload, dict):
+        raise CircuitValidationError(["Circuit request must be an object"])
+    return validate_openqasm_text(payload.get("qasm"), payload.get("source_label") or "Imported circuit")
+
+
+def generate_imported_circuit_trace(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("Imported circuit trace request must be an object")
+    summary = validate_imported_circuit(payload)
+    machine = str(payload.get("machine") or "")
+    capacity = int(payload.get("capacity"))
+    mapper = str(payload.get("mapper") or "")
+    ordering = str(payload.get("ordering") or "Naive")
+    scheduler = str(payload.get("scheduler") or "EJF")
+    _validate_imported_circuit_trace_options(summary, machine, capacity, mapper, ordering, scheduler)
+    serial_trap_ops, serial_comm, serial_all = scheduler_policy_flags(scheduler)
+
+    config = SimulationConfig(
+        program=f"IMPORTED:{summary['id']}",
+        program_text=payload.get("qasm"),
+        source_label=summary["source_label"],
+        machine=machine,
+        ions=capacity,
+        mapper=mapper,
+        reorder=ordering,
+        serial_trap_ops=serial_trap_ops,
+        serial_comm=serial_comm,
+        serial_all=serial_all,
+        scheduler_policy=scheduler,
+        gate_type="FM",
+        swap_type="GateSwap",
+        single_qubit_gate_time=7,
+        single_qubit_gate_fidelity=0.999,
+    )
+    trace = export_trace(run_simulation(config))
+    validation = trace.get("validation") or {}
+    if not validation.get("valid", False):
+        errors = "; ".join((validation.get("errors") or [])[:4]) or "unknown validation error"
+        raise ValueError(f"Generated imported circuit trace failed validation: {errors}")
+    return trace
+
+
 @lru_cache(maxsize=64)
 def _generate_trace_json(program_id, machine, capacity, mapper, ordering, scheduler):
     if program_id not in PROGRAMS:
@@ -197,6 +240,27 @@ def _validate_custom_trace_options(program_id, capacity, mapper, ordering, sched
         )
 
 
+def _validate_imported_circuit_trace_options(summary, machine, capacity, mapper, ordering, scheduler):
+    if machine not in supported_machine_names():
+        raise ValueError(f"Unsupported machine: {machine}")
+    if capacity not in CAPACITIES:
+        raise ValueError(f"Unsupported capacity: {capacity}")
+    if mapper not in MAPPERS:
+        raise ValueError(f"Unsupported mapper: {mapper}")
+    if ordering not in ORDERINGS:
+        raise ValueError(f"Unsupported ordering: {ordering}")
+    if scheduler not in VISUALIZER_SCHEDULERS:
+        raise ValueError(f"Unsupported visualizer scheduler: {scheduler}")
+    trap_count = _machine_trap_count(machine, capacity)
+    slots = trap_count * capacity
+    qubits = int(summary["qubits"])
+    if qubits > slots:
+        raise ValueError(
+            f"{summary['source_label']} requires {qubits} logical qubits, "
+            f"but {machine} with initial load cap {capacity} provides {slots} initial ion slots"
+        )
+
+
 @lru_cache(maxsize=32)
 def _program_qubit_count(program_id):
     qubits = PROGRAMS[program_id].get("qubits")
@@ -236,6 +300,12 @@ class VisualizerHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/import/trace":
             self._handle_import_trace()
             return
+        if parsed.path == "/api/circuit/validate":
+            self._handle_circuit_validate()
+            return
+        if parsed.path == "/api/trace":
+            self._handle_imported_circuit_trace()
+            return
         if parsed.path == "/api/architecture/validate":
             self._handle_architecture_validate()
             return
@@ -273,6 +343,26 @@ class VisualizerHandler(SimpleHTTPRequestHandler):
             self._send_json(validate_architecture_spec(payload))
         except ArchitectureValidationError as exc:
             self._send_json({"error": str(exc), "details": exc.details}, status=HTTPStatus.BAD_REQUEST)
+
+    def _handle_circuit_validate(self):
+        payload = self._read_json_payload("Circuit payload is too large")
+        if payload is None:
+            return
+        try:
+            self._send_json(validate_imported_circuit(payload))
+        except CircuitValidationError as exc:
+            self._send_json({"error": str(exc), "details": exc.details}, status=HTTPStatus.BAD_REQUEST)
+
+    def _handle_imported_circuit_trace(self):
+        payload = self._read_json_payload("Imported circuit trace payload is too large")
+        if payload is None:
+            return
+        try:
+            self._send_json(generate_imported_circuit_trace(payload))
+        except CircuitValidationError as exc:
+            self._send_json({"error": str(exc), "details": exc.details}, status=HTTPStatus.BAD_REQUEST)
+        except Exception as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
 
     def _handle_custom_trace(self):
         payload = self._read_json_payload("Custom trace payload is too large")

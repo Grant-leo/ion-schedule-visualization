@@ -10,6 +10,8 @@ objects expected by the mapper and scheduler:
     gate_graph: operation dependency DAG
 '''
 
+import hashlib
+import json
 import sys
 
 import networkx as nx
@@ -19,11 +21,75 @@ from qiskit import QuantumCircuit, transpile
 SINGLE_QUBIT_GATES = {'x', 'y', 'z', 'h', 's', 'sdg', 't', 'tdg', 'rx', 'ry', 'rz'}
 TWO_QUBIT_GATES = {'cx'}
 SUPPORTED_BASIS = sorted(SINGLE_QUBIT_GATES | TWO_QUBIT_GATES)
+TRANSPILER_OPTIMIZATION_LEVEL = 0
+TRANSPILER_SEED = 12345
+
+
+class CircuitValidationError(ValueError):
+    def __init__(self, details):
+        self.details = list(details)
+        super().__init__("Invalid OpenQASM circuit")
+
+
+def validate_openqasm_text(qasm_text, source_label="Imported circuit"):
+    parser = InputParse()
+    parser.parse_qasm_text(qasm_text)
+    ops = [
+        {
+            "id": gate_id,
+            "name": parser.gate_name_map[gate_id],
+            "qubits": parser.gate_qubit_map[gate_id],
+        }
+        for gate_id in sorted(parser.gate_graph.nodes)
+    ]
+    dag_payload = {
+        "nodes": ops,
+        "edges": sorted([list(edge) for edge in parser.gate_graph.edges()]),
+    }
+    normalized_payload = {
+        "qubits": parser.qbit_count,
+        "basis": SUPPORTED_BASIS,
+        "ops": ops,
+    }
+    normalized_hash = _stable_hash(normalized_payload)
+    dag_hash = _stable_hash(dag_payload)
+    gate_counts = {}
+    for gate_name in parser.gate_name_map.values():
+        gate_counts[gate_name] = gate_counts.get(gate_name, 0) + 1
+    return {
+        "valid": True,
+        "id": f"qasm:{normalized_hash[:16]}",
+        "source_label": str(source_label or "Imported circuit"),
+        "format": "OpenQASM 2.0",
+        "qubits": parser.qbit_count,
+        "total_ops": len(parser.gate_name_map),
+        "cx": len(parser.cx_gate_map),
+        "single_qubit_ops": len(parser.gate_name_map) - len(parser.cx_gate_map),
+        "basis_gates": SUPPORTED_BASIS,
+        "supported_subset": "QCCDSim scheduling basis",
+        "recommended_initial_load_cap": 1,
+        "decomposition": {
+            "basis_gates": SUPPORTED_BASIS,
+            "optimization_level": TRANSPILER_OPTIMIZATION_LEVEL,
+            "transpiler_seed": TRANSPILER_SEED,
+        },
+        "gate_counts": gate_counts,
+        "normalized_qasm_hash": normalized_hash,
+        "dag_hash": dag_hash,
+    }
+
+
+def _stable_hash(payload):
+    blob = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(blob).hexdigest()
 
 
 class InputParse:
     def __init__(self, verbose=False):
         self.verbose = verbose
+        self._reset_parse_state()
+
+    def _reset_parse_state(self):
         self.cx_graph = nx.Graph()
         self.cx_graph.graph['edge_weight_attr'] = 'weight'
         self.cx_graph.graph['node_weight_attr'] = 'node_weight'
@@ -70,21 +136,49 @@ class InputParse:
         raise NotImplementedError("process_gate is replaced by parse_ir's Qiskit-backed parser")
 
     def parse_ir(self, fname):
-        circuit = QuantumCircuit.from_qasm_file(fname)
+        try:
+            circuit = QuantumCircuit.from_qasm_file(fname)
+        except Exception as exc:
+            raise CircuitValidationError([f"OpenQASM parse failed: {exc}"]) from exc
+        self._parse_circuit(circuit)
+
+    def parse_qasm_text(self, qasm_text):
+        if not isinstance(qasm_text, str) or not qasm_text.strip():
+            raise CircuitValidationError(["OpenQASM text must be a non-empty string"])
+        try:
+            circuit = QuantumCircuit.from_qasm_str(qasm_text)
+        except Exception as exc:
+            raise CircuitValidationError([f"OpenQASM parse failed: {exc}"]) from exc
+        self._parse_circuit(circuit)
+
+    def _parse_circuit(self, circuit):
+        self._reset_parse_state()
         self._record_registers(circuit)
 
-        normalized = transpile(circuit, basis_gates=SUPPORTED_BASIS, optimization_level=0)
+        try:
+            normalized = transpile(
+                circuit,
+                basis_gates=SUPPORTED_BASIS,
+                optimization_level=TRANSPILER_OPTIMIZATION_LEVEL,
+                seed_transpiler=TRANSPILER_SEED,
+            )
+        except Exception as exc:
+            raise CircuitValidationError([f"OpenQASM transpile failed: {exc}"]) from exc
         for instruction in normalized.data:
             operation = instruction.operation
             if operation.name in {'barrier', 'measure'}:
                 continue
             qbits = [normalized.find_bit(qubit).index for qubit in instruction.qubits]
             if len(qbits) == 1:
+                if operation.name not in SINGLE_QUBIT_GATES:
+                    raise CircuitValidationError([f"Unsupported operation {operation.name}"])
                 self._add_single_qubit_gate(operation.name, qbits[0])
             elif len(qbits) == 2:
+                if operation.name not in TWO_QUBIT_GATES:
+                    raise CircuitValidationError([f"Unsupported operation {operation.name}"])
                 self._add_two_qubit_gate(operation.name, qbits[0], qbits[1])
             else:
-                sys.exit("Unsupported gate arity for " + operation.name + ": " + str(len(qbits)))
+                raise CircuitValidationError([f"Unsupported gate arity for {operation.name}: {len(qbits)}"])
 
     def _record_registers(self, circuit):
         self.qbit_count = circuit.num_qubits

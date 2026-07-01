@@ -704,7 +704,8 @@ select {
   color: #ffb8be;
 }
 
-.architecture-import-panel {
+.architecture-import-panel,
+.circuit-import-panel {
   margin-top: var(--space-2);
   padding: 8px 9px;
   border: 1px solid rgba(100, 210, 255, 0.16);
@@ -712,7 +713,8 @@ select {
   background: rgba(100, 210, 255, 0.045);
 }
 
-.architecture-import-panel summary {
+.architecture-import-panel summary,
+.circuit-import-panel summary {
   min-height: 20px;
   margin: 0;
   color: var(--color-text);
@@ -720,11 +722,13 @@ select {
   font-weight: 760;
 }
 
-.architecture-import-panel[open] summary {
+.architecture-import-panel[open] summary,
+.circuit-import-panel[open] summary {
   margin-bottom: 6px;
 }
 
 .architecture-import-status,
+.circuit-import-status,
 .architecture-preview-panel {
   margin-top: var(--space-2);
   color: var(--color-muted);
@@ -732,11 +736,13 @@ select {
   line-height: 1.38;
 }
 
-.architecture-import-status.is-valid {
+.architecture-import-status.is-valid,
+.circuit-import-status.is-valid {
   color: #a8ee86;
 }
 
-.architecture-import-status.is-invalid {
+.architecture-import-status.is-invalid,
+.circuit-import-status.is-invalid {
   color: #ffb8be;
 }
 
@@ -790,6 +796,22 @@ input[type="file"]::file-selector-button {
   background: rgba(100, 210, 255, 0.1);
   color: var(--color-text);
   font-weight: 700;
+}
+
+textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 8px;
+  resize: vertical;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-2);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)),
+    #12161c;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .config-error {
