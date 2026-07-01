@@ -605,11 +605,19 @@ select {
   gap: var(--space-2);
 }
 
+.source-mode-toggle button[data-source-mode="import"] {
+  grid-column: span 2;
+}
+
 .scheduler-mode-toggle button,
 .source-mode-toggle button {
   min-height: 54px;
   padding: 8px 9px;
   text-align: left;
+}
+
+.source-mode-toggle button {
+  padding: 8px;
 }
 
 .scheduler-mode-toggle strong,
@@ -627,6 +635,10 @@ select {
   color: var(--color-text);
   font-size: 13px;
   line-height: 1.15;
+}
+
+.source-mode-toggle strong {
+  font-size: 12px;
 }
 
 .scheduler-mode-toggle span,
@@ -695,6 +707,35 @@ select {
 .advanced-config .primary-action {
   width: 100%;
   margin-top: var(--space-3);
+}
+
+.secondary-action {
+  width: 100%;
+  min-height: 36px;
+  margin-top: var(--space-2);
+}
+
+input[type="file"] {
+  width: 100%;
+  min-height: 36px;
+  padding: 5px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-2);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.025)),
+    #171a20;
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+input[type="file"]::file-selector-button {
+  margin-right: 8px;
+  padding: 5px 8px;
+  border: 1px solid rgba(100, 210, 255, 0.26);
+  border-radius: var(--radius-2);
+  background: rgba(100, 210, 255, 0.1);
+  color: var(--color-text);
+  font-weight: 700;
 }
 
 .config-error {

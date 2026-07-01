@@ -1,0 +1,24 @@
+{
+  "schema_version": "ion_trap_trace_v1",
+  "source": {"label": "fixture invalid nonadjacent", "provenance": {"source": "ExternalFixture"}},
+  "source_claims": {"scheduler": "bad-router"},
+  "trace": {
+    "schema_version": "1.0",
+    "device_type": "ion_trap",
+    "run": {"program": "external/nonadjacent", "machine": "ExternalFixtureTrap", "ions_per_region": 1, "initial_ions_per_region": 1, "physical_ions_per_region": 1, "communication_buffer_per_trap": 0},
+    "topology": {
+      "traps": [{"id": 0, "capacity": 1, "physical_capacity": 1, "initial_ion_capacity": 1, "communication_buffer": 0, "slots": [0], "orientation": {}}],
+      "segments": [
+        {"id": 0, "from": "trap:0", "to": "junction:0", "length": 10},
+        {"id": 1, "from": "junction:1", "to": "trap:0", "length": 10}
+      ],
+      "junctions": [{"id": 0, "degree": 1, "junction_type": "J1", "cross_time": 100}, {"id": 1, "degree": 1, "junction_type": "J1", "cross_time": 100}],
+      "layout": {"trap:0": {"x": 0, "y": 0}, "junction:0": {"x": 1, "y": 0}, "junction:1": {"x": 2, "y": 0}}
+    },
+    "timing": {"unit": "us", "cycle_time_us": 1, "display_us_per_ms": 1, "parameters": {}},
+    "dag": {"nodes": [], "edges": []},
+    "particles": [{"id": 0, "initial_location": "segment:0"}],
+    "events": [{"id": 0, "type": "move", "start": 0, "end": 5, "ions": [0], "source": "segment:0", "target": "segment:1", "metadata": {}}],
+    "metrics": {"event_count": 1, "finish_time": 5, "counts": {"gate": 0, "split": 0, "move": 1, "merge": 0}, "times": {"gate": 0, "split": 0, "move": 5, "merge": 0}, "one_qubit_gates": 0, "two_qubit_gates": 0, "shuttling_time": 5, "swap_count": 0, "swap_hops": 0, "ion_hops": 0, "max_parallel_gates": 0, "cross_trap_parallel_gates": 0, "same_trap_gate_overlaps": 0}
+  }
+}

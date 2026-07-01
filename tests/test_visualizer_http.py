@@ -14,6 +14,9 @@ from visualizer_server import STATIC_DIR
 from visualizer_server import _machine_trap_count
 
 
+FIXTURE_DIR = STATIC_DIR.parent / "tests" / "fixtures" / "trace_contract"
+
+
 class QuietVisualizerHandler(VisualizerHandler):
     def log_message(self, format, *args):
         pass
@@ -35,6 +38,17 @@ def visualizer_http_server():
 def read_json(url):
     with urllib.request.urlopen(url, timeout=60) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def post_json(url, payload, content_type="application/json"):
+    body = payload if isinstance(payload, bytes) else json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(url, data=body, method="POST", headers={"Content-Type": content_type})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def load_external_fixture(name):
+    return json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))
 
 
 def test_visualizer_options_endpoint_serves_demo_defaults(visualizer_http_server):
@@ -143,6 +157,47 @@ def test_visualizer_trace_endpoint_applies_mapper_ordering_and_scheduler(visuali
     assert trace["run"]["scheduler_policy"] == "EJF-GlobalSerial"
     assert trace["run"]["serial_all"] is True
     assert trace["validation"]["valid"] is True
+
+
+def test_visualizer_import_trace_endpoint_accepts_external_trace(visualizer_http_server):
+    trace = post_json(f"{visualizer_http_server}/api/import/trace", load_external_fixture("external_valid_trace.json"))
+
+    assert trace["validation"]["valid"] is True
+    assert trace["run"]["source_label"] == "fixture external scheduler"
+    assert trace["run"]["scheduler_policy"] == "unknown_external"
+    assert trace["source_claims"]["mapper"] == "external-identity-map"
+    assert trace["trace_hash"]
+
+
+def test_visualizer_import_trace_endpoint_rejects_invalid_external_trace(visualizer_http_server):
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        post_json(
+            f"{visualizer_http_server}/api/import/trace",
+            load_external_fixture("external_invalid_nonadjacent_move.json"),
+        )
+
+    assert excinfo.value.code == 400
+    payload = json.loads(excinfo.value.read().decode("utf-8"))
+    assert payload["error"] == "Imported trace failed validation"
+    assert any("not adjacent to segment:1" in detail for detail in payload["details"])
+
+
+def test_visualizer_import_trace_endpoint_rejects_wrong_content_type_and_malformed_json(visualizer_http_server):
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        post_json(f"{visualizer_http_server}/api/import/trace", {"bad": True}, content_type="text/plain")
+    assert excinfo.value.code == 415
+
+    request = urllib.request.Request(
+        f"{visualizer_http_server}/api/import/trace",
+        data=b"{bad json",
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        urllib.request.urlopen(request, timeout=60)
+    assert excinfo.value.code == 400
+    payload = json.loads(excinfo.value.read().decode("utf-8"))
+    assert "Malformed JSON" in payload["error"]
 
 
 def test_visualizer_program_catalog_has_feasible_demo_configurations():

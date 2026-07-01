@@ -67,6 +67,19 @@ test("app routes API calls and loaded traces through foundation modules", () => 
   assert.match(appSource, /runStore\.addRun\(nextTrace/);
 });
 
+test("app exposes an imported trace source backed by the import adapter", () => {
+  assert.match(indexSource, /data-source-mode="import"/);
+  assert.match(indexSource, /id="importTraceInput"/);
+  assert.match(indexSource, /id="importTraceButton"/);
+  assert.match(appSource, /from\s+"\.\/import_panel\.js\?v=20260701-import1"/);
+  assert.match(appSource, /async function loadImportedTrace\(\)/);
+  assert.match(appSource, /importTraceText\(text\)/);
+  assert.match(appSource, /elements\.importTraceInput\.disabled\s*=\s*generationLoading/);
+  assert.doesNotMatch(appSource, /elements\.importTraceInput\.disabled\s*=\s*generationLoading\s*\|\|\s*sourceMode\s*!==\s*"import"/);
+  assert.doesNotMatch(appSource, /const EXPERIMENT_CONFIG_ELEMENTS = \[(?:(?!\];)[\s\S])*elements\.importTraceButton/);
+  assert.match(appSource, /sourceMode\s*!==\s*"import"/);
+});
+
 test("invalid traces are rejected before replay installation", () => {
   const validIndex = appSource.indexOf("const valid = frontendValidation.valid && backendValidation.valid");
   const guardIndex = appSource.indexOf("if (!valid)");

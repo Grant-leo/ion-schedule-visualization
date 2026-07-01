@@ -7,6 +7,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from external_trace_adapter import ExternalTraceError, adapt_external_trace
 from parse import InputParse
 from simulation import (
     SimulationConfig,
@@ -34,6 +35,7 @@ ORDERINGS = list(supported_reorder_policies())
 SCHEDULERS = list(supported_scheduler_policies())
 VISUALIZER_UNSAFE_SCHEDULERS = {"EJF-ParallelTrap"}
 VISUALIZER_SCHEDULERS = [policy for policy in SCHEDULERS if policy not in VISUALIZER_UNSAFE_SCHEDULERS]
+MAX_IMPORT_BYTES = 2_000_000
 VISUALIZER_SCHEDULER_LABELS = {
     "EJF": "Parallel schedule",
     "EJF-SerialComm": "Serial shuttling",
@@ -167,6 +169,13 @@ class VisualizerHandler(SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/import/trace":
+            self._handle_import_trace()
+            return
+        self._send_json({"error": "Unsupported endpoint"}, status=HTTPStatus.NOT_FOUND)
+
     def _handle_trace(self, query):
         try:
             program_id = _single(query, "program")
@@ -178,6 +187,28 @@ class VisualizerHandler(SimpleHTTPRequestHandler):
             self._send_json(generate_trace(program_id, machine, capacity, mapper, ordering, scheduler))
         except Exception as exc:
             self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+
+    def _handle_import_trace(self):
+        content_type = self.headers.get("Content-Type", "")
+        if not content_type.lower().split(";")[0].strip() == "application/json":
+            self._send_json({"error": "Unsupported content type"}, status=HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+            return
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self._send_json({"error": "Invalid Content-Length"}, status=HTTPStatus.BAD_REQUEST)
+            return
+        if content_length > MAX_IMPORT_BYTES:
+            self._send_json({"error": "Imported trace payload is too large"}, status=HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            return
+        try:
+            body = self.rfile.read(content_length)
+            payload = json.loads(body.decode("utf-8"))
+            self._send_json(adapt_external_trace(payload))
+        except json.JSONDecodeError as exc:
+            self._send_json({"error": f"Malformed JSON: {exc.msg}"}, status=HTTPStatus.BAD_REQUEST)
+        except ExternalTraceError as exc:
+            self._send_json({"error": str(exc), "details": exc.details}, status=HTTPStatus.BAD_REQUEST)
 
     def _send_json(self, payload, status=HTTPStatus.OK):
         body = json.dumps(payload, indent=2).encode("utf-8")

@@ -1,6 +1,7 @@
 import { createRenderer } from "./canvas_renderer.js?v=20260630-rottrap1";
 import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-circuit-parallel2";
 import { renderDagSvg } from "./dag_renderer.js?v=20260630-swap-circuit1";
+import { importTraceText } from "./import_panel.js?v=20260701-import1";
 import { createReplay, validateTrace } from "./replay.js?v=20260630-fidelity2";
 import { fetchJson, formatErrorMessage, isAbortError } from "./api_client.js?v=20260701-foundation1";
 import { createRunStore } from "./run_store.js?v=20260701-foundation1";
@@ -24,6 +25,8 @@ const elements = {
   controlPanel: document.getElementById("controlPanel"),
   controlScrollRegion: document.getElementById("controlScrollRegion"),
   traceSelect: document.getElementById("traceSelect"),
+  importTraceInput: document.getElementById("importTraceInput"),
+  importTraceButton: document.getElementById("importTraceButton"),
   sourceModeButtons: [...document.querySelectorAll("[data-source-mode]")],
   scenarioTitle: document.getElementById("scenarioTitle"),
   scenarioDescription: document.getElementById("scenarioDescription"),
@@ -62,6 +65,8 @@ const elements = {
 
 const GENERATION_LOCKED_ELEMENTS = [
   elements.traceSelect,
+  elements.importTraceInput,
+  elements.importTraceButton,
   elements.programSelect,
   elements.architectureSelect,
   elements.capacitySelect,
@@ -221,6 +226,8 @@ function wireControls() {
     setSourceMode("trace");
     loadTrace(elements.traceSelect.value);
   });
+  elements.importTraceInput.addEventListener("change", () => setSourceMode("import"));
+  elements.importTraceButton.addEventListener("click", () => loadImportedTrace());
   elements.loadConfigButton.addEventListener("click", () => loadSelectedConfig());
   for (const button of elements.sourceModeButtons) {
     button.addEventListener("click", async () => {
@@ -320,6 +327,35 @@ function restoreControlScrollTop(scrollTop) {
   if (scrollTop === null || scrollTop === undefined) return;
   const scroller = elements.controlScrollRegion || elements.controlPanel;
   if (scroller) scroller.scrollTop = scrollTop;
+}
+
+async function loadImportedTrace() {
+  const file = elements.importTraceInput.files?.[0];
+  if (!file) {
+    setSourceMode("import");
+    showConfigError("Choose a local JSON trace to import.");
+    return;
+  }
+  const { requestId } = beginLoadRequest();
+  setSourceMode("import");
+  setGenerationLoading(true);
+  try {
+    const text = await file.text();
+    const nextTrace = await importTraceText(text);
+    if (requestId !== loadRequestId) return;
+    loadTraceData(nextTrace);
+  } catch (error) {
+    if (requestId !== loadRequestId) return;
+    const message = formatErrorMessage(error);
+    setStatus("Import blocked", "invalid", message);
+    setReplayBlocked(true);
+    showConfigError(message);
+    elements.eventPanel.textContent = message;
+  } finally {
+    if (requestId === loadRequestId) {
+      setGenerationLoading(false);
+    }
+  }
 }
 
 function loadTraceData(nextTrace, { resetControlPanelScroll = true } = {}) {
@@ -647,6 +683,7 @@ function setGenerationLoading(isLoading) {
     elements.playPauseButton.textContent = "Play";
   }
   elements.loadConfigButton.textContent = isLoading ? "Generating..." : "Generate Schedule";
+  elements.importTraceButton.textContent = isLoading && sourceMode === "import" ? "Importing..." : "Import Trace";
   for (const element of GENERATION_LOCKED_ELEMENTS) {
     element.disabled = isLoading;
   }
@@ -656,7 +693,7 @@ function setGenerationLoading(isLoading) {
 }
 
 function setSourceMode(mode) {
-  sourceMode = mode === "trace" ? "trace" : "experiment";
+  sourceMode = mode === "trace" || mode === "import" ? mode : "experiment";
   for (const button of elements.sourceModeButtons) {
     const active = button.dataset.sourceMode === sourceMode;
     button.classList.toggle("is-active", active);
@@ -672,6 +709,8 @@ function applySourceModeAvailability() {
     button.disabled = generationLoading;
   }
   elements.traceSelect.disabled = generationLoading || sourceMode !== "trace";
+  elements.importTraceInput.disabled = generationLoading;
+  elements.importTraceButton.disabled = generationLoading || sourceMode !== "import";
   const experimentDisabled = generationLoading || sourceMode !== "experiment";
   elements.loadConfigButton.disabled = generationLoading || sourceMode !== "experiment";
   for (const element of EXPERIMENT_CONFIG_ELEMENTS) {

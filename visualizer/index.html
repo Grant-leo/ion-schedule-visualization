@@ -35,9 +35,16 @@
                 <strong>Verified trace</strong>
                 <span>curated JSON</span>
               </button>
+              <button id="importSourceButton" type="button" data-source-mode="import" aria-pressed="false">
+                <strong>Imported trace</strong>
+                <span>local JSON</span>
+              </button>
             </div>
             <label for="traceSelect">Verified trace</label>
             <select id="traceSelect"></select>
+            <label for="importTraceInput">Import trace</label>
+            <input id="importTraceInput" type="file" accept="application/json,.json" />
+            <button id="importTraceButton" class="secondary-action" type="button">Import Trace</button>
           </section>
           <section class="control-section playback-section">
             <label for="speedSelect">Speed</label>
