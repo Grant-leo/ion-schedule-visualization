@@ -81,6 +81,12 @@ def test_export_trace_contains_topology_events_metrics_and_validation():
     assert trace["timing"]["parameters"]["split_merge_time"] == 80
     assert trace["timing"]["parameters"]["shuttle_time"] == 5
     assert trace["timing"]["parameters"]["single_qubit_gate_time"] == 7
+    assert trace["run"]["ions_per_region"] == 1
+    assert trace["run"]["physical_ions_per_region"] == 3
+    assert trace["run"]["communication_buffer_per_trap"] == 2
+    assert all(trap["initial_ion_capacity"] == 1 for trap in trace["topology"]["traps"])
+    assert all(trap["physical_capacity"] == 3 for trap in trace["topology"]["traps"])
+    assert all(trap["communication_buffer"] == 2 for trap in trace["topology"]["traps"])
     assert trace["validation"]["valid"] is True
     assert trace["validation"]["errors"] == []
 

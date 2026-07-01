@@ -5,6 +5,9 @@
     "program": "E:\\doctor\\\u9ed1\u5ba2\u677e\\QCCDSim\\programs\\benchmarks\\qasmbench\\small\\adder_n10.qasm",
     "machine": "L6",
     "ions_per_region": 3,
+    "initial_ions_per_region": 3,
+    "physical_ions_per_region": 5,
+    "communication_buffer_per_trap": 2,
     "mapper": "Random",
     "reorder": "Naive",
     "scheduler_policy": "EJF",
@@ -21,6 +24,9 @@
       {
         "id": 0,
         "capacity": 5,
+        "physical_capacity": 5,
+        "initial_ion_capacity": 3,
+        "communication_buffer": 2,
         "slots": [
           0,
           1,
@@ -35,6 +41,9 @@
       {
         "id": 1,
         "capacity": 5,
+        "physical_capacity": 5,
+        "initial_ion_capacity": 3,
+        "communication_buffer": 2,
         "slots": [
           0,
           1,
@@ -50,6 +59,9 @@
       {
         "id": 2,
         "capacity": 5,
+        "physical_capacity": 5,
+        "initial_ion_capacity": 3,
+        "communication_buffer": 2,
         "slots": [
           0,
           1,
@@ -65,6 +77,9 @@
       {
         "id": 3,
         "capacity": 5,
+        "physical_capacity": 5,
+        "initial_ion_capacity": 3,
+        "communication_buffer": 2,
         "slots": [
           0,
           1,
@@ -80,6 +95,9 @@
       {
         "id": 4,
         "capacity": 5,
+        "physical_capacity": 5,
+        "initial_ion_capacity": 3,
+        "communication_buffer": 2,
         "slots": [
           0,
           1,
@@ -95,6 +113,9 @@
       {
         "id": 5,
         "capacity": 5,
+        "physical_capacity": 5,
+        "initial_ion_capacity": 3,
+        "communication_buffer": 2,
         "slots": [
           0,
           1,
@@ -246,6 +267,20 @@
         "x": 4.5,
         "y": 1.0
       }
+    }
+  },
+  "timing": {
+    "unit": "us",
+    "cycle_time_us": 1,
+    "display_us_per_ms": 1,
+    "parameters": {
+      "split_merge_time": 80,
+      "shuttle_time": 5,
+      "junction2_cross_time": 5,
+      "junction3_cross_time": 100,
+      "junction4_cross_time": 120,
+      "ion_swap_time": 42,
+      "single_qubit_gate_time": 7
     }
   },
   "dag": {

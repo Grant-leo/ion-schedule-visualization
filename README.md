@@ -100,7 +100,7 @@ The server also serves the local API used by the page:
 1. Choose a replay source.
    - `Experiment` generates a trace from the current controls.
    - `Verified trace` loads a curated JSON trace from `visualizer/traces/`.
-2. Select a benchmark circuit, QCCD architecture, trap capacity, mapper, initial ordering, and scheduler mode.
+2. Select a benchmark circuit, QCCD architecture, initial load cap, mapper, initial ordering, and scheduler mode.
 3. Click `Generate Schedule`.
 4. Press `Play` to replay the schedule, or `Step` to advance to the next event.
 5. Watch the main canvas for trap-chain state, split/move/merge operations, route glow, junction glow, and laser gates.
@@ -132,13 +132,13 @@ simulation.py
 trace_export.py
 ```
 
-For dynamic generation, the page sends the selected program, architecture, capacity, mapper, ordering, and scheduler to `/api/trace`. The backend builds a QCCDSim `SimulationConfig`, runs the QCCDSim scheduling pipeline, exports the result to a JSON trace, validates it, and returns it to the browser.
+For dynamic generation, the page sends the selected program, architecture, initial load cap, mapper, ordering, and scheduler to `/api/trace`. The backend builds a QCCDSim `SimulationConfig`, runs the QCCDSim scheduling pipeline, exports the result to a JSON trace, validates it, and returns it to the browser.
 
 ## Trace Information Used By The UI
 
 The browser does not read raw QASM directly. It consumes the exported trace JSON. The main fields are:
 
-- `topology.traps`: trap ids, capacities, and segment-end orientations.
+- `topology.traps`: trap ids, physical capacities, initial load capacities, shuttle-buffer slots, and segment-end orientations.
 - `topology.segments`: channel connections between traps and junctions.
 - `topology.junctions`: junction ids and degrees.
 - `topology.layout`: normalized hardware coordinates used by the renderer.
@@ -147,7 +147,7 @@ The browser does not read raw QASM directly. It consumes the exported trace JSON
 - `events[].metadata`: gate ids, gate names, endpoint side, swap counts, swap hops, ion hops, and reported `swap_ions`.
 - `dag.nodes` and `dag.edges`: the Qiskit-derived dependency graph.
 - `metrics`: finish time, operation counts, shuttling work, swap count, swap hops, ion hops, gate parallelism, and replay-estimated fidelity.
-- `run`: benchmark, machine, mapper, capacity, ordering, scheduler, gate model, and swap model.
+- `run`: benchmark, machine, mapper, initial load cap, physical trap capacity, communication buffer, ordering, scheduler, gate model, and swap model.
 
 The main canvas is driven by `events`, `particles`, and `topology`. The circuit strip and DAG are driven by `dag` plus live gate-completion state. The headline metrics are derived from `metrics` and replay progress.
 
@@ -165,12 +165,12 @@ The manifest records each program path, category, qubit count, operation count, 
 ## Supported Controls
 
 - Architectures: QCCDSim machine layouts exposed by `simulation.supported_machine_names()`.
-- Capacities: `1, 2, 3, 4, 5, 6, 8` ions per trap region.
+- Initial load caps: `1, 2, 3, 4, 5, 6, 8` ions per trap region. QCCDSim's EJF scheduler reserves two extra communication-buffer slots per trap for split, merge, and shuttle operations, and the exported trace records both values.
 - Mappers: `Greedy`, `Random`, `LPFS`, `Agg`, `PO`, and deterministic `SABRE`-style placement.
 - Initial ordering: `Naive` and `Fidelity`.
 - Schedulers: visualizer-safe EJF variants, including parallel and serial baselines.
 
-The page performs capacity preflight checks before generation. If a circuit cannot fit safely on the selected architecture/capacity pair, the UI shows a configuration error instead of installing an invalid replay.
+The page performs capacity preflight checks before generation. If a circuit cannot fit safely on the selected architecture/load-cap pair, the UI shows a configuration error instead of installing an invalid replay.
 
 ## Validation
 

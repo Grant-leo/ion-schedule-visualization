@@ -41,6 +41,8 @@ def test_generate_trace_uses_selected_architecture_capacity_and_mapper():
     assert trace["validation"]["valid"] is True
     assert trace["run"]["machine"] == "G3x3"
     assert trace["run"]["ions_per_region"] == 2
+    assert trace["run"]["physical_ions_per_region"] == 4
+    assert trace["run"]["communication_buffer_per_trap"] == 2
     assert trace["run"]["mapper"] == "Greedy"
     assert len(trace["topology"]["traps"]) == 9
     assert {"max_parallel_gates", "cross_trap_parallel_gates", "same_trap_gate_overlaps"} <= trace["metrics"].keys()

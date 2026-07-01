@@ -121,14 +121,14 @@ def _validate_demo_capacity(program_id, machine, capacity):
     if qubits > slots:
         raise ValueError(
             f"{PROGRAMS[program_id]['label']} requires {qubits} logical qubits, "
-            f"but {machine} with capacity {capacity} provides {slots} ion slots"
+            f"but {machine} with initial load cap {capacity} provides {slots} initial ion slots"
         )
     recommended_capacity = int(PROGRAMS[program_id].get("recommended_l6_min_capacity") or 1) if machine == "L6" else 1
     required_capacity = max((qubits + max(1, trap_count) - 1) // max(1, trap_count), recommended_capacity)
     if capacity < required_capacity:
         raise ValueError(
-            f"{PROGRAMS[program_id]['label']} requires demo-safe trap capacity {required_capacity} "
-            f"for this benchmark; {machine} with capacity {capacity} can fit {slots} total ions but may "
+            f"{PROGRAMS[program_id]['label']} requires demo-safe initial load cap {required_capacity} "
+            f"for this benchmark; {machine} with initial load cap {capacity} can fit {slots} total ions but may "
             "produce invalid intermediate trap occupancy"
         )
 

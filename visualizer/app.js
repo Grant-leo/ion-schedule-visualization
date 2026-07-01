@@ -153,9 +153,20 @@ function populateTraceSelector(manifest) {
   for (const item of manifest) {
     const option = document.createElement("option");
     option.value = item.path;
-    option.textContent = item.label;
+    option.textContent = traceOptionLabel(item);
     elements.traceSelect.appendChild(option);
   }
+}
+
+function traceOptionLabel(item) {
+  if (!item) return "";
+  const baseLabel = item.label || item.id || item.path || "";
+  const loadCap = Number(item.ions_per_region);
+  const physicalCap = Number(item.physical_ions_per_region);
+  if (!Number.isFinite(loadCap) || !Number.isFinite(physicalCap) || loadCap === physicalCap) {
+    return baseLabel;
+  }
+  return baseLabel.replace(`cap ${loadCap}`, `load ${loadCap} | phys ${physicalCap}`);
 }
 
 function populateConfigControls(options) {
@@ -514,22 +525,22 @@ function selectedCapacityFeasibility(selection = {}) {
   const slotCapacity = Math.ceil(qubits / trapCount);
   const requiredCapacity = Math.max(slotCapacity, recommendedCapacity);
   if (capacity >= requiredCapacity) return { valid: true, requiredCapacity };
-  const shortMessage = `needs cap ${requiredCapacity}+ on ${machine}`;
+  const shortMessage = `needs load cap ${requiredCapacity}+ on ${machine}`;
   if (capacity >= slotCapacity && capacity < recommendedCapacity) {
     return {
       valid: false,
       requiredCapacity,
       shortMessage,
-      message: `${programLabelFromId(programId)} fits total ion slots on ${machine}, but this benchmark needs demo-safe trap capacity ${requiredCapacity} or larger to avoid invalid intermediate trap occupancy.`,
+      message: `${programLabelFromId(programId)} fits total ion slots on ${machine}, but this benchmark needs initial load cap ${requiredCapacity} or larger to avoid invalid intermediate trap occupancy.`,
     };
   }
   return {
     valid: false,
     requiredCapacity,
     shortMessage,
-    message: `${programLabelFromId(programId)} requires ${qubits} logical qubits; ${machine} with capacity ${capacity} provides ${
+    message: `${programLabelFromId(programId)} requires ${qubits} logical qubits; ${machine} with initial load cap ${capacity} provides ${
       trapCount * capacity
-    } ion slots. Choose capacity ${requiredCapacity} or larger.`,
+    } initial ion slots. Choose load cap ${requiredCapacity} or larger.`,
   };
 }
 
@@ -539,12 +550,22 @@ function renderRunConfig(nextTrace) {
   const items = [
     program?.label || programLabelFromId(programIdFromPath(run.program)),
     run.machine,
-    `cap ${run.ions_per_region}`,
+    capacitySummary(run),
     run.mapper ? `mapper ${run.mapper}` : null,
     run.reorder ? `ordering ${run.reorder}` : null,
     run.scheduler_policy ? `scheduler ${run.scheduler_policy}` : null,
   ].filter(Boolean);
   elements.runConfigPanel.textContent = items.join(" | ");
+}
+
+function capacitySummary(run = {}) {
+  const physicalCapacity = run.physical_ions_per_region;
+  const buffer =
+    run.communication_buffer_per_trap ?? (Number.isFinite(Number(physicalCapacity)) ? physicalCapacity - run.ions_per_region : 0);
+  if (Number.isFinite(Number(physicalCapacity)) && physicalCapacity !== run.ions_per_region) {
+    return `load cap ${run.ions_per_region} | physical cap ${physicalCapacity} | buffer ${buffer}`;
+  }
+  return `physical cap ${run.ions_per_region}`;
 }
 
 function renderScenarioSummary(nextTrace) {

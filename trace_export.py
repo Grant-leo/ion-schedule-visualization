@@ -18,7 +18,7 @@ def export_trace(result):
         "schema_version": "1.0",
         "device_type": "ion_trap",
         "run": _run_config(result),
-        "topology": _topology(result.machine, result.config.machine),
+        "topology": _topology(result.machine, result.config.machine, result.config),
         "timing": _timing(result.machine),
         "dag": _dag(result.parser),
         "particles": _particles(result.initial_layout),
@@ -555,10 +555,15 @@ def _apply_merge_to_trap_chains(event, trap_chains):
 def _run_config(result):
     config = result.config
     serial_trap_ops, serial_comm, serial_all = effective_scheduler_flags(config)
+    physical_capacity = _machine_physical_capacity(result.machine)
+    communication_buffer = max(0, physical_capacity - config.ions) if physical_capacity is not None else 0
     return {
         "program": config.program,
         "machine": config.machine,
         "ions_per_region": config.ions,
+        "initial_ions_per_region": config.ions,
+        "physical_ions_per_region": physical_capacity,
+        "communication_buffer_per_trap": communication_buffer,
         "mapper": config.mapper,
         "reorder": config.reorder,
         "scheduler_policy": config.scheduler_policy or _scheduler_policy_name(serial_trap_ops, serial_comm, serial_all),
@@ -570,6 +575,15 @@ def _run_config(result):
         "single_qubit_gate_time": config.single_qubit_gate_time,
         "single_qubit_gate_fidelity": config.single_qubit_gate_fidelity,
     }
+
+
+def _machine_physical_capacity(machine):
+    capacities = [trap.capacity for trap in getattr(machine, "traps", []) if getattr(trap, "capacity", None) is not None]
+    if not capacities:
+        return None
+    if len(set(capacities)) == 1:
+        return capacities[0]
+    return max(capacities)
 
 
 def _timing(machine):
@@ -601,16 +615,20 @@ def _scheduler_policy_name(serial_trap_ops, serial_comm, serial_all):
     return "Custom"
 
 
-def _topology(machine, machine_name):
+def _topology(machine, machine_name, config=None):
     segments = []
     for u, v, data in machine.graph.edges(data=True):
         segment = data["seg"]
         segments.append({"id": segment.id, "from": _object_location(u), "to": _object_location(v), "length": segment.length})
+    initial_capacity = config.ions if config is not None else None
     return {
         "traps": [
             {
                 "id": trap.id,
                 "capacity": trap.capacity,
+                "physical_capacity": trap.capacity,
+                "initial_ion_capacity": initial_capacity,
+                "communication_buffer": max(0, trap.capacity - initial_capacity) if initial_capacity is not None else 0,
                 "slots": list(range(trap.capacity)),
                 "orientation": {str(seg_id): side for seg_id, side in sorted(trap.orientation.items())},
             }

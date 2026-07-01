@@ -205,7 +205,16 @@ test("infeasible circuit and capacity combinations are caught before generation"
   assert.match(appSource, /recommended_l6_min_capacity/);
   assert.match(appSource, /recommendedCapacity/);
   assert.match(appSource, /Capacity too small/);
-  assert.match(appSource, /needs cap \$\{requiredCapacity\}\+ on \$\{machine\}/);
+  assert.match(appSource, /needs load cap \$\{requiredCapacity\}\+ on \$\{machine\}/);
+});
+
+test("capacity controls distinguish initial ion load from physical shuttle buffer capacity", () => {
+  assert.match(indexSource, /<label for="capacitySelect">Initial load cap<\/label>/);
+  assert.doesNotMatch(indexSource, /<label for="capacitySelect">Trap capacity<\/label>/);
+  assert.match(appSource, /function\s+capacitySummary\(run/);
+  assert.match(appSource, /load cap \$\{run\.ions_per_region\}/);
+  assert.match(appSource, /physical cap \$\{physicalCapacity\}/);
+  assert.match(appSource, /buffer \$\{buffer\}/);
 });
 
 test("selected experiment summary updates before generation or blocking", () => {

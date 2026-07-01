@@ -5,11 +5,15 @@
     "program": "E:\\doctor\\\u9ed1\u5ba2\u677e\\QCCDSim\\programs\\benchmarks\\qasmbench\\small\\qft_n4.qasm",
     "machine": "G2x3",
     "ions_per_region": 2,
+    "initial_ions_per_region": 2,
+    "physical_ions_per_region": 4,
+    "communication_buffer_per_trap": 2,
     "mapper": "Greedy",
     "reorder": "Naive",
-    "serial_trap_ops": 1,
-    "serial_comm": 0,
-    "serial_all": 0,
+    "scheduler_policy": "EJF",
+    "serial_trap_ops": true,
+    "serial_comm": false,
+    "serial_all": false,
     "gate_type": "FM",
     "swap_type": "GateSwap",
     "single_qubit_gate_time": 7,
@@ -20,6 +24,9 @@
       {
         "id": 0,
         "capacity": 4,
+        "physical_capacity": 4,
+        "initial_ion_capacity": 2,
+        "communication_buffer": 2,
         "slots": [
           0,
           1,
@@ -33,6 +40,9 @@
       {
         "id": 1,
         "capacity": 4,
+        "physical_capacity": 4,
+        "initial_ion_capacity": 2,
+        "communication_buffer": 2,
         "slots": [
           0,
           1,
@@ -46,6 +56,9 @@
       {
         "id": 2,
         "capacity": 4,
+        "physical_capacity": 4,
+        "initial_ion_capacity": 2,
+        "communication_buffer": 2,
         "slots": [
           0,
           1,
@@ -59,6 +72,9 @@
       {
         "id": 3,
         "capacity": 4,
+        "physical_capacity": 4,
+        "initial_ion_capacity": 2,
+        "communication_buffer": 2,
         "slots": [
           0,
           1,
@@ -72,6 +88,9 @@
       {
         "id": 4,
         "capacity": 4,
+        "physical_capacity": 4,
+        "initial_ion_capacity": 2,
+        "communication_buffer": 2,
         "slots": [
           0,
           1,
@@ -85,6 +104,9 @@
       {
         "id": 5,
         "capacity": 4,
+        "physical_capacity": 4,
+        "initial_ion_capacity": 2,
+        "communication_buffer": 2,
         "slots": [
           0,
           1,
@@ -148,13 +170,22 @@
     ],
     "junctions": [
       {
-        "id": 0
+        "id": 0,
+        "degree": 3,
+        "junction_type": "J3",
+        "cross_time": 100
       },
       {
-        "id": 1
+        "id": 1,
+        "degree": 4,
+        "junction_type": "J4",
+        "cross_time": 120
       },
       {
-        "id": 2
+        "id": 2,
+        "degree": 3,
+        "junction_type": "J3",
+        "cross_time": 100
       }
     ],
     "layout": {
@@ -194,6 +225,20 @@
         "x": 0,
         "y": 2.0
       }
+    }
+  },
+  "timing": {
+    "unit": "us",
+    "cycle_time_us": 1,
+    "display_us_per_ms": 1,
+    "parameters": {
+      "split_merge_time": 80,
+      "shuttle_time": 5,
+      "junction2_cross_time": 5,
+      "junction3_cross_time": 100,
+      "junction4_cross_time": 120,
+      "ion_swap_time": 42,
+      "single_qubit_gate_time": 7
     }
   },
   "dag": {
@@ -1682,7 +1727,13 @@
     },
     "one_qubit_gates": 24,
     "two_qubit_gates": 12,
-    "shuttling_time": 1395
+    "shuttling_time": 1395,
+    "swap_count": 2,
+    "swap_hops": 3,
+    "ion_hops": 0,
+    "max_parallel_gates": 2,
+    "cross_trap_parallel_gates": 9,
+    "same_trap_gate_overlaps": 0
   },
   "validation": {
     "valid": true,

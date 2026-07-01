@@ -15,7 +15,7 @@ TRACE_DIR = ROOT / "visualizer" / "traces"
 DEMOS = [
     {
         "id": "grover_n2_l6_greedy",
-        "label": "grover n2 | L6 | cap 1 | Greedy",
+        "label": "grover n2 | L6 | load 1 | phys 3 | Greedy",
         "program": "programs/benchmarks/qasmbench/small/grover_n2.qasm",
         "machine": "L6",
         "ions": 1,
@@ -23,7 +23,7 @@ DEMOS = [
     },
     {
         "id": "adder_n10_l6_greedy",
-        "label": "adder n10 | L6 | cap 3 | Greedy",
+        "label": "adder n10 | L6 | load 3 | phys 5 | Greedy",
         "program": "programs/benchmarks/qasmbench/small/adder_n10.qasm",
         "machine": "L6",
         "ions": 3,
@@ -31,7 +31,7 @@ DEMOS = [
     },
     {
         "id": "adder_n10_l6_random",
-        "label": "adder n10 | L6 | cap 3 | Random",
+        "label": "adder n10 | L6 | load 3 | phys 5 | Random",
         "program": "programs/benchmarks/qasmbench/small/adder_n10.qasm",
         "machine": "L6",
         "ions": 3,
@@ -39,7 +39,7 @@ DEMOS = [
     },
     {
         "id": "cat_state_n22_l6_greedy",
-        "label": "cat state n22 | L6 | cap 4 | Greedy",
+        "label": "cat state n22 | L6 | load 4 | phys 6 | Greedy",
         "program": "programs/benchmarks/qasmbench/medium/cat_state_n22.qasm",
         "machine": "L6",
         "ions": 4,
@@ -51,7 +51,7 @@ for machine in ["L6", "H6", "G2x3", "T4x2", "T6x3", "T8x4", "G3x3", "G9"]:
     DEMOS.append(
         {
             "id": f"qft_n4_{machine.lower()}_greedy",
-            "label": f"qft n4 | {machine} | cap 2 | Greedy",
+            "label": f"qft n4 | {machine} | load 2 | phys 4 | Greedy",
             "program": "programs/benchmarks/qasmbench/small/qft_n4.qasm",
             "machine": machine,
             "ions": 2,
@@ -83,6 +83,7 @@ def main():
         output = TRACE_DIR / f"{demo['id']}.json"
         trace = export_trace(run_simulation(config))
         write_trace(trace, output)
+        run = trace["run"]
         manifest.append(
             {
                 "id": demo["id"],
@@ -90,7 +91,9 @@ def main():
                 "path": f"traces/{demo['id']}.json",
                 "program": demo["program"],
                 "machine": demo["machine"],
-                "ions_per_region": demo["ions"],
+                "ions_per_region": run["ions_per_region"],
+                "physical_ions_per_region": run["physical_ions_per_region"],
+                "communication_buffer_per_trap": run["communication_buffer_per_trap"],
                 "mapper": demo["mapper"],
             }
         )
