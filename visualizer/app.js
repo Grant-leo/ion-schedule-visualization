@@ -2,6 +2,8 @@ import { createRenderer } from "./canvas_renderer.js?v=20260630-rottrap1";
 import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-circuit-parallel2";
 import { renderDagSvg } from "./dag_renderer.js?v=20260630-swap-circuit1";
 import { createReplay, validateTrace } from "./replay.js?v=20260630-fidelity2";
+import { fetchJson, formatErrorMessage, isAbortError } from "./api_client.js?v=20260701-foundation1";
+import { createRunStore } from "./run_store.js?v=20260701-foundation1";
 import {
   createHeadlineMetricCards,
   createMetricCards,
@@ -86,6 +88,7 @@ const EXPERIMENT_CONFIG_ELEMENTS = [
 const PLAYBACK_ELEMENTS = [elements.playPauseButton, elements.restartButton, elements.stepButton, elements.timeline];
 
 const renderer = createRenderer(elements.canvas);
+const runStore = createRunStore();
 
 let replay = null;
 let trace = null;
@@ -337,6 +340,8 @@ function loadTraceData(nextTrace, { resetControlPanelScroll = true } = {}) {
 
   const nextReplay = createReplay(nextTrace);
   previousTraceMetrics = trace?.metrics || null;
+  const nextRunKey = runStore.addRun(nextTrace, { sourceMode });
+  runStore.selectPrimary(nextRunKey);
   trace = nextTrace;
   replay = nextReplay;
   setReplayBlocked(false);
@@ -1151,28 +1156,4 @@ function focusDagViewport(container) {
     container.scrollTop = nextScrollTop;
   }
   container.scrollLeft = 0;
-}
-
-async function fetchJson(path, options = {}) {
-  const response = await fetch(path, { signal: options.signal });
-  const text = await response.text();
-  let payload = null;
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch (error) {
-    if (response.ok) throw error;
-    payload = { error: text };
-  }
-  if (!response.ok) {
-    throw new Error(payload?.error || `Failed to load ${path}: ${response.status}`);
-  }
-  return payload;
-}
-
-function isAbortError(error) {
-  return error?.name === "AbortError";
-}
-
-function formatErrorMessage(error) {
-  return String(error?.message || error || "Unknown error").replace(/^Error:\s*/, "").split("\n")[0];
 }

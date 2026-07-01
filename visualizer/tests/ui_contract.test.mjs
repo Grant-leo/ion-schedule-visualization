@@ -59,6 +59,14 @@ test("trace generation ignores stale responses and disables duplicate submission
   assert.doesNotMatch(appSource, /upsertTraceOption/);
 });
 
+test("app routes API calls and loaded traces through foundation modules", () => {
+  assert.match(appSource, /from\s+"\.\/api_client\.js\?v=20260701-foundation1"/);
+  assert.match(appSource, /from\s+"\.\/run_store\.js\?v=20260701-foundation1"/);
+  assert.doesNotMatch(appSource, /async function fetchJson\(path,\s*options\s*=\s*\{\}\)/);
+  assert.match(appSource, /const\s+runStore\s*=\s*createRunStore\(\)/);
+  assert.match(appSource, /runStore\.addRun\(nextTrace/);
+});
+
 test("invalid traces are rejected before replay installation", () => {
   const validIndex = appSource.indexOf("const valid = frontendValidation.valid && backendValidation.valid");
   const guardIndex = appSource.indexOf("if (!valid)");
