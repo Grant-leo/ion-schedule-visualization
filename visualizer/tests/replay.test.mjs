@@ -6,6 +6,12 @@ import { createReplay, validateTrace } from "../replay.js";
 const trace = {
   schema_version: "1.0",
   device_type: "ion_trap",
+  trace_hash: "fixture-trace-hash",
+  run: { id: "run-fixture", machine: "L2", scheduler_policy: "Fixture" },
+  timing: { unit: "us", cycle_time_us: 1 },
+  provenance: { source: "QCCDSim" },
+  timing_model: { name: "qccdsim-cycle-timing", version: "1.0" },
+  metric_model: { name: "qccdsim-schedule-metrics", version: "1.0" },
   topology: {
     traps: [
       { id: 0, capacity: 3, slots: [0, 1, 2], orientation: { 0: "R" } },
@@ -104,8 +110,30 @@ const trace = {
   metrics: { event_count: 7 },
 };
 
+function withContractEnvelope(nextTrace, runId) {
+  return {
+    ...nextTrace,
+    trace_hash: nextTrace.trace_hash || `${runId}-hash`,
+    run: { ...(nextTrace.run || {}), id: nextTrace.run?.id || runId },
+    timing: { unit: "us", cycle_time_us: 1, ...(nextTrace.timing || {}) },
+    provenance: { source: "QCCDSim", ...(nextTrace.provenance || {}) },
+    timing_model: { name: "qccdsim-cycle-timing", version: "1.0", ...(nextTrace.timing_model || {}) },
+    metric_model: { name: "qccdsim-schedule-metrics", version: "1.0", ...(nextTrace.metric_model || {}) },
+  };
+}
+
 test("validateTrace accepts a valid motion trace", () => {
   assert.equal(validateTrace(trace).valid, true);
+});
+
+test("validateTrace rejects traces missing backend contract identity", () => {
+  const badTrace = { ...trace, run: {}, trace_hash: "" };
+
+  const validation = validateTrace(badTrace);
+
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors.join("\n"), /missing run\.id/);
+  assert.match(validation.errors.join("\n"), /missing trace_hash/);
 });
 
 test("validateTrace rejects malformed topology collections without throwing", () => {
@@ -208,6 +236,7 @@ test("replay reports live cumulative schedule progress at the current time", () 
 test("replay estimates total and completed-operation fidelity from gate events", () => {
   const fidelityTrace = structuredClone(trace);
   fidelityTrace.run = {
+    ...fidelityTrace.run,
     single_qubit_gate_fidelity: 0.999,
     two_qubit_gate_fidelity: 0.992,
   };
@@ -637,7 +666,7 @@ test("replay reserves the merge endpoint during active merges to prevent visual 
     ],
     metrics: { event_count: 1 },
   };
-  const replay = createReplay(mergeTrace, 1);
+  const replay = createReplay(withContractEnvelope(mergeTrace, "run-merge"), 1);
 
   assert.deepEqual(replay.stateAt(5).trapChains.get("trap:1"), ["__merge:0:0", 1, 2]);
   assert.deepEqual(replay.stateAt(10).trapChains.get("trap:1"), [0, 1, 2]);
@@ -674,14 +703,14 @@ test("replay preserves merge endpoint order in trap chains", () => {
     ],
     metrics: { event_count: 1 },
   };
-  const replay = createReplay(endpointTrace, 1);
+  const replay = createReplay(withContractEnvelope(endpointTrace, "run-endpoint-left"), 1);
 
   assert.deepEqual(replay.stateAt(0).trapChains.get("trap:1"), ["__merge:0:0", 1, 2]);
   assert.deepEqual(replay.stateAt(10).trapChains.get("trap:1"), [0, 1, 2]);
 
   endpointTrace.events[0].metadata.endpoint = "R";
   endpointTrace.topology.traps[1].orientation = { 0: "R" };
-  const rightReplay = createReplay(endpointTrace, 1);
+  const rightReplay = createReplay(withContractEnvelope(endpointTrace, "run-endpoint-right"), 1);
 
   assert.deepEqual(rightReplay.stateAt(10).trapChains.get("trap:1"), [1, 2, 0]);
 });

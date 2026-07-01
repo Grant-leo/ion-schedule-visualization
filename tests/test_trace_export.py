@@ -84,11 +84,20 @@ def test_export_trace_contains_topology_events_metrics_and_validation():
     assert trace["run"]["ions_per_region"] == 1
     assert trace["run"]["physical_ions_per_region"] == 3
     assert trace["run"]["communication_buffer_per_trap"] == 2
+    assert trace["run"]["id"].startswith("run-")
+    assert len(trace["trace_hash"]) == 64
+    assert trace["provenance"]["source"] == "QCCDSim"
+    assert trace["timing_model"]["name"] == "qccdsim-cycle-timing"
+    assert trace["metric_model"]["name"] == "qccdsim-schedule-metrics"
     assert all(trap["initial_ion_capacity"] == 1 for trap in trace["topology"]["traps"])
     assert all(trap["physical_capacity"] == 3 for trap in trace["topology"]["traps"])
     assert all(trap["communication_buffer"] == 2 for trap in trace["topology"]["traps"])
     assert trace["validation"]["valid"] is True
     assert trace["validation"]["errors"] == []
+    assert trace["validation"]["contract"]["valid"] is True
+    assert trace["validation"]["physics"]["valid"] is True
+    assert trace["validation"]["dag"]["valid"] is True
+    assert trace["validation"]["metrics"]["valid"] is True
 
 
 def test_supported_machine_names_exposes_qccdsim_architectures():

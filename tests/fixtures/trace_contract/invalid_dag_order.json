@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "device_type": "ion_trap",
+  "run": {
+    "program": "fixture/dag-order",
+    "machine": "FixtureTrap",
+    "ions_per_region": 1,
+    "initial_ions_per_region": 1,
+    "physical_ions_per_region": 1,
+    "communication_buffer_per_trap": 0,
+    "mapper": "Fixture",
+    "reorder": "Naive",
+    "scheduler_policy": "FixtureParallel"
+  },
+  "topology": {
+    "traps": [
+      {"id": 0, "capacity": 1, "physical_capacity": 1, "initial_ion_capacity": 1, "communication_buffer": 0, "slots": [0], "orientation": {}},
+      {"id": 1, "capacity": 1, "physical_capacity": 1, "initial_ion_capacity": 1, "communication_buffer": 0, "slots": [0], "orientation": {}}
+    ],
+    "segments": [],
+    "junctions": [],
+    "layout": {
+      "trap:0": {"x": 0, "y": 0},
+      "trap:1": {"x": 1, "y": 0}
+    }
+  },
+  "timing": {
+    "unit": "us",
+    "cycle_time_us": 1,
+    "display_us_per_ms": 1,
+    "parameters": {
+      "single_qubit_gate_time": 7
+    }
+  },
+  "dag": {
+    "nodes": [
+      {"id": 0, "gate_name": "h", "qubits": [0], "arity": 1},
+      {"id": 1, "gate_name": "h", "qubits": [1], "arity": 1}
+    ],
+    "edges": [
+      {"source": 0, "target": 1}
+    ]
+  },
+  "particles": [
+    {"id": 0, "initial_location": "trap:0", "initial_slot": 0},
+    {"id": 1, "initial_location": "trap:1", "initial_slot": 0}
+  ],
+  "events": [
+    {"id": 0, "type": "gate", "start": 0, "end": 10, "ions": [0], "source": "trap:0", "target": "trap:0", "metadata": {"gate_id": 0, "gate_name": "h", "arity": 1, "swap_count": 0, "swap_hops": 0, "ion_hops": 0, "endpoint": null, "swap_ions": []}},
+    {"id": 1, "type": "gate", "start": 5, "end": 12, "ions": [1], "source": "trap:1", "target": "trap:1", "metadata": {"gate_id": 1, "gate_name": "h", "arity": 1, "swap_count": 0, "swap_hops": 0, "ion_hops": 0, "endpoint": null, "swap_ions": []}}
+  ],
+  "metrics": {
+    "event_count": 2,
+    "finish_time": 12,
+    "counts": {"gate": 2, "split": 0, "move": 0, "merge": 0},
+    "times": {"gate": 17, "split": 0, "move": 0, "merge": 0},
+    "one_qubit_gates": 2,
+    "two_qubit_gates": 0,
+    "shuttling_time": 0,
+    "swap_count": 0,
+    "swap_hops": 0,
+    "ion_hops": 0,
+    "max_parallel_gates": 2,
+    "cross_trap_parallel_gates": 1,
+    "same_trap_gate_overlaps": 0
+  }
+}

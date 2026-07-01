@@ -10,6 +10,7 @@ export function validateTrace(trace) {
   if (!Array.isArray(trace.particles)) errors.push("particles must be an array");
   if (!Array.isArray(trace.events)) errors.push("events must be an array");
   if (errors.length > 0) return { valid: false, errors };
+  validateContractEnvelope(trace, errors);
 
   const topologyInfo = validateTopology(trace.topology || {}, errors);
   const occupancy = validateInitialParticles(trace.particles, topologyInfo, errors);
@@ -107,6 +108,29 @@ export function validateTrace(trace) {
         pendingTransfers.splice(index, 1);
       }
     }
+  }
+}
+
+function validateContractEnvelope(trace, errors) {
+  if (!trace.run || typeof trace.run !== "object" || !trace.run.id) {
+    errors.push("missing run.id");
+  }
+  if (typeof trace.trace_hash !== "string" || trace.trace_hash.length === 0) {
+    errors.push("missing trace_hash");
+  }
+  if (!trace.provenance || typeof trace.provenance !== "object") {
+    errors.push("missing provenance");
+  }
+  if (!trace.timing || typeof trace.timing !== "object") {
+    errors.push("missing timing");
+  } else if (trace.timing.unit !== "us" || typeof trace.timing.cycle_time_us !== "number") {
+    errors.push("invalid timing model");
+  }
+  if (!trace.timing_model || typeof trace.timing_model !== "object") {
+    errors.push("missing timing_model");
+  }
+  if (!trace.metric_model || typeof trace.metric_model !== "object") {
+    errors.push("missing metric_model");
   }
 }
 

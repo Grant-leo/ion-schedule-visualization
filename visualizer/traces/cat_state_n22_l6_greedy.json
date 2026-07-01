@@ -17,7 +17,8 @@
     "gate_type": "FM",
     "swap_type": "GateSwap",
     "single_qubit_gate_time": 7,
-    "single_qubit_gate_fidelity": 0.999
+    "single_qubit_gate_fidelity": 0.999,
+    "id": "run-16b64a705195b669"
   },
   "topology": {
     "traps": [
@@ -1513,9 +1514,116 @@
     "cross_trap_parallel_gates": 0,
     "same_trap_gate_overlaps": 0
   },
+  "provenance": {
+    "source": "QCCDSim",
+    "generator": "trace_export.export_trace",
+    "contract_version": "1.0"
+  },
+  "timing_model": {
+    "name": "qccdsim-cycle-timing",
+    "version": "1.0",
+    "unit": "us",
+    "fields": [
+      "cycle_time_us",
+      "split_merge_time",
+      "shuttle_time",
+      "junction_cross_time",
+      "ion_swap_time",
+      "single_qubit_gate_time"
+    ],
+    "hash": "d87351a9463e6db463f96cf7cf58a819ed77cb4f46d200521704113eb6fde0ed"
+  },
+  "metric_model": {
+    "name": "qccdsim-schedule-metrics",
+    "version": "1.0",
+    "fields": [
+      "event_count",
+      "finish_time",
+      "counts",
+      "times",
+      "one_qubit_gates",
+      "two_qubit_gates",
+      "shuttling_time",
+      "swap_count",
+      "swap_hops",
+      "ion_hops",
+      "max_parallel_gates",
+      "cross_trap_parallel_gates",
+      "same_trap_gate_overlaps"
+    ],
+    "hash": "ccf5772963e9f502668db2985e145da2d02c12ee0e6cb6512fe76079db68cd74"
+  },
+  "trace_hash": "16b64a705195b6692caeab81664e6595d4ebc65023802ba069cecc3b111a060d",
   "validation": {
     "valid": true,
     "errors": [],
+    "contract": {
+      "valid": true,
+      "errors": []
+    },
+    "physics": {
+      "valid": true,
+      "errors": [],
+      "final_locations": {
+        "0": "trap:0",
+        "1": "trap:0",
+        "2": "trap:0",
+        "3": "trap:1",
+        "4": "trap:1",
+        "5": "trap:1",
+        "6": "trap:1",
+        "7": "trap:2",
+        "8": "trap:2",
+        "9": "trap:2",
+        "10": "trap:2",
+        "11": "trap:3",
+        "12": "trap:3",
+        "13": "trap:3",
+        "14": "trap:3",
+        "15": "trap:4",
+        "16": "trap:4",
+        "17": "trap:4",
+        "18": "trap:4",
+        "19": "trap:5",
+        "20": "trap:5",
+        "21": "trap:5"
+      },
+      "event_count_match": true
+    },
+    "dag": {
+      "valid": true,
+      "errors": []
+    },
+    "metrics": {
+      "valid": true,
+      "errors": [],
+      "recomputed": {
+        "event_count": 37,
+        "finish_time": 2957,
+        "counts": {
+          "gate": 22,
+          "split": 5,
+          "move": 5,
+          "merge": 5
+        },
+        "times": {
+          "gate": 2107,
+          "split": 400,
+          "move": 50,
+          "merge": 400
+        },
+        "one_qubit_gates": 1,
+        "two_qubit_gates": 21,
+        "shuttling_time": 850,
+        "swap_count": 0,
+        "swap_hops": 0,
+        "ion_hops": 0,
+        "max_parallel_gates": 1,
+        "cross_trap_parallel_gates": 0,
+        "same_trap_gate_overlaps": 0
+      },
+      "event_count_match": true
+    },
     "final_locations": {
       "0": "trap:0",
       "1": "trap:0",

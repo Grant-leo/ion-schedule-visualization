@@ -4,6 +4,7 @@ from pathlib import Path
 from machine import Junction, Trap
 from schedule import Schedule
 from simulation import SCHEDULER_POLICIES, effective_scheduler_flags
+from trace_contract import stamp_trace_contract
 
 
 VALID_EVENT_TYPES = {"gate", "split", "move", "merge"}
@@ -14,6 +15,8 @@ def location_key(kind, idx):
 
 
 def export_trace(result):
+    from trace_audit import build_trace_validation
+
     trace = {
         "schema_version": "1.0",
         "device_type": "ion_trap",
@@ -25,7 +28,8 @@ def export_trace(result):
         "events": [_event_to_trace(event, result.machine) for event in result.scheduler.schedule.events],
         "metrics": _metrics(result.scheduler.schedule),
     }
-    trace["validation"] = validate_trace(trace)
+    stamp_trace_contract(trace)
+    trace["validation"] = build_trace_validation(trace)
     return trace
 
 
