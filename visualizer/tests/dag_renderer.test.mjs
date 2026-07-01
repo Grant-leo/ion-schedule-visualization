@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { layoutDag } from "../dag_renderer.js";
+import { dagGeometryCacheKey, layoutDag } from "../dag_renderer.js";
 
 test("layoutDag places Qiskit-style DAG nodes by dependency layer and keeps edges", () => {
   const dagState = {
@@ -146,6 +146,40 @@ test("layoutDag preserves every node and dependency for very large DAGs", () => 
   assert.ok(ids.has(251));
   assert.equal(graph.edges.length, 499);
   assert.ok(graph.edges.every((edge) => ids.has(edge.source) && ids.has(edge.target)));
+});
+
+test("dagGeometryCacheKey is stable across playback state changes", () => {
+  const base = {
+    nodes: new Map([
+      [0, { id: 0, gate_name: "h", qubits: [0], state: "ready" }],
+      [1, { id: 1, gate_name: "cx", qubits: [0, 1], state: "blocked" }],
+    ]),
+    edges: [{ source: 0, target: 1 }],
+  };
+  const updated = {
+    nodes: new Map([
+      [0, { id: 0, gate_name: "h", qubits: [0], state: "completed" }],
+      [1, { id: 1, gate_name: "cx", qubits: [0, 1], state: "active" }],
+    ]),
+    edges: [{ source: 0, target: 1 }],
+  };
+
+  assert.equal(
+    dagGeometryCacheKey(base, { width: 420, height: 620, direction: "vertical", zoom: 1 }),
+    dagGeometryCacheKey(updated, { width: 420, height: 620, direction: "vertical", zoom: 1 }),
+  );
+});
+
+test("dagGeometryCacheKey changes when viewport zoom changes", () => {
+  const dagState = {
+    nodes: new Map([[0, { id: 0, gate_name: "h", qubits: [0], state: "ready" }]]),
+    edges: [],
+  };
+
+  assert.notEqual(
+    dagGeometryCacheKey(dagState, { width: 420, height: 620, direction: "vertical", zoom: 1 }),
+    dagGeometryCacheKey(dagState, { width: 420, height: 620, direction: "vertical", zoom: 1.25 }),
+  );
 });
 
 test("DAG stylesheet dims only executed dependency nodes", () => {

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { layoutCircuit, renderCircuitSvg } from "../circuit_renderer.js";
+import { circuitGeometryCacheKey, layoutCircuit, renderCircuitSvg } from "../circuit_renderer.js";
 
 test("layoutCircuit creates TikZ-style wires and gate columns from DAG nodes", () => {
   const dagState = {
@@ -33,6 +33,40 @@ test("layoutCircuit keeps dense circuits readable by preserving gate spacing", (
 
   assert.ok(layout.columnWidth >= 36);
   assert.ok(layout.rowGap >= 24);
+});
+
+test("circuitGeometryCacheKey is stable across playback state changes", () => {
+  const base = {
+    nodes: new Map([
+      [0, { id: 0, gate_name: "h", qubits: [0], state: "ready" }],
+      [1, { id: 1, gate_name: "cx", qubits: [0, 1], state: "blocked" }],
+    ]),
+    edges: [],
+  };
+  const updated = {
+    nodes: new Map([
+      [0, { id: 0, gate_name: "h", qubits: [0], state: "completed" }],
+      [1, { id: 1, gate_name: "cx", qubits: [0, 1], state: "active" }],
+    ]),
+    edges: [],
+  };
+
+  assert.equal(
+    circuitGeometryCacheKey(base, { qubitCount: 2, maxWidth: 360, zoom: 1 }),
+    circuitGeometryCacheKey(updated, { qubitCount: 2, maxWidth: 360, zoom: 1 }),
+  );
+});
+
+test("circuitGeometryCacheKey changes when zoom changes", () => {
+  const dagState = {
+    nodes: new Map([[0, { id: 0, gate_name: "h", qubits: [0], state: "ready" }]]),
+    edges: [],
+  };
+
+  assert.notEqual(
+    circuitGeometryCacheKey(dagState, { qubitCount: 1, maxWidth: 360, zoom: 1 }),
+    circuitGeometryCacheKey(dagState, { qubitCount: 1, maxWidth: 360, zoom: 1.2 }),
+  );
 });
 
 test("layoutCircuit keeps the opening gates clear of labels and focus badges", () => {

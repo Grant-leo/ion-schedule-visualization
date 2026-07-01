@@ -1,8 +1,8 @@
 import { createRenderer } from "./canvas_renderer.js?v=20260630-rottrap1";
 import { compareTracePair } from "./comparison_model.js?v=20260701-comparison1";
 import { renderComparisonRows, runOptionLabel } from "./comparison_renderer.js?v=20260701-comparison1";
-import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-circuit-parallel2";
-import { renderDagSvg } from "./dag_renderer.js?v=20260630-swap-circuit1";
+import { renderCircuitSvg } from "./circuit_renderer.js?v=20260701-dagperf1";
+import { renderDagSvg } from "./dag_renderer.js?v=20260701-dagperf1";
 import {
   generateCircuitTrace,
   importArchitectureText,
@@ -27,6 +27,10 @@ import {
 
 const LIVE_PANEL_INTERVAL_MS = 160;
 const PERFORMANCE_PANEL_INTERVAL_MS = 250;
+const DAG_ZOOM_MIN = 0.6;
+const DAG_ZOOM_MAX = 1.8;
+const DAG_ZOOM_STEP = 0.15;
+const DAG_FIT_PADDING = 36;
 
 const elements = {
   controlPanel: document.getElementById("controlPanel"),
@@ -70,6 +74,10 @@ const elements = {
   initialLayoutPanel: document.getElementById("initialLayoutPanel"),
   dagPanel: document.getElementById("dagPanel"),
   dagSummaryPanel: document.getElementById("dagSummaryPanel"),
+  dagZoomOutButton: document.getElementById("dagZoomOutButton"),
+  dagZoomInButton: document.getElementById("dagZoomInButton"),
+  dagFitActiveButton: document.getElementById("dagFitActiveButton"),
+  dagFitFullButton: document.getElementById("dagFitFullButton"),
   eventPanel: document.getElementById("eventPanel"),
   validationPanel: document.getElementById("validationPanel"),
   performancePanel: document.getElementById("performancePanel"),
@@ -165,6 +173,7 @@ let importedCircuitText = "";
 let importedCircuitSummary = null;
 let activeRunKey = null;
 let comparisonUserPinned = false;
+let dagZoom = 1;
 
 init().catch((error) => {
   const message = formatErrorMessage(error);
@@ -401,6 +410,10 @@ function wireControls() {
   }
   elements.circuitExpandButton.addEventListener("click", openCircuitDialog);
   elements.circuitCloseButton.addEventListener("click", closeCircuitDialog);
+  elements.dagZoomOutButton.addEventListener("click", () => setDagZoom(dagZoom - DAG_ZOOM_STEP));
+  elements.dagZoomInButton.addEventListener("click", () => setDagZoom(dagZoom + DAG_ZOOM_STEP));
+  elements.dagFitActiveButton.addEventListener("click", fitActiveDagViewport);
+  elements.dagFitFullButton.addEventListener("click", fitFullDagViewport);
   elements.circuitDialog.addEventListener("click", (event) => {
     if (event.target === elements.circuitDialog) closeCircuitDialog();
   });
@@ -1165,11 +1178,14 @@ function draw(options = {}) {
     lastInitialLayoutKey = initialLayoutKey;
   }
 
-  if (dagKey !== lastDagKey) {
+  const dagSizeKey = `${elements.dagPanel.clientWidth}x${elements.dagPanel.clientHeight}`;
+  const traceKey = trace?.trace_hash || trace?.run?.id || "";
+  const dagRenderKey = `${traceKey}|${dagKey}|${dagSizeKey}|${dagZoom}`;
+  if (dagRenderKey !== lastDagKey) {
     renderDagSummary(state.dagState);
-    renderDagSvg(elements.dagPanel, state.dagState, { direction: "vertical", bottlenecks: trace.metrics?.bottlenecks });
+    renderDagSvg(elements.dagPanel, state.dagState, { direction: "vertical", bottlenecks: trace.metrics?.bottlenecks, zoom: dagZoom });
     focusDagViewport(elements.dagPanel);
-    lastDagKey = dagKey;
+    lastDagKey = dagRenderKey;
   }
 
   const circuitSizeKey = `${elements.circuitPanel.clientWidth}x${elements.circuitPanel.clientHeight}`;
@@ -1201,6 +1217,29 @@ function closeCircuitDialog() {
   elements.circuitDialog.hidden = true;
   lastExpandedCircuitKey = "";
   elements.circuitExpandButton.focus();
+}
+
+function setDagZoom(nextZoom) {
+  dagZoom = Math.min(DAG_ZOOM_MAX, Math.max(DAG_ZOOM_MIN, Math.round(nextZoom * 100) / 100));
+  lastDagKey = "";
+  draw({ forcePanels: true });
+}
+
+function fitFullDagViewport() {
+  setDagZoom(dagZoomForSvgFit(elements.dagPanel));
+  elements.dagPanel.scrollTop = 0;
+  elements.dagPanel.scrollLeft = 0;
+}
+
+function fitActiveDagViewport() {
+  const svg = elements.dagPanel.querySelector("svg");
+  const activeNodes = [...elements.dagPanel.querySelectorAll(".dag-svg-node.active")];
+  const targetNodes = activeNodes.length ? activeNodes : [...elements.dagPanel.querySelectorAll(".dag-svg-node.ready")].slice(0, 8);
+  const bounds = dagNodesBounds(targetNodes);
+  if (svg && bounds) {
+    setDagZoom(dagZoomForSvgFit(elements.dagPanel, svg, bounds, { maxZoom: 1.35 }));
+  }
+  focusDagViewport(elements.dagPanel);
 }
 
 function renderExpandedCircuit(state, dagKey) {
@@ -1550,12 +1589,66 @@ function focusDagViewport(container) {
   const transform = target.getAttribute("transform") || "";
   const match = /translate\(([-\d.]+),\s*([-\d.]+)\)/.exec(transform);
   if (!match) return;
+  const viewBoxWidth = Number(svg.getAttribute("viewBox")?.split(/\s+/)[2] || svg.getAttribute("width") || 1);
   const viewBoxHeight = Number(svg.getAttribute("viewBox")?.split(/\s+/)[3] || svg.getAttribute("height") || 1);
-  const scale = svg.clientHeight > 0 && viewBoxHeight > 0 ? svg.clientHeight / viewBoxHeight : 1;
-  const targetTop = Number(match[2]) * scale - container.clientHeight * 0.32;
+  const scaleX = svg.clientWidth > 0 && viewBoxWidth > 0 ? svg.clientWidth / viewBoxWidth : 1;
+  const scaleY = svg.clientHeight > 0 && viewBoxHeight > 0 ? svg.clientHeight / viewBoxHeight : 1;
+  const targetLeft = Number(match[1]) * scaleX - container.clientWidth * 0.45;
+  const targetTop = Number(match[2]) * scaleY - container.clientHeight * 0.32;
+  const nextScrollLeft = Math.max(0, targetLeft);
   const nextScrollTop = Math.max(0, targetTop);
+  if (Math.abs(container.scrollLeft - nextScrollLeft) > 24) {
+    container.scrollLeft = nextScrollLeft;
+  }
   if (Math.abs(container.scrollTop - nextScrollTop) > 24) {
     container.scrollTop = nextScrollTop;
   }
-  container.scrollLeft = 0;
+}
+
+function dagZoomForSvgFit(container, svg = container?.querySelector("svg"), bounds = null, options = {}) {
+  if (!container || !svg) return DAG_ZOOM_MIN;
+  const svgWidth = Math.max(1, bounds?.width || Number(svg.getAttribute("width") || svg.clientWidth || 1));
+  const svgHeight = Math.max(1, bounds?.height || Number(svg.getAttribute("height") || svg.clientHeight || 1));
+  const availableWidth = Math.max(1, container.clientWidth - DAG_FIT_PADDING);
+  const availableHeight = Math.max(1, container.clientHeight - DAG_FIT_PADDING);
+  const fitRatio = Math.min(container.clientWidth / svgWidth, container.clientHeight / svgHeight);
+  const paddedFitRatio = Math.min(availableWidth / svgWidth, availableHeight / svgHeight, fitRatio);
+  const maxZoom = Number.isFinite(options.maxZoom) ? options.maxZoom : DAG_ZOOM_MAX;
+  return Math.min(maxZoom, Math.max(DAG_ZOOM_MIN, dagZoom * paddedFitRatio));
+}
+
+function dagNodesBounds(nodes) {
+  const boxes = nodes.map(dagNodeBox).filter(Boolean);
+  if (!boxes.length) return null;
+  const left = Math.min(...boxes.map((box) => box.left));
+  const right = Math.max(...boxes.map((box) => box.right));
+  const top = Math.min(...boxes.map((box) => box.top));
+  const bottom = Math.max(...boxes.map((box) => box.bottom));
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    width: Math.max(1, right - left + DAG_FIT_PADDING),
+    height: Math.max(1, bottom - top + DAG_FIT_PADDING),
+  };
+}
+
+function dagNodeBox(node) {
+  const transform = node.getAttribute("transform") || "";
+  const match = /translate\(([-\d.]+),\s*([-\d.]+)\)/.exec(transform);
+  const rect = node.querySelector("rect");
+  if (!match || !rect) return null;
+  const centerX = Number(match[1]);
+  const centerY = Number(match[2]);
+  const rectX = Number(rect.getAttribute("x") || 0);
+  const rectY = Number(rect.getAttribute("y") || 0);
+  const width = Number(rect.getAttribute("width") || 0);
+  const height = Number(rect.getAttribute("height") || 0);
+  return {
+    left: centerX + rectX,
+    right: centerX + rectX + width,
+    top: centerY + rectY,
+    bottom: centerY + rectY + height,
+  };
 }

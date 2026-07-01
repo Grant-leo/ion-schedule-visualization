@@ -3,8 +3,18 @@ const DEFAULT_OPTIONS = Object.freeze({
   qubitCount: 0,
 });
 
+export function circuitGeometryCacheKey(dagState = {}, options = {}) {
+  const zoom = normalizedZoom(options.zoom);
+  const gates = [...(dagState.nodes?.values?.() || [])]
+    .sort((left, right) => left.id - right.id)
+    .map((gate) => `${gate.id}:${gate.gate_name || gate.name || ""}:${(gate.qubits || []).join(",")}`)
+    .join("|");
+  return hashString(`${Number(options.qubitCount || 0)}|${Number(options.maxWidth || 0)}|${zoom}|${gates}`);
+}
+
 export function layoutCircuit(dagState = {}, options = {}) {
   const config = { ...DEFAULT_OPTIONS, ...options };
+  const zoom = normalizedZoom(config.zoom);
   const gates = [...(dagState.nodes?.values?.() || [])].sort((left, right) => left.id - right.id);
   const maxQubit = Math.max(
     Number(config.qubitCount || 0) - 1,
@@ -12,8 +22,8 @@ export function layoutCircuit(dagState = {}, options = {}) {
     0,
   );
   const qubits = Array.from({ length: maxQubit + 1 }, (_, index) => index);
-  const rowGap = qubits.length > 32 ? 24 : qubits.length > 16 ? 26 : 30;
-  const columnWidth = gates.length > 120 ? 36 : 52;
+  const rowGap = (qubits.length > 32 ? 24 : qubits.length > 16 ? 26 : 30) * zoom;
+  const columnWidth = (gates.length > 120 ? 36 : 52) * zoom;
   const left = 84;
   const top = 34;
   const width = Math.max(Number(config.maxWidth || 0), left + gates.length * columnWidth + 52);
@@ -45,18 +55,33 @@ export function layoutCircuit(dagState = {}, options = {}) {
     top,
     rowGap,
     columnWidth,
+    zoom,
   };
 }
 
 export function renderCircuitSvg(container, dagState = {}, options = {}) {
   if (!container) return null;
-  const layout = layoutCircuit(dagState, {
+  const renderOptions = {
     maxWidth: container.clientWidth || options.maxWidth || DEFAULT_OPTIONS.maxWidth,
     ...options,
-  });
+  };
+  const geometryKey = options.geometryKey || circuitGeometryCacheKey(dagState, renderOptions);
+  if (
+    typeof container.querySelector === "function" &&
+    container.__circuitGeometryCache?.key === geometryKey
+  ) {
+    const layout = applyCircuitStateToGeometry(container.__circuitGeometryCache.layout, dagState);
+    if (syncCircuitSvg(container, layout, geometryKey)) {
+      focusActiveCircuitGate(container, layout);
+      return layout;
+    }
+  }
+  const layout = layoutCircuit(dagState, renderOptions);
   const markup = circuitSvgMarkup(layout);
   if ("innerHTML" in container) {
     container.innerHTML = markup;
+    container.querySelector?.("svg.circuit-svg")?.setAttribute("data-circuit-geometry-key", geometryKey);
+    container.__circuitGeometryCache = { key: geometryKey, layout: stripCircuitState(layout) };
     focusActiveCircuitGate(container, layout);
   } else if (typeof container.replaceChildren === "function") {
     container.replaceChildren(markup);
@@ -77,20 +102,32 @@ function circuitSvgMarkup(layout) {
       ].join("");
     })
     .join("");
-  const focus = [
-    focusGates.map((gate) => focusBandMarkup(layout, gate)).join(""),
-    focusLabelMarkup(layout, focusGates),
-  ].join("");
+  const focus = focusLayerMarkup(layout);
   const gates = layout.gates.map((gate) => gateMarkup(gate)).join("");
-  const activeGateAttr = focusGates.length ? ` data-active-gate="${escapeAttr(focusGates[0].id)}"` : "";
-  const activeGatesAttr = focusGates.length > 1 ? ` data-active-gates="${escapeAttr(focusGates.map((gate) => gate.id).join(" "))}"` : "";
+  const activeAttrs = activeGateAttributes(focusGates);
   return [
-    `<svg class="circuit-svg" data-node-count="${layout.gates.length}"${activeGateAttr}${activeGatesAttr} viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" role="img" aria-label="TikZ-style quantum circuit">`,
+    `<svg class="circuit-svg" data-node-count="${layout.gates.length}"${activeAttrs} viewBox="0 0 ${layout.width} ${layout.height}" width="${layout.width}" height="${layout.height}" role="img" aria-label="TikZ-style quantum circuit">`,
     focus,
     wires,
     gates,
     "</svg>",
   ].join("");
+}
+
+function focusLayerMarkup(layout) {
+  const focusGates = activeFocusGates(layout);
+  return [
+    `<g class="circuit-focus-layer">`,
+    focusGates.map((gate) => focusBandMarkup(layout, gate)).join(""),
+    focusLabelMarkup(layout, focusGates),
+    "</g>",
+  ].join("");
+}
+
+function activeGateAttributes(focusGates) {
+  const activeGateAttr = focusGates.length ? ` data-active-gate="${escapeAttr(focusGates[0].id)}"` : "";
+  const activeGatesAttr = focusGates.length > 1 ? ` data-active-gates="${escapeAttr(focusGates.map((gate) => gate.id).join(" "))}"` : "";
+  return `${activeGateAttr}${activeGatesAttr}`;
 }
 
 function qubitLabelMarkup(qubit, y) {
@@ -182,6 +219,43 @@ function focusActiveCircuitGate(container, layout) {
   }
 }
 
+function applyCircuitStateToGeometry(geometryLayout, dagState) {
+  const stateById = new Map([...(dagState.nodes?.values?.() || [])].map((gate) => [String(gate.id), gate.state || "blocked"]));
+  return {
+    ...geometryLayout,
+    gates: geometryLayout.gates.map((gate) => ({ ...gate, state: stateById.get(String(gate.id)) || "blocked" })),
+  };
+}
+
+function stripCircuitState(layout) {
+  return {
+    ...layout,
+    gates: layout.gates.map(({ state, ...gate }) => gate),
+  };
+}
+
+function syncCircuitSvg(container, layout, geometryKey) {
+  const svg = container.querySelector("svg.circuit-svg");
+  if (!svg || svg.getAttribute("data-circuit-geometry-key") !== geometryKey) return false;
+  const focusGates = activeFocusGates(layout);
+  svg.removeAttribute("data-active-gate");
+  svg.removeAttribute("data-active-gates");
+  if (focusGates.length) svg.setAttribute("data-active-gate", String(focusGates[0].id));
+  if (focusGates.length > 1) svg.setAttribute("data-active-gates", focusGates.map((gate) => gate.id).join(" "));
+  const elementByGateId = new Map(
+    [...svg.querySelectorAll("[data-gate-id]")].map((element) => [element.getAttribute("data-gate-id"), element]),
+  );
+  for (const gate of layout.gates) {
+    const element = elementByGateId.get(String(gate.id));
+    if (!element) continue;
+    const className = `circuit-gate ${gate.state || "blocked"} ${gate.kind}`;
+    if (element.getAttribute("class") !== className) element.setAttribute("class", className);
+  }
+  svg.querySelector(".circuit-focus-layer")?.remove();
+  svg.insertAdjacentHTML("afterbegin", focusLayerMarkup(layout));
+  return true;
+}
+
 function escapeText(value) {
   return value.replace(/[&<>]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[char]);
 }
@@ -192,4 +266,19 @@ function escapeAttr(value) {
 
 function average(values) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+}
+
+function normalizedZoom(value) {
+  const zoom = Number(value);
+  if (!Number.isFinite(zoom) || zoom <= 0) return 1;
+  return Math.min(2.5, Math.max(0.5, Math.round(zoom * 100) / 100));
+}
+
+function hashString(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
 }

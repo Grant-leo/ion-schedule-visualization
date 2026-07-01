@@ -2,8 +2,24 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const COMPACT_NODE_THRESHOLD = 600;
 const COMPACT_LABEL_STATES = new Set(["active"]);
 
+export function dagGeometryCacheKey(dagState, options = {}) {
+  const direction = options.direction === "vertical" ? "vertical" : "horizontal";
+  const zoom = normalizedZoom(options.zoom);
+  const nodes = [...(dagState.nodes?.values() || [])]
+    .sort((left, right) => left.id - right.id)
+    .map((node) => `${node.id}:${node.gate_name || node.name || ""}:${(node.qubits || []).join(",")}`)
+    .join("|");
+  const edges = (dagState.edges || [])
+    .map((edge) => `${edge.source}>${edge.target}`)
+    .sort()
+    .join("|");
+  const compact = Boolean(options.compact ?? (dagState.nodes?.size || 0) > COMPACT_NODE_THRESHOLD);
+  return hashString(`${direction}|${Number(options.width) || 0}|${Number(options.height) || 0}|${zoom}|${compact}|${nodes}|${edges}`);
+}
+
 export function layoutDag(dagState, options = {}) {
   const direction = options.direction === "vertical" ? "vertical" : "horizontal";
+  const zoom = normalizedZoom(options.zoom);
   const allNodes = [...(dagState.nodes?.values() || [])].sort((left, right) => left.id - right.id);
   const allEdges = dagState.edges || [];
   const compact = Boolean(options.compact ?? allNodes.length > COMPACT_NODE_THRESHOLD);
@@ -45,7 +61,7 @@ export function layoutDag(dagState, options = {}) {
 
   if (direction === "vertical") {
     const graph = layoutVerticalDag(byLevel, edges, { ...options, compact });
-    return { ...graph, totalNodeCount: allNodes.length, omittedNodeCount: 0, compact };
+    return scaleGraph({ ...graph, totalNodeCount: allNodes.length, omittedNodeCount: 0, compact }, zoom);
   }
 
   const levelCount = Math.max(1, byLevel.size);
@@ -80,7 +96,7 @@ export function layoutDag(dagState, options = {}) {
     .map((edge) => ({ ...edge, sourceNode: nodeById.get(edge.source), targetNode: nodeById.get(edge.target) }))
     .filter((edge) => edge.sourceNode && edge.targetNode);
 
-  return {
+  return scaleGraph({
     width,
     height,
     direction,
@@ -89,7 +105,7 @@ export function layoutDag(dagState, options = {}) {
     totalNodeCount: allNodes.length,
     omittedNodeCount: 0,
     compact,
-  };
+  }, zoom);
 }
 
 function layoutVerticalDag(byLevel, edges, options) {
@@ -148,16 +164,34 @@ function chunk(items, size) {
 
 export function renderDagSvg(container, dagState, options = {}) {
   const rect = container.getBoundingClientRect();
-  const graph = layoutDag(dagState, {
+  const renderOptions = {
     width: Math.max(300, Math.floor(rect.width || 0)),
     height: Math.max(360, Math.floor(rect.height || 0)),
     direction: options.direction,
+    zoom: options.zoom,
+    compact: options.compact,
+  };
+  const geometryKey = options.geometryKey || dagGeometryCacheKey(dagState, renderOptions);
+  const existingSvg = container.firstElementChild;
+  if (
+    existingSvg?.getAttribute?.("data-dag-geometry-key") === geometryKey &&
+    container.__dagGeometryCache?.key === geometryKey
+  ) {
+    const graph = applyDagStateToGeometry(container.__dagGeometryCache.graph, dagState, options.bottlenecks);
+    syncDagNodeStates(existingSvg, graph);
+    existingSvg.setAttribute("data-dag-state-key", dagStateClassKey(graph));
+    return graph;
+  }
+  const graph = layoutDag(dagState, {
+    ...renderOptions,
     bottlenecks: options.bottlenecks,
   });
   const structureKey = dagStructureKey(graph);
-  const existingSvg = container.firstElementChild;
   if (existingSvg?.getAttribute?.("data-dag-structure-key") === structureKey) {
     syncDagNodeStates(existingSvg, graph);
+    existingSvg.setAttribute("data-dag-geometry-key", geometryKey);
+    existingSvg.setAttribute("data-dag-state-key", dagStateClassKey(graph));
+    container.__dagGeometryCache = { key: geometryKey, graph: stripDagState(graph) };
     return graph;
   }
 
@@ -166,6 +200,9 @@ export function renderDagSvg(container, dagState, options = {}) {
     "data-total-nodes": graph.totalNodeCount,
     "data-omitted-nodes": graph.omittedNodeCount,
     "data-dag-structure-key": structureKey,
+    "data-dag-geometry-key": geometryKey,
+    "data-dag-state-key": dagStateClassKey(graph),
+    "data-dag-zoom": normalizedZoom(renderOptions.zoom),
     viewBox: `0 0 ${graph.width} ${graph.height}`,
     width: graph.width,
     height: graph.height,
@@ -207,6 +244,7 @@ export function renderDagSvg(container, dagState, options = {}) {
   svg.appendChild(nodeLayer);
   appendCompactLabels(svg, graph);
   container.replaceChildren(svg);
+  container.__dagGeometryCache = { key: geometryKey, graph: stripDagState(graph) };
   return graph;
 }
 
@@ -223,6 +261,33 @@ function dagBottleneckMap(bottlenecks = {}) {
     result.set(source, Math.max(result.get(source) || 0, stallTime));
   }
   return result;
+}
+
+function applyDagStateToGeometry(geometryGraph, dagState, bottlenecks) {
+  const stateById = new Map([...(dagState.nodes?.values?.() || [])].map((node) => [String(node.id), node.state || "blocked"]));
+  const stallBySource = dagBottleneckMap(bottlenecks);
+  const nodes = geometryGraph.nodes.map((node) => {
+    const stallTime = stallBySource.get(node.id);
+    return {
+      ...node,
+      state: stateById.get(String(node.id)) || "blocked",
+      ...(stallTime ? { bottleneck: true, releases_stall_time: stallTime } : { bottleneck: undefined, releases_stall_time: undefined }),
+    };
+  });
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const edges = geometryGraph.edges
+    .map((edge) => ({ ...edge, sourceNode: nodeById.get(edge.source), targetNode: nodeById.get(edge.target) }))
+    .filter((edge) => edge.sourceNode && edge.targetNode);
+  return { ...geometryGraph, nodes, edges };
+}
+
+function stripDagState(graph) {
+  const nodes = graph.nodes.map(({ state, bottleneck, releases_stall_time, ...node }) => node);
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const edges = graph.edges
+    .map(({ sourceNode, targetNode, ...edge }) => ({ ...edge, sourceNode: nodeById.get(edge.source), targetNode: nodeById.get(edge.target) }))
+    .filter((edge) => edge.sourceNode && edge.targetNode);
+  return { ...graph, nodes, edges };
 }
 
 function formatNodeLabel(node) {
@@ -296,12 +361,38 @@ function syncDagNodeStates(svg, graph) {
   appendCompactLabels(svg, graph);
 }
 
+function dagStateClassKey(graph) {
+  return hashString(graph.nodes.map((node) => `${node.id}:${node.state || "blocked"}:${node.bottleneck ? 1 : 0}`).join("|"));
+}
+
 function dagStructureKey(graph) {
   const nodeKey = graph.nodes
     .map((node) => `${node.id}:${node.level}:${node.x}:${node.y}:${node.width}:${node.height}`)
     .join("|");
   const edgeKey = graph.edges.map((edge) => `${edge.source}>${edge.target}`).join("|");
   return hashString(`${graph.direction}|${graph.width}|${graph.height}|${graph.compact}|${nodeKey}|${edgeKey}`);
+}
+
+function normalizedZoom(value) {
+  const zoom = Number(value);
+  if (!Number.isFinite(zoom) || zoom <= 0) return 1;
+  return Math.min(2.5, Math.max(0.5, Math.round(zoom * 100) / 100));
+}
+
+function scaleGraph(graph, zoom) {
+  if (zoom === 1) return { ...graph, zoom };
+  const nodes = graph.nodes.map((node) => ({
+    ...node,
+    x: node.x * zoom,
+    y: node.y * zoom,
+    width: node.width * zoom,
+    height: node.height * zoom,
+  }));
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const edges = graph.edges
+    .map((edge) => ({ ...edge, sourceNode: nodeById.get(edge.source), targetNode: nodeById.get(edge.target) }))
+    .filter((edge) => edge.sourceNode && edge.targetNode);
+  return { ...graph, width: graph.width * zoom, height: graph.height * zoom, nodes, edges, zoom };
 }
 
 function hashString(value) {

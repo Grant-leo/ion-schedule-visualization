@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 const cssSource = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 const canvasSource = readFileSync(new URL("../canvas_renderer.js", import.meta.url), "utf8");
+const circuitSource = readFileSync(new URL("../circuit_renderer.js", import.meta.url), "utf8");
 const indexSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 
 test("desktop demo layout prioritizes the main canvas while keeping the DAG side panel visible", () => {
@@ -161,7 +162,32 @@ test("invalid schedule reasons are visible on the hardware stage", () => {
 test("large dependency DAGs are rendered without dropping nodes", () => {
   assert.doesNotMatch(appSource, /DAG_MAX_RENDERED_NODES/);
   assert.doesNotMatch(appSource, /maxNodes/);
-  assert.match(appSource, /renderDagSvg\(elements\.dagPanel,\s*state\.dagState,\s*\{\s*direction:\s*"vertical",\s*bottlenecks:\s*trace\.metrics\?\.bottlenecks\s*\}\)/);
+  assert.match(appSource, /renderDagSvg\(elements\.dagPanel,\s*state\.dagState,\s*\{\s*direction:\s*"vertical",\s*bottlenecks:\s*trace\.metrics\?\.bottlenecks,\s*zoom:\s*dagZoom/);
+  assert.match(indexSource, /id="dagZoomOutButton"/);
+  assert.match(indexSource, /id="dagFitActiveButton"/);
+  assert.match(indexSource, /id="dagFitFullButton"/);
+  assert.match(indexSource, /id="dagZoomInButton"/);
+  assert.match(cssSource, /\.dag-toolbar/);
+});
+
+test("DAG fit controls compute viewport-aware zoom targets", () => {
+  assert.match(appSource, /function\s+dagZoomForSvgFit\(/);
+  assert.match(appSource, /Math\.min\(\s*container\.clientWidth\s*\/\s*svgWidth,\s*container\.clientHeight\s*\/\s*svgHeight\s*\)/);
+  assert.match(appSource, /function\s+fitActiveDagViewport\(/);
+  assert.match(appSource, /elements\.dagFitActiveButton\.addEventListener\("click",\s*fitActiveDagViewport\)/);
+  assert.match(appSource, /setDagZoom\(dagZoomForSvgFit/);
+  assert.doesNotMatch(appSource, /function\s+fitFullDagViewport\(\)\s*{[\s\S]{0,80}setDagZoom\(DAG_ZOOM_MIN\)/);
+});
+
+test("browser module cache versions track Task 7 renderer changes", () => {
+  assert.match(appSource, /renderCircuitSvg\s*\}\s+from\s+"\.\/circuit_renderer\.js\?v=20260701-dagperf1"/);
+  assert.match(appSource, /renderDagSvg\s*\}\s+from\s+"\.\/dag_renderer\.js\?v=20260701-dagperf1"/);
+  assert.match(indexSource, /app\.js\?v=20260701-dagperf1/);
+});
+
+test("circuit state sync batches gate element lookup for large updates", () => {
+  assert.match(circuitSource, /querySelectorAll\("\[data-gate-id\]"\)/);
+  assert.doesNotMatch(circuitSource, /svg\.querySelector\(`\[data-gate-id="\$\{selectorAttr/);
 });
 
 test("responsive DAG panel stays scroll-contained near the desktop breakpoint", () => {

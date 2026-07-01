@@ -1297,6 +1297,36 @@ textarea {
   gap: var(--space-3);
 }
 
+.dag-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: var(--radius-2);
+  background: rgba(10, 12, 15, 0.72);
+}
+
+.dag-toolbar button {
+  min-height: 0;
+  min-width: 30px;
+  height: 26px;
+  padding: 0 8px;
+  border-color: transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.dag-toolbar button:hover,
+.dag-toolbar button:focus-visible {
+  border-color: rgba(100, 210, 255, 0.44);
+  background: rgba(100, 210, 255, 0.11);
+  color: var(--color-text);
+}
+
 .dag-page {
   width: 100%;
   height: 100%;

@@ -164,6 +164,12 @@
               <span class="panel-eyebrow">Circuit layer</span>
               <h2>Dependency DAG</h2>
             </div>
+            <div class="dag-toolbar" aria-label="DAG viewport controls">
+              <button id="dagZoomOutButton" type="button" aria-label="Zoom DAG out" title="Zoom out">-</button>
+              <button id="dagFitActiveButton" type="button" aria-label="Fit active DAG node" title="Fit active">Active</button>
+              <button id="dagFitFullButton" type="button" aria-label="Fit full DAG" title="Fit full">Full</button>
+              <button id="dagZoomInButton" type="button" aria-label="Zoom DAG in" title="Zoom in">+</button>
+            </div>
           </div>
           <div id="dagSummaryPanel" class="dag-summary"></div>
           <div id="dagPanel"></div>
@@ -186,6 +192,6 @@
         <div id="circuitDialogPanel" class="circuit-dialog-body" aria-label="Expanded TikZ-style circuit synchronized with playback"></div>
       </section>
     </div>
-    <script type="module" src="./app.js?v=20260701-comparison1"></script>
+    <script type="module" src="./app.js?v=20260701-dagperf1"></script>
   </body>
 </html>
