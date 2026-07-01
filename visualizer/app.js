@@ -1,4 +1,6 @@
 import { createRenderer } from "./canvas_renderer.js?v=20260630-rottrap1";
+import { compareTracePair } from "./comparison_model.js?v=20260701-comparison1";
+import { renderComparisonRows, runOptionLabel } from "./comparison_renderer.js?v=20260701-comparison1";
 import { renderCircuitSvg } from "./circuit_renderer.js?v=20260630-circuit-parallel2";
 import { renderDagSvg } from "./dag_renderer.js?v=20260630-swap-circuit1";
 import {
@@ -9,7 +11,7 @@ import {
 } from "./import_panel.js?v=20260701-circuit-import1";
 import { createReplay, validateTrace } from "./replay.js?v=20260630-fidelity2";
 import { fetchJson, formatErrorMessage, isAbortError } from "./api_client.js?v=20260701-foundation1";
-import { createRunStore } from "./run_store.js?v=20260701-foundation1";
+import { createRunStore } from "./run_store.js?v=20260701-comparison1";
 import {
   createHeadlineMetricCards,
   createMetricCards,
@@ -73,6 +75,11 @@ const elements = {
   performancePanel: document.getElementById("performancePanel"),
   benchmarkMetaPanel: document.getElementById("benchmarkMetaPanel"),
   runConfigPanel: document.getElementById("runConfigPanel"),
+  comparisonPanel: document.getElementById("comparisonPanel"),
+  comparisonBaselineSelect: document.getElementById("comparisonBaselineSelect"),
+  comparisonCandidateSelect: document.getElementById("comparisonCandidateSelect"),
+  comparisonStatus: document.getElementById("comparisonStatus"),
+  comparisonRows: document.getElementById("comparisonRows"),
   timeReadout: document.getElementById("timeReadout"),
 };
 
@@ -96,6 +103,8 @@ const GENERATION_LOCKED_ELEMENTS = [
   elements.stepButton,
   elements.speedSelect,
   elements.timeline,
+  elements.comparisonBaselineSelect,
+  elements.comparisonCandidateSelect,
 ];
 
 const EXPERIMENT_CONFIG_ELEMENTS = [
@@ -154,6 +163,8 @@ let generationActionLabel = "Generating...";
 let customArchitectureSpec = null;
 let importedCircuitText = "";
 let importedCircuitSummary = null;
+let activeRunKey = null;
+let comparisonUserPinned = false;
 
 init().catch((error) => {
   const message = formatErrorMessage(error);
@@ -347,6 +358,8 @@ function wireControls() {
   elements.circuitValidateButton.addEventListener("click", () => validateImportedCircuit());
   elements.architectureImportInput.addEventListener("change", () => setSourceMode("experiment"));
   elements.architectureImportButton.addEventListener("click", () => loadImportedArchitecture());
+  elements.comparisonBaselineSelect.addEventListener("change", () => updateComparisonSelectionFromControls());
+  elements.comparisonCandidateSelect.addEventListener("change", () => updateComparisonSelectionFromControls());
   elements.loadConfigButton.addEventListener("click", () => loadSelectedConfig());
   for (const button of elements.sourceModeButtons) {
     button.addEventListener("click", async () => {
@@ -585,8 +598,11 @@ function loadTraceData(nextTrace, { resetControlPanelScroll = true } = {}) {
 
   const nextReplay = createReplay(nextTrace);
   previousTraceMetrics = trace?.metrics || null;
+  const previousRunKey = activeRunKey;
   const nextRunKey = runStore.addRun(nextTrace, { sourceMode });
   runStore.selectPrimary(nextRunKey);
+  activeRunKey = nextRunKey;
+  maybeAutoSelectComparison(previousRunKey, nextRunKey);
   trace = nextTrace;
   replay = nextReplay;
   setReplayBlocked(false);
@@ -605,6 +621,8 @@ function loadTraceData(nextTrace, { resetControlPanelScroll = true } = {}) {
   applySourceModeAvailability();
   renderScenarioSummary(trace);
   renderRunConfig(trace);
+  renderComparisonPanel();
+  focusComparisonPanelIfReady();
   resetInspectorRenderCache();
 
   setStatus("Schedule verified", "valid");
@@ -696,6 +714,7 @@ async function loadSelectedConfig({ preserveControlScroll = true } = {}) {
       if (requestId !== loadRequestId) return;
       if (!loadTraceData(nextTrace, { resetControlPanelScroll: !preserveControlScroll })) return;
       restoreControlScrollTop(controlScrollTop);
+      focusComparisonPanelIfReady();
       return;
     }
 
@@ -849,6 +868,86 @@ function renderRunConfig(nextTrace) {
     run.scheduler_policy ? `scheduler ${run.scheduler_policy}` : null,
   ].filter(Boolean);
   elements.runConfigPanel.textContent = items.join(" | ");
+}
+
+function maybeAutoSelectComparison(previousRunKey, nextRunKey) {
+  if (comparisonUserPinned || !previousRunKey || previousRunKey === nextRunKey) return;
+  try {
+    runStore.selectComparisonPair(previousRunKey, nextRunKey);
+  } catch {
+    // Comparison is an analysis convenience; replay should keep working even if a stored key vanished.
+  }
+}
+
+function updateComparisonSelectionFromControls() {
+  comparisonUserPinned = true;
+  const runs = runStore.allRuns();
+  const baselineKey = elements.comparisonBaselineSelect.value;
+  let candidateKey = elements.comparisonCandidateSelect.value;
+  if (baselineKey && baselineKey === candidateKey) {
+    candidateKey = runs.find((run) => run.key !== baselineKey)?.key || "";
+    elements.comparisonCandidateSelect.value = candidateKey;
+  }
+  if (!baselineKey || !candidateKey) {
+    renderComparisonPanel();
+    return;
+  }
+  try {
+    runStore.selectComparisonPair(baselineKey, candidateKey);
+    renderComparisonPanel();
+  } catch (error) {
+    elements.comparisonStatus.textContent = formatErrorMessage(error);
+    renderComparisonRows(elements.comparisonRows, null);
+  }
+}
+
+function renderComparisonPanel() {
+  const runs = runStore.allRuns();
+  const pairBeforePopulate = runStore.comparisonPair();
+  populateRunSelect(elements.comparisonBaselineSelect, runs, pairBeforePopulate?.baseline?.key);
+  populateRunSelect(elements.comparisonCandidateSelect, runs, pairBeforePopulate?.candidate?.key);
+  if (runs.length < 2) {
+    elements.comparisonStatus.textContent = "Generate a second schedule to compare mapper or scheduler choices.";
+    renderComparisonRows(elements.comparisonRows, null);
+    return;
+  }
+  let pair = runStore.comparisonPair();
+  if (!pair) {
+    runStore.selectComparisonPair(runs[0].key, runs[runs.length - 1].key);
+    pair = runStore.comparisonPair();
+    populateRunSelect(elements.comparisonBaselineSelect, runs, pair.baseline.key);
+    populateRunSelect(elements.comparisonCandidateSelect, runs, pair.candidate.key);
+  }
+  const result = compareTracePair(pair.baseline.trace, pair.candidate.trace);
+  elements.comparisonStatus.textContent =
+    result.status === "comparable"
+      ? "Comparable pair. Lower time and shuttles are better; higher fidelity is better."
+      : result.reasons.join("; ");
+  renderComparisonRows(elements.comparisonRows, result);
+}
+
+function focusComparisonPanelIfReady() {
+  if (runStore.allRuns().length < 2) return;
+  elements.comparisonRows.scrollIntoView({ block: "start" });
+  elements.controlScrollRegion.scrollTop = Math.max(
+    0,
+    elements.comparisonRows.offsetTop - elements.controlScrollRegion.offsetTop,
+  );
+}
+
+function populateRunSelect(select, runs, selectedKey = "") {
+  const previous = selectedKey || select.value;
+  select.replaceChildren();
+  for (const record of runs) {
+    const option = document.createElement("option");
+    option.value = record.key;
+    option.textContent = runOptionLabel(record);
+    select.appendChild(option);
+  }
+  select.disabled = generationLoading || runs.length < 2;
+  if (previous && runs.some((record) => record.key === previous)) {
+    select.value = previous;
+  }
 }
 
 function capacitySummary(run = {}) {

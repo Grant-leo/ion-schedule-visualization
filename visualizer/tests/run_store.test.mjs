@@ -50,6 +50,48 @@ test("createRunStore stores and selects multiple validated traces", () => {
   );
 });
 
+test("createRunStore keeps explicit baseline and candidate roles across primary replay changes", () => {
+  const store = createRunStore();
+  const baseline = trace({ trace_hash: "base", run: { id: "baseline", machine: "G3x3" } });
+  const candidate = trace({ trace_hash: "candidate", run: { id: "candidate", machine: "G3x3" } });
+  const replayOnly = trace({ trace_hash: "active", run: { id: "active", machine: "G3x3" } });
+
+  const baselineKey = store.addRun(baseline);
+  const candidateKey = store.addRun(candidate);
+  const replayKey = store.addRun(replayOnly);
+  store.selectComparisonPair(baselineKey, candidateKey);
+  store.selectPrimary(replayKey);
+
+  const pair = store.comparisonPair();
+  assert.equal(pair.baseline.key, baselineKey);
+  assert.equal(pair.candidate.key, candidateKey);
+  assert.deepEqual(
+    store.allRuns().map((item) => item.key),
+    [baselineKey, candidateKey, replayKey],
+  );
+  assert.equal(store.selectedRuns()[0].key, baselineKey);
+  assert.equal(store.selectedRuns()[1].key, candidateKey);
+  assert.equal(store.getRun(replayKey).trace, replayOnly);
+});
+
+test("createRunStore rejects unknown comparison pair keys and clears comparison roles", () => {
+  const store = createRunStore();
+  const baselineKey = store.addRun(trace({ trace_hash: "base" }));
+
+  assert.throws(() => store.selectComparisonPair(baselineKey, "missing"), /Unknown run key: missing/);
+
+  store.clear();
+  assert.equal(store.comparisonPair(), null);
+  assert.deepEqual(store.selectedRuns(), []);
+});
+
+test("createRunStore rejects using one run as both comparison roles", () => {
+  const store = createRunStore();
+  const runKey = store.addRun(trace({ trace_hash: "base" }));
+
+  assert.throws(() => store.selectComparisonPair(runKey, runKey), /distinct runs/);
+});
+
 test("createRunStore rejects unknown selected run keys", () => {
   const store = createRunStore();
 

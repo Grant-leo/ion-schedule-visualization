@@ -2,6 +2,8 @@ export function createRunStore() {
   const runs = new Map();
   let primaryKey = null;
   let comparisonKeys = [];
+  let baselineKey = null;
+  let candidateKey = null;
 
   function requireRun(key) {
     if (!runs.has(key)) {
@@ -20,6 +22,9 @@ export function createRunStore() {
       requireRun(key);
       return runs.get(key);
     },
+    allRuns() {
+      return [...runs.values()];
+    },
     selectPrimary(key) {
       requireRun(key);
       primaryKey = key;
@@ -27,8 +32,32 @@ export function createRunStore() {
     },
     selectComparison(keys) {
       for (const key of keys) requireRun(key);
+      if (new Set(keys).size !== keys.length) {
+        throw new Error("Comparison requires distinct runs.");
+      }
       comparisonKeys = [...keys];
+      baselineKey = comparisonKeys[0] || null;
+      candidateKey = comparisonKeys[1] || null;
       return comparisonKeys.map((key) => runs.get(key));
+    },
+    selectComparisonPair(nextBaselineKey, nextCandidateKey) {
+      requireRun(nextBaselineKey);
+      requireRun(nextCandidateKey);
+      if (nextBaselineKey === nextCandidateKey) {
+        throw new Error("Comparison requires distinct runs.");
+      }
+      baselineKey = nextBaselineKey;
+      candidateKey = nextCandidateKey;
+      comparisonKeys = [baselineKey, candidateKey];
+      return this.comparisonPair();
+    },
+    comparisonPair() {
+      if (!baselineKey || !candidateKey) return null;
+      if (!runs.has(baselineKey) || !runs.has(candidateKey)) return null;
+      return {
+        baseline: runs.get(baselineKey),
+        candidate: runs.get(candidateKey),
+      };
     },
     selectedRuns() {
       const keys = comparisonKeys.length > 0 ? comparisonKeys : primaryKey ? [primaryKey] : [];
@@ -38,6 +67,8 @@ export function createRunStore() {
       runs.clear();
       primaryKey = null;
       comparisonKeys = [];
+      baselineKey = null;
+      candidateKey = null;
     },
   };
 }

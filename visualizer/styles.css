@@ -512,7 +512,7 @@ select {
 .left-control-panel {
   grid-area: left;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, clamp(250px, 44vh, 360px)) minmax(0, 1fr);
   gap: 10px;
   overflow: hidden;
   padding: var(--space-3);
@@ -527,6 +527,8 @@ select {
 .left-fixed-region {
   display: grid;
   gap: 10px;
+  min-height: 0;
+  overflow: auto;
 }
 
 .left-scroll-region {
@@ -557,7 +559,8 @@ select {
 .control-section,
 .inspector-section,
 .advanced-config,
-.scope-note {
+.scope-note,
+.comparison-panel {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-2);
   background: var(--color-material);
@@ -859,6 +862,81 @@ textarea {
 .scope-note strong {
   color: var(--color-text);
   font-size: 12px;
+}
+
+.comparison-panel {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.comparison-heading {
+  display: grid;
+  gap: 2px;
+}
+
+.comparison-heading strong {
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.comparison-status,
+.comparison-empty,
+.comparison-flags {
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.comparison-rows {
+  display: grid;
+  gap: 6px;
+}
+
+.comparison-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-1);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.comparison-label,
+.comparison-values,
+.comparison-delta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comparison-label {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.comparison-values {
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.comparison-delta {
+  color: var(--color-junction);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.comparison-row.is-candidate .comparison-delta {
+  color: #8fe871;
+}
+
+.comparison-row.is-baseline .comparison-delta {
+  color: #ffb8be;
 }
 
 .visualization-viewport {

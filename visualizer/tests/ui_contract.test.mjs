@@ -61,7 +61,7 @@ test("trace generation ignores stale responses and disables duplicate submission
 
 test("app routes API calls and loaded traces through foundation modules", () => {
   assert.match(appSource, /from\s+"\.\/api_client\.js\?v=20260701-foundation1"/);
-  assert.match(appSource, /from\s+"\.\/run_store\.js\?v=20260701-foundation1"/);
+  assert.match(appSource, /from\s+"\.\/run_store\.js\?v=20260701-comparison1"/);
   assert.doesNotMatch(appSource, /async function fetchJson\(path,\s*options\s*=\s*\{\}\)/);
   assert.match(appSource, /const\s+runStore\s*=\s*createRunStore\(\)/);
   assert.match(appSource, /runStore\.addRun\(nextTrace/);
@@ -115,6 +115,26 @@ test("inline OpenQASM circuit import lives inside experiment configuration", () 
   assert.match(appSource, /IMPORTED:\$\{summary\.id\}/);
 });
 
+test("multi-run comparison lives in the left control flow without changing the main viewport", () => {
+  assert.match(indexSource, /id="comparisonPanel"/);
+  assert.match(indexSource, /id="comparisonBaselineSelect"/);
+  assert.match(indexSource, /id="comparisonCandidateSelect"/);
+  assert.match(
+    indexSource,
+    /<div id="controlScrollRegion"[\s\S]*id="comparisonPanel"[\s\S]*<\/div>\s*<\/aside>/,
+  );
+  assert.match(appSource, /selectComparisonPair/);
+  assert.match(appSource, /compareTracePair/);
+  assert.match(appSource, /comparisonRows\.scrollIntoView/);
+  assert.doesNotMatch(appSource, /previousTraceMetrics[\s\S]{0,80}comparison/i);
+  assert.match(cssSource, /\.comparison-panel/);
+  assert.match(
+    cssSource,
+    /grid-template-areas:\r?\n    "header header right"\r?\n    "left viewport right"\r?\n    "timeline timeline right"/,
+  );
+  assert.match(cssSource, /\.visualization-viewport\s*{[\s\S]*grid-area:\s*viewport/);
+});
+
 test("invalid traces are rejected before replay installation", () => {
   const validIndex = appSource.indexOf("const valid = frontendValidation.valid && backendValidation.valid");
   const guardIndex = appSource.indexOf("if (!valid)");
@@ -158,7 +178,8 @@ test("primary playback controls appear before advanced experiment configuration"
 test("left control shell stays fixed while experiment configuration scrolls internally", () => {
   assert.match(indexSource, /class="left-fixed-region"/);
   assert.match(indexSource, /id="controlScrollRegion"\s+class="left-scroll-region"/);
-  assert.match(cssSource, /\.left-control-panel\s*{[\s\S]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)[\s\S]*overflow:\s*hidden/);
+  assert.match(cssSource, /\.left-control-panel\s*{[\s\S]*grid-template-rows:\s*minmax\(0,\s*clamp\(250px,\s*44vh,\s*360px\)\)\s+minmax\(0,\s*1fr\)[\s\S]*overflow:\s*hidden/);
+  assert.match(cssSource, /\.left-fixed-region\s*{[\s\S]*overflow:\s*auto/);
   assert.match(cssSource, /\.left-scroll-region\s*{[\s\S]*overflow:\s*auto/);
   assert.match(cssSource, /@media\s*\(max-width:\s*1240px\)[\s\S]*\.header-bar\s*{[\s\S]*position:\s*sticky;[\s\S]*top:\s*0/);
 });
