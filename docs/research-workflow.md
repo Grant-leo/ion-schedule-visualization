@@ -41,6 +41,27 @@ Each timestamped output directory contains:
 
 The default output root `results/` is ignored by Git so large experimental data does not accidentally enter the repository.
 
+Experiment config files are ordinary JSON. On Windows, they may be edited with PowerShell commands such as `Set-Content -Encoding UTF8`; the loader accepts UTF-8 files with or without a byte-order mark.
+
+## Verification Checklist
+
+Before using a batch result for mapper or scheduler conclusions, check that the run directory contains:
+
+- `manifest.json` with every intended configuration listed exactly once.
+- `metrics.csv` rows for completed runs and `failures.csv` rows for rejected configurations.
+- `audit.json` with `valid: true`.
+- `analysis/*.analysis.json` files linked from the manifest for completed runs.
+- Nonzero wait or pressure entries when the circuit and architecture should create contention.
+
+The quickest end-to-end research sanity check is:
+
+```powershell
+.\venv\Scripts\python.exe tools\run_experiment_matrix.py --config experiments\configs\qccd_research_smoke.json --output-root tmp\qccd_experiment_smoke
+.\venv\Scripts\python.exe -B -m pytest -q tests\test_experiment_matrix.py tests\test_experiment_audit.py tests\test_bottleneck_attribution.py
+```
+
+The smoke matrix covers two circuits and two scheduler policies. Use the core matrix when evaluating architecture, mapper, ordering, scheduler, and seed interactions.
+
 ## What To Look For
 
 | Symptom | Likely Research Question |

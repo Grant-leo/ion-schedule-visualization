@@ -24,8 +24,8 @@ G9 grid QCCD replay:
 | Team | Qubit Questers |
 | Scope | Trapped-ion QCCD schedule visualization and validation |
 | Input | QCCDSim traces, curated JSON traces, or schedules generated from the UI |
-| Output | Hardware replay, synchronized circuit strip, dependency DAG, and live metrics |
-| Current status | Ion-trap prototype with QCCDSim-backed topology, replay, validation, and benchmark controls |
+| Output | Hardware replay, synchronized circuit strip, dependency DAG, live metrics, experiment bundles, and batch-run metrics |
+| Current status | Ion-trap prototype with QCCDSim-backed topology, replay, validation, benchmark controls, and research batch experiments |
 
 ## Demo Path
 
@@ -54,6 +54,8 @@ This makes the tool useful for scheduler and mapper debugging. The canvas is not
 - Visual verification of mapping algorithms. Mapper choices change the initial ion-to-trap placement and chain order, so shuttling pressure, swap work, and gate locality can be inspected visually instead of only through aggregate metrics.
 - Scheduler comparison. The current UI exposes parallel scheduling, serialized shuttling, and a global serial baseline so their behavior can be compared on the same benchmark family.
 - Architecture-level experiments. QCCDSim machine layouts and trap capacities can be selected in the UI, including linear, grid, and ring-like QCCD topologies.
+- Batch experiment sweeps. The command-line runner expands circuit, architecture, capacity, mapper, ordering, scheduler, and seed matrices, then writes validated traces, metrics, failures, audits, and summaries.
+- Bottleneck attribution. Per-run analysis files report trap, segment, junction, ion, gate-wait, and unexplained-gap pressure so scheduling failures can be studied beyond the animation.
 - Demo-ready benchmark replay. Curated traces under `visualizer/traces/` make it possible to open the page and immediately demonstrate a verified schedule without waiting for generation.
 
 ## Roadmap
@@ -123,6 +125,22 @@ The scheduler mode buttons are shortcuts for the scheduler dropdown:
 - `Shuttle serial`: serializes communication flow.
 - `Global serial`: forces a global serial baseline.
 
+## Research Batch Mode
+
+For algorithm experiments that need many runs instead of one replay, start with the smoke matrix:
+
+```powershell
+.\venv\Scripts\python.exe tools\run_experiment_matrix.py --config experiments\configs\qccd_research_smoke.json --output-root tmp\qccd_experiment_smoke
+```
+
+For a broader local sweep:
+
+```powershell
+.\venv\Scripts\python.exe tools\run_experiment_matrix.py --config experiments\configs\qccd_research_core.json --output-root results\qccd_experiments
+```
+
+The runner accepts JSON config files saved by common Windows editors and PowerShell, including UTF-8 files with a byte-order mark. This keeps experiment configs editable from the command line without breaking the parser.
+
 ## Data Flow
 
 The visualizer can load schedule data in two ways.
@@ -143,6 +161,17 @@ trace_export.py
 ```
 
 For dynamic generation, the page sends the selected program, architecture, initial load cap, mapper, ordering, and scheduler to `/api/trace`. The backend builds a QCCDSim `SimulationConfig`, runs the QCCDSim scheduling pipeline, exports the result to a JSON trace, validates it, and returns it to the browser.
+
+Batch research experiments use the same scheduling and trace-export path:
+
+```text
+tools/run_experiment_matrix.py
+experiment_matrix.py
+bottleneck_attribution.py
+experiment_audit.py
+```
+
+The batch runner produces one validated trace plus one bottleneck-analysis file per completed configuration. It also writes matrix-level metrics, failures, an independent audit, and a short summary. See [Research workflow](docs/research-workflow.md) for the exact commands.
 
 ## Trace Information Used By The UI
 
