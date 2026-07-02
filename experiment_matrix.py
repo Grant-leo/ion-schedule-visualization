@@ -91,7 +91,7 @@ class ExperimentRunSpec:
 
 def load_experiment_config(path_or_config):
     if isinstance(path_or_config, (str, Path)):
-        return json.loads(Path(path_or_config).read_text(encoding="utf-8"))
+        return json.loads(Path(path_or_config).read_text(encoding="utf-8-sig"))
     return dict(path_or_config)
 
 

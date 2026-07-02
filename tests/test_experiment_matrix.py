@@ -1,7 +1,20 @@
 import csv
 import json
 
-from experiment_matrix import expand_experiment_matrix, run_experiment_matrix
+from experiment_matrix import expand_experiment_matrix, load_experiment_config, run_experiment_matrix
+
+
+def test_load_experiment_config_accepts_utf8_bom_files(tmp_path):
+    config_path = tmp_path / "matrix.json"
+    config_path.write_text(
+        '\ufeff{"stream":"bom-smoke","matrix":{"circuits":["grover_n2"],"architectures":["L6"],"capacities":[2],"mappers":["Greedy"],"orderings":["Naive"],"schedulers":["EJF"],"seeds":[12345]}}',
+        encoding="utf-8",
+    )
+
+    config = load_experiment_config(config_path)
+
+    assert config["stream"] == "bom-smoke"
+    assert len(expand_experiment_matrix(config)) == 1
 
 
 def test_expand_experiment_matrix_creates_unique_run_specs():
