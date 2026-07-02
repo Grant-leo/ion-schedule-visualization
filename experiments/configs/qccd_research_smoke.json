@@ -1,0 +1,12 @@
+{
+  "stream": "qccd_research_smoke",
+  "matrix": {
+    "circuits": ["grover_n2", "qft_n4"],
+    "architectures": ["L6"],
+    "capacities": [2],
+    "mappers": ["Greedy"],
+    "orderings": ["Naive"],
+    "schedulers": ["EJF", "EJF-SerialComm"],
+    "seeds": [12345]
+  }
+}

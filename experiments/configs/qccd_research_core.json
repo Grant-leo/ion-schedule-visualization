@@ -1,0 +1,12 @@
+{
+  "stream": "qccd_research_core",
+  "matrix": {
+    "circuits": ["grover_n2", "qft_n4", "vqe_n4", "qaoa_n6", "simon_n6", "adder_n10"],
+    "architectures": ["L6", "H6", "G9", "G3x3"],
+    "capacities": [2, 3],
+    "mappers": ["Greedy", "PO", "SABRE"],
+    "orderings": ["Naive", "Fidelity"],
+    "schedulers": ["EJF", "EJF-ParallelTrap", "EJF-SerialComm", "EJF-GlobalSerial"],
+    "seeds": [12345, 12346, 12347]
+  }
+}

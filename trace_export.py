@@ -3,7 +3,7 @@ from pathlib import Path
 
 from machine import Junction, Trap
 from schedule import Schedule
-from simulation import SCHEDULER_POLICIES, SIMULATION_SEED, TIE_BREAK_POLICY, effective_scheduler_flags
+from simulation import SCHEDULER_POLICIES, effective_scheduler_flags
 from trace_contract import stamp_trace_contract
 
 
@@ -572,8 +572,8 @@ def _run_config(result):
         "mapper": config.mapper,
         "reorder": config.reorder,
         "scheduler_policy": config.scheduler_policy or _scheduler_policy_name(serial_trap_ops, serial_comm, serial_all),
-        "seed": SIMULATION_SEED,
-        "tie_break_policy": TIE_BREAK_POLICY,
+        "seed": config.seed,
+        "tie_break_policy": config.tie_break_policy,
         "serial_trap_ops": bool(serial_trap_ops),
         "serial_comm": bool(serial_comm),
         "serial_all": bool(serial_all),

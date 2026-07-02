@@ -1,6 +1,6 @@
 import copy
 
-from comparison_metrics import compare_traces
+from comparison_metrics import compare_traces, trace_architecture_hash, trace_circuit_hash, trace_fidelity
 from trace_contract import stamp_trace_contract
 
 
@@ -137,6 +137,14 @@ def test_compare_traces_reports_metric_deltas_and_best_values():
     assert row_by_metric(result, "channel_pressure")["candidate"] == 40
     assert row_by_metric(result, "dag_stall_time")["baseline"] == 80
     assert row_by_metric(result, "dag_stall_time")["candidate"] == 60
+
+
+def test_public_trace_helpers_match_comparison_identity_and_fidelity():
+    trace = minimal_trace("sample", fidelity=0.975)
+
+    assert trace_circuit_hash(trace)
+    assert trace_architecture_hash(trace) == "architecture-v1"
+    assert trace_fidelity(trace) == 0.975
 
 
 def test_compare_traces_marks_different_circuits_non_comparable():

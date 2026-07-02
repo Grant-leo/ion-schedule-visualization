@@ -13,6 +13,34 @@ The project is intended to grow from a visual demo into a QCCD algorithm researc
 7. Compare total time, shuttles, split/move/merge counts, swaps, ion travel proxy, channel pressure, DAG stall time, and fidelity.
 8. Export an experiment bundle for review or reproduction.
 
+## Batch Experiment Mode
+
+For algorithm research, use the batch runner when a single replay is not enough. It expands a matrix over circuit, architecture, capacity, mapper, ordering, scheduler policy, and seed, then writes one trace and one bottleneck analysis file per run.
+
+Smoke run:
+
+```powershell
+.\venv\Scripts\python.exe tools\run_experiment_matrix.py --config experiments\configs\qccd_research_smoke.json --output-root tmp\qccd_experiment_smoke
+```
+
+Core research matrix:
+
+```powershell
+.\venv\Scripts\python.exe tools\run_experiment_matrix.py --config experiments\configs\qccd_research_core.json --output-root results\qccd_experiments
+```
+
+Each timestamped output directory contains:
+
+- `manifest.json`: matrix configuration, run status, trace paths, analysis paths, and trace hashes.
+- `runs/*.trace.json`: validated QCCDSim trace contracts.
+- `analysis/*.analysis.json`: post-hoc bottleneck attribution for traps, segments, junctions, ions, gate waits, and unexplained scheduler gaps.
+- `metrics.csv`: one row per completed run with circuit hash, architecture hash, timing, shuttling, swap, ion-hop, fidelity, and validation fields.
+- `failures.csv`: one row per failed run with the configuration and concrete error reason.
+- `audit.json`: independent reload of the output directory checking coverage, duplicate keys, trace hashes, validation status, and analysis linkage.
+- `summary.md`: compact human-readable status.
+
+The default output root `results/` is ignored by Git so large experimental data does not accidentally enter the repository.
+
 ## What To Look For
 
 | Symptom | Likely Research Question |
@@ -43,7 +71,7 @@ Planned extensions:
 - Editable architecture and circuit workspaces.
 - External mapper and scheduler adapters.
 - Breakthrough markers that highlight where a candidate policy improves time, shuttles, channel pressure, or dependency stalls.
-- Batch experiment mode for benchmark suites.
+- Larger batch experiment suites with paired conservative and exploratory streams.
 - Exported reports that combine screenshots, metrics, traces, and comparison notes.
 
 The design goal is a research platform where architecture design, mapping, scheduling, validation, visualization, and metrics use the same trace contract.

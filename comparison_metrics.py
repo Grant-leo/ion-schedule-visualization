@@ -55,6 +55,18 @@ def compare_traces(baseline, candidate):
     }
 
 
+def trace_circuit_hash(trace):
+    return _circuit_hash(trace)
+
+
+def trace_architecture_hash(trace):
+    return _architecture_hash(trace)
+
+
+def trace_fidelity(trace):
+    return _fidelity(trace)
+
+
 def _compatibility(baseline, candidate):
     reasons = []
     flags = []

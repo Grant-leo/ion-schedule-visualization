@@ -13,6 +13,7 @@ __pycache__
 *.log
 output/
 outputs/
+results/
 tmp/
 .pytest_cache/
 .ruff_cache/

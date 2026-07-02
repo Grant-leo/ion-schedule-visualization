@@ -48,6 +48,8 @@ class SimulationConfig:
     architecture_spec: object = None
     program_text: str = ""
     source_label: str = ""
+    seed: int = SIMULATION_SEED
+    tie_break_policy: str = TIE_BREAK_POLICY
 
 
 @dataclass
@@ -201,7 +203,7 @@ def _layout_to_qubit_mapping(layout):
 
 
 def run_simulation(config):
-    np.random.seed(SIMULATION_SEED)
+    np.random.seed(config.seed)
     parser = InputParse()
     if config.program_text:
         parser.parse_qasm_text(config.program_text)
